@@ -7,13 +7,16 @@ import {
   TrendingDown, 
   Calendar,
   Tag,
-  AlertCircle
+  AlertCircle,
+  Copy,
+  RefreshCw
 } from 'lucide-react';
 import { api } from '../services/api';
 import { Expense, ExpenseCategory } from '../services/types';
 import { Button } from '../components/Button';
 import { Modal } from '../components/Modal';
 import { Input } from '../components/Input';
+import { cn } from '../lib/utils';
 
 export const ExpensesPage = () => {
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -29,6 +32,7 @@ export const ExpensesPage = () => {
     date: new Date().toISOString().split('T')[0],
     isRecurring: false
   });
+  const [isProcessing, setIsProcessing] = useState(false);
 
   const loadExpenses = async () => {
     setIsLoading(true);
@@ -84,6 +88,18 @@ export const ExpensesPage = () => {
     setIsModalOpen(true);
   };
 
+  const handleDuplicate = (expense: Expense) => {
+    setEditingExpense(null);
+    setFormData({
+      description: `${expense.description} (Cópia)`,
+      amount: expense.amount,
+      category: expense.category,
+      date: new Date().toISOString().split('T')[0],
+      isRecurring: expense.isRecurring
+    });
+    setIsModalOpen(true);
+  };
+
   const handleDelete = async (id: string) => {
     if (confirm('Deseja excluir esta despesa?')) {
       try {
@@ -92,6 +108,66 @@ export const ExpensesPage = () => {
       } catch (error) {
         alert('Erro ao excluir despesa');
       }
+    }
+  };
+
+  const handleProcessRecurring = async () => {
+    if (!confirm('Deseja processar as despesas recorrentes do mês anterior para o mês atual?')) return;
+    
+    setIsProcessing(true);
+    try {
+      const allExpenses = await api.getExpenses();
+      
+      const now = new Date();
+      const currentMonth = now.getMonth();
+      const currentYear = now.getFullYear();
+      
+      const lastMonthDate = new Date(now);
+      lastMonthDate.setMonth(now.getMonth() - 1);
+      const lastMonth = lastMonthDate.getMonth();
+      const lastYear = lastMonthDate.getFullYear();
+
+      // Despesas recorrentes do mês passado
+      const lastMonthRecurring = allExpenses.filter(e => {
+        const d = new Date(e.date + 'T12:00:00');
+        return e.isRecurring && d.getMonth() === lastMonth && d.getFullYear() === lastYear;
+      });
+
+      // Despesas do mês atual (para evitar duplicidade)
+      const currentMonthExpenses = allExpenses.filter(e => {
+        const d = new Date(e.date + 'T12:00:00');
+        return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+      });
+
+      let count = 0;
+      for (const recurring of lastMonthRecurring) {
+        const alreadyExists = currentMonthExpenses.some(e => 
+          e.description === recurring.description && 
+          e.amount === recurring.amount &&
+          e.category === recurring.category
+        );
+
+        if (!alreadyExists) {
+          const newDate = new Date(recurring.date + 'T12:00:00');
+          newDate.setMonth(newDate.getMonth() + 1);
+          
+          await api.createExpense({
+            description: recurring.description,
+            amount: recurring.amount,
+            category: recurring.category,
+            date: newDate.toISOString().split('T')[0],
+            isRecurring: true
+          });
+          count++;
+        }
+      }
+
+      await loadExpenses();
+      alert(`${count} despesas recorrentes processadas com sucesso!`);
+    } catch (error) {
+      alert('Erro ao processar despesas recorrentes');
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -104,20 +180,31 @@ export const ExpensesPage = () => {
           <h2 className="text-2xl font-bold text-priori-navy">Controle de Despesas</h2>
           <p className="text-zinc-500">Gerencie os custos fixos e variáveis da clínica.</p>
         </div>
-        <Button onClick={() => {
-          setEditingExpense(null);
-          setFormData({
-            description: '',
-            amount: 0,
-            category: ExpenseCategory.OTHER,
-            date: new Date().toISOString().split('T')[0],
-            isRecurring: false
-          });
-          setIsModalOpen(true);
-        }} className="flex items-center gap-2 bg-priori-navy hover:bg-priori-navy/90">
-          <Plus size={18} />
-          Nova Despesa
-        </Button>
+        <div className="flex items-center gap-3">
+          <Button 
+            onClick={handleProcessRecurring} 
+            variant="outline"
+            isLoading={isProcessing}
+            className="flex items-center gap-2 border-priori-navy text-priori-navy hover:bg-priori-navy/5"
+          >
+            <RefreshCw size={18} className={cn(isProcessing && "animate-spin")} />
+            Processar Recorrências
+          </Button>
+          <Button onClick={() => {
+            setEditingExpense(null);
+            setFormData({
+              description: '',
+              amount: 0,
+              category: ExpenseCategory.OTHER,
+              date: new Date().toISOString().split('T')[0],
+              isRecurring: false
+            });
+            setIsModalOpen(true);
+          }} className="flex items-center gap-2 bg-priori-navy hover:bg-priori-navy/90">
+            <Plus size={18} />
+            Nova Despesa
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -186,14 +273,23 @@ export const ExpensesPage = () => {
                     <td className="px-6 py-4 text-right">
                       <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button 
+                          onClick={() => handleDuplicate(expense)}
+                          className="p-2 text-zinc-400 hover:text-priori-gold transition-colors"
+                          title="Duplicar Despesa"
+                        >
+                          <Copy size={16} />
+                        </button>
+                        <button 
                           onClick={() => handleEdit(expense)}
                           className="p-2 text-zinc-400 hover:text-priori-navy transition-colors"
+                          title="Editar Despesa"
                         >
                           <Edit2 size={16} />
                         </button>
                         <button 
                           onClick={() => handleDelete(expense.id)}
                           className="p-2 text-zinc-400 hover:text-red-500 transition-colors"
+                          title="Excluir Despesa"
                         >
                           <Trash2 size={16} />
                         </button>
