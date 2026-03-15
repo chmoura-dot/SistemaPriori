@@ -10,15 +10,18 @@ import {
   ChevronRight,
   Trash2,
   AlertCircle,
-  Loader2
+  Loader2,
+  Download
 } from 'lucide-react';
 import { api } from '../services/api';
+import { exportToExcel } from '../lib/excel';
 import { 
   BillingBatch, 
   BillingBatchStatus, 
   Appointment, 
   HealthPlan,
   Customer,
+  Plan,
   Psychologist
 } from '../services/types';
 import { Button } from '../components/Button';
@@ -31,6 +34,7 @@ export const BillingPage = () => {
   const [batches, setBatches] = useState<BillingBatch[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [plans, setPlans] = useState<Plan[]>([]);
   const [psychologists, setPsychologists] = useState<Psychologist[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -57,15 +61,17 @@ export const BillingPage = () => {
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      const [batchesData, appsData, customersData, psyData] = await Promise.all([
+      const [batchesData, appsData, customersData, plansData, psyData] = await Promise.all([
         api.getBillingBatches(),
         api.getAppointments(),
         api.getCustomers(),
+        api.getPlans(),
         api.getPsychologists()
       ]);
       setBatches(batchesData.sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
       setAppointments(appsData);
       setCustomers(customersData);
+      setPlans(plansData);
       setPsychologists(psyData);
     } catch (error) {
       console.error('Error fetching billing data:', error);
@@ -74,15 +80,23 @@ export const BillingPage = () => {
     }
   };
 
+  // Helper: busca o valor do atendimento considerando preço customizado, preço do paciente e preço do plano
+  const getAppPrice = (app: Appointment): number => {
+    const customer = customers.find(c => c.id === app.customerId);
+    const plan = plans.find(p => p.name.toUpperCase() === (customer?.healthPlan ?? '').toUpperCase());
+    const procedure = plan?.procedures?.find(proc => proc.type === app.type);
+    return app.customPrice ?? customer?.customPrice ?? procedure?.price ?? 0;
+  };
+
   const handleCreateBatch = async () => {
     if (!batchNumber || selectedAppointmentIds.length === 0) return;
 
     const totalAmount = appointments
       .filter(a => selectedAppointmentIds.includes(a.id))
-      .reduce((sum, a) => sum + (a.customPrice || 0), 0);
+      .reduce((sum, a) => sum + getAppPrice(a), 0);
 
     try {
-      await api.createBillingBatch({
+      const batch = await api.createBillingBatch({
         batchNumber,
         sentAt: new Date().toISOString(),
         status: BillingBatchStatus.SENT,
@@ -90,6 +104,14 @@ export const BillingPage = () => {
         totalAmount,
         appointmentIds: selectedAppointmentIds
       });
+
+      // Marcar cada atendimento com o billingBatchId para não aparecer em lotes futuros
+      await Promise.all(
+        selectedAppointmentIds.map(id =>
+          api.updateAppointment(id, { billingBatchId: batch.id })
+        )
+      );
+
       setIsCreateModalOpen(false);
       setBatchNumber('');
       setSelectedAppointmentIds([]);
@@ -146,6 +168,34 @@ export const BillingPage = () => {
     } catch (error) {
       console.error('Error deleting batch:', error);
     }
+  };
+  
+  const handleExportBatch = (batch: BillingBatch) => {
+    const batchAppointments = appointments.filter(a => batch.appointmentIds.includes(a.id));
+    
+    const exportData = batchAppointments.map(app => {
+      const customer = customers.find(c => c.id === app.customerId);
+      const psychologist = psychologists.find(p => p.id === app.psychologistId);
+      
+      return {
+        'Lote': `#${batch.batchNumber}`,
+        'Operadora': batch.healthPlan,
+        'Paciente': customer?.name || '---',
+        'Profissional': psychologist?.name || '---',
+        'Data da Sessão': format(new Date(app.date + 'T12:00:00'), 'dd/MM/yyyy'),
+        'Horário': app.startTime,
+        'Valor (R$)': app.customPrice || 0,
+        'Status de Faturamento': app.billingStatus === 'paid' ? 'Pago' : app.billingStatus === 'denied' ? 'Glosa' : 'Pendente',
+        'Motivo Glosa': app.denialReason || '',
+        'Resolução Glosa': app.denialResolution === 'appealed' ? 'Recursada' : app.denialResolution === 'accepted' ? 'Aceite' : ''
+      };
+    });
+    
+    exportToExcel(
+      exportData, 
+      `Lote_${batch.batchNumber}_${batch.healthPlan}_${format(new Date(), 'yyyyMMdd')}`,
+      'Atendimentos'
+    );
   };
 
   const getEligibleAppointments = () => {
@@ -269,6 +319,15 @@ export const BillingPage = () => {
                           Registrar Pagamento
                         </Button>
                       )}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleExportBatch(batch)}
+                        className="text-priori-gold border-priori-gold/30 hover:bg-priori-gold/5"
+                        title="Exportar Excel"
+                      >
+                        <Download size={16} />
+                      </Button>
                       <button
                         onClick={() => handleDeleteBatch(batch.id)}
                         className="p-2 text-zinc-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
@@ -334,10 +393,29 @@ export const BillingPage = () => {
           </div>
 
           <div className="border-t border-zinc-100 pt-4">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
               <h4 className="font-semibold text-priori-navy">Atendimentos Disponíveis</h4>
-              <div className="text-sm text-zinc-500">
-                {selectedAppointmentIds.length} selecionados
+              <div className="flex items-center gap-4 text-sm">
+                <div className="text-zinc-500 font-medium">
+                  {selectedAppointmentIds.length} selecionados
+                </div>
+                {getEligibleAppointments().length > 0 && (
+                  <button
+                    onClick={() => {
+                      const eligibleIds = getEligibleAppointments().map(a => a.id);
+                      if (selectedAppointmentIds.length === eligibleIds.length) {
+                        setSelectedAppointmentIds([]);
+                      } else {
+                        setSelectedAppointmentIds(eligibleIds);
+                      }
+                    }}
+                    className="text-priori-navy hover:text-priori-navy/80 hover:underline font-semibold"
+                  >
+                    {selectedAppointmentIds.length === getEligibleAppointments().length 
+                      ? 'Desmarcar Todos' 
+                      : 'Selecionar Todos'}
+                  </button>
+                )}
               </div>
             </div>
 
@@ -372,7 +450,7 @@ export const BillingPage = () => {
                         </div>
                       </div>
                       <div className="text-sm font-medium text-priori-navy">
-                        {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(app.customPrice || 0)}
+                        {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(getAppPrice(app))}
                       </div>
                     </div>
                   );
@@ -458,7 +536,7 @@ export const BillingPage = () => {
                         </div>
                         <div className="text-right">
                           <div className="font-medium text-priori-navy">
-                            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(app?.customPrice || 0)}
+                            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(app ? getAppPrice(app) : 0)}
                           </div>
                           {app?.billingStatus && (
                             <span className={cn(
@@ -484,7 +562,15 @@ export const BillingPage = () => {
               </div>
             </div>
 
-            <div className="flex justify-end pt-4 border-t border-zinc-100">
+            <div className="flex justify-between items-center pt-4 border-t border-zinc-100">
+              <Button 
+                variant="outline"
+                onClick={() => handleExportBatch(selectedBatch)}
+                className="text-priori-gold border-priori-gold/50"
+              >
+                <Download size={18} className="mr-2" />
+                Exportar Excel
+              </Button>
               <Button onClick={() => setSelectedBatch(null)} className="bg-priori-navy">
                 Fechar
               </Button>
@@ -518,7 +604,7 @@ export const BillingPage = () => {
                       <div>
                         <div className="font-medium text-priori-navy">{customer?.name}</div>
                         <div className="text-xs text-zinc-500">
-                          {app ? format(new Date(app.date + 'T12:00:00'), 'dd/MM/yyyy') : ''} • {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(app?.customPrice || 0)}
+                          {app ? format(new Date(app.date + 'T12:00:00'), 'dd/MM/yyyy') : ''} • {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(app ? getAppPrice(app) : 0)}
                         </div>
                       </div>
                       <div className="flex bg-white rounded-xl border border-zinc-200 p-1">

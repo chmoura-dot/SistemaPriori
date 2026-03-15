@@ -5,13 +5,18 @@ import {
   BillingBatch,
   Customer,
   Expense,
+  HealthPlan,
   Payment,
   Plan,
   Psychologist,
+  Repasse,
+  RepasseStatus,
   Room,
   Subscription,
   User,
   UserRole,
+  RecurrenceFrequency,
+  Settings,
 } from './types';
 
 // ──────────────────────────────────────────────────────────
@@ -24,6 +29,7 @@ function toPsychologist(row: any): Psychologist {
     name: row.name,
     specialties: row.specialties ?? [],
     phone: row.phone ?? '',
+    email: row.email ?? '',
     active: row.active,
     availability: row.availability ?? [],
   };
@@ -33,18 +39,41 @@ function toRoom(row: any): Room {
   return { id: row.id, name: row.name, active: row.active };
 }
 
+// Normaliza o health_plan cru do banco (ex: "AMS PETROBRAS") para o valor do enum (ex: "AMS Petrobras")
+// Isso resolve a inconsistência de capitalização entre o banco e o frontend
+const HEALTH_PLAN_MAP: Record<string, string> = {
+  'AMS PETROBRAS': 'AMS Petrobras',
+  'PAE': 'PAE',
+  'PORTO SAUDE': 'Porto Saude',
+  'MEDSENIOR': 'Medsenior',
+  'REAL GRANDEZA': 'Real Grandeza',
+  'SAUDE BLUE': 'Saude Blue',
+  'GAMA SAUDE': 'Gama Saude',
+  'SAUDE CAIXA': 'Saude Caixa',
+  'FUNDACAO SAUDE': 'Fundação Saúde Itaú',
+  'FUNDAÇÃO SAÚDE ITAÚ': 'Fundação Saúde Itaú',
+  'PARTICULAR': 'Particular',
+};
+
+function normalizeHealthPlan(raw?: string): HealthPlan {
+  if (!raw) return HealthPlan.PARTICULAR as unknown as HealthPlan;
+  return (HEALTH_PLAN_MAP[raw.toUpperCase()] ?? raw) as unknown as HealthPlan;
+}
+
 function toCustomer(row: any): Customer {
   return {
     id: row.id,
     name: row.name,
     email: row.email ?? '',
     phone: row.phone ?? '',
-    healthPlan: row.health_plan,
+    healthPlan: normalizeHealthPlan(row.health_plan),
     psychologistId: row.psychologist_id,
     status: row.status,
+    inactivationReason: row.inactivation_reason,
     notes: row.notes,
     customPrice: row.custom_price ?? undefined,
     customRepassAmount: row.custom_repass_amount ?? undefined,
+    birthDate: row.birth_date ?? undefined,
     createdAt: row.created_at,
   };
 }
@@ -57,6 +86,7 @@ function toAppointment(row: any): Appointment {
     roomId: row.room_id ?? undefined,
     mode: row.mode,
     type: row.type,
+    procedureCode: row.procedure_code,
     date: row.date,
     dayOfWeek: row.day_of_week,
     startTime: row.start_time,
@@ -68,6 +98,7 @@ function toAppointment(row: any): Appointment {
     reminderSentAt: row.reminder_sent_at ?? undefined,
     patientNotes: row.patient_notes ?? undefined,
     isRecurring: row.is_recurring,
+    recurrenceFrequency: row.recurrence_frequency ?? undefined,
     recurrenceGroupId: row.recurrence_group_id ?? undefined,
     needsRenewal: row.needs_renewal ?? false,
     customPrice: row.custom_price ?? undefined,
@@ -77,6 +108,7 @@ function toAppointment(row: any): Appointment {
     denialReason: row.denial_reason ?? undefined,
     denialResolution: row.denial_resolution ?? undefined,
     createdAt: row.created_at,
+    cancellationBilling: row.cancellation_billing ?? undefined,
   };
 }
 
@@ -154,33 +186,56 @@ let currentUser: User | null = null;
 // ──────────────────────────────────────────────────────────
 // Service implementation
 // ──────────────────────────────────────────────────────────
+const toSettings = (row: any): Settings => ({
+  id: row.id,
+  zapiUrl: row.zapi_url ?? undefined,
+  zapiToken: row.zapi_token ?? undefined,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+});
+
 export const supabaseService: AppService = {
   // ── Auth ──────────────────────────────────────────────
   login: async (email: string, password: string) => {
-    // Simple credential check against app_users table
-    const { data, error } = await supabase
+    // 1. Authenticate with Supabase Auth
+    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (authError || !authData.user) {
+      console.error('Auth error:', authError);
+      return null;
+    }
+
+    // 2. Fetch the user's role from public.app_users
+    const { data: profile, error: profileError } = await supabase
       .from('app_users')
-      .select('*')
+      .select('role')
       .eq('email', email)
       .single();
 
-    if (error || !data) return null;
+    if (profileError || !profile) {
+      console.error('Profile fetch error:', profileError);
+      // Fallback to a default role or handle as unauthorized if profile is required
+      return null;
+    }
 
-    // NOTE: In production, use Supabase Auth with real passwords.
-    // For now, any password works for existing users.
-    currentUser = { email: data.email, role: data.role as UserRole };
-    localStorage.setItem('nucleo_user', JSON.stringify(currentUser));
+    currentUser = { email: authData.user.email!, role: profile.role as UserRole };
+    localStorage.setItem('nucleo_user_v2', JSON.stringify(currentUser));
     return currentUser;
   },
 
-  logout: () => {
+  logout: async () => {
+    await supabase.auth.signOut();
     currentUser = null;
-    localStorage.removeItem('nucleo_user');
+    localStorage.removeItem('nucleo_user_v2');
+    localStorage.removeItem('nucleo_user'); // Clean up old mock key
   },
 
   isAuthenticated: () => {
     if (currentUser) return true;
-    const stored = localStorage.getItem('nucleo_user');
+    const stored = localStorage.getItem('nucleo_user_v2');
     if (stored) {
       currentUser = JSON.parse(stored);
       return true;
@@ -190,7 +245,7 @@ export const supabaseService: AppService = {
 
   getCurrentUser: () => {
     if (currentUser) return currentUser;
-    const stored = localStorage.getItem('nucleo_user');
+    const stored = localStorage.getItem('nucleo_user_v2');
     if (stored) {
       currentUser = JSON.parse(stored);
       return currentUser;
@@ -211,6 +266,7 @@ export const supabaseService: AppService = {
         .from('psychologists')
         .insert({
           name: p.name,
+          email: p.email,
           specialties: p.specialties,
           phone: p.phone,
           active: p.active,
@@ -225,6 +281,7 @@ export const supabaseService: AppService = {
   updatePsychologist: async (id, p) => {
     const updates: Record<string, any> = {};
     if (p.name !== undefined) updates.name = p.name;
+    if (p.email !== undefined) updates.email = p.email;
     if (p.specialties !== undefined) updates.specialties = p.specialties;
     if (p.phone !== undefined) updates.phone = p.phone;
     if (p.active !== undefined) updates.active = p.active;
@@ -257,24 +314,71 @@ export const supabaseService: AppService = {
     return (data ?? []).map(toAppointment);
   },
 
+  getAppointmentsByRange: async (startDate: string, endDate: string) => {
+    const { data, error } = await supabase
+      .from('appointments')
+      .select('*')
+      .gte('date', startDate)
+      .lte('date', endDate)
+      .order('date')
+      .order('start_time');
+    if (error) throw new Error(error.message);
+    return (data ?? []).map(toAppointment);
+  },
+
+  getAppointmentsNeedingRenewal: async () => {
+    const { data, error } = await supabase
+      .from('appointments')
+      .select('*')
+      .eq('needs_renewal', true)
+      .eq('status', 'active')
+      .order('date');
+    if (error) throw new Error(error.message);
+    return (data ?? []).map(toAppointment);
+  },
+
   createAppointment: async (a) => {
-    const row = await throwOnError(
-      supabase
-        .from('appointments')
-        .insert({
+    const generateUUID = () => {
+      try {
+        if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+          return crypto.randomUUID();
+        }
+      } catch (e) {}
+      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+        const r = (Math.random() * 16) | 0;
+        const v = c === 'x' ? r : (r & 0x3) | 0x8;
+        return v.toString(16);
+      });
+    };
+
+      if (a.isRecurring) {
+        const groupId = generateUUID();
+        const appointmentsToInsert = [];
+        const startDate = new Date(a.date + 'T12:00:00');
+        const intervalDays = a.recurrenceFrequency === RecurrenceFrequency.QUINZENAL ? 14 : 7;
+        
+        for (let i = 0; i < 4; i++) {
+          const currentDate = new Date(startDate);
+          currentDate.setDate(startDate.getDate() + (i * intervalDays));
+          const dateStr = currentDate.toISOString().split('T')[0];
+        const dateObj = new Date(dateStr + 'T12:00:00');
+        
+        appointmentsToInsert.push({
           customer_id: a.customerId,
           psychologist_id: a.psychologistId,
           room_id: a.roomId ?? null,
           mode: a.mode,
           type: a.type,
-          date: a.date,
-          day_of_week: a.dayOfWeek,
+          procedure_code: a.procedureCode ?? null,
+          date: dateStr,
+          day_of_week: dateObj.getDay(),
           start_time: a.startTime,
           end_time: a.endTime,
-          status: a.status,
-          is_recurring: a.isRecurring,
-          recurrence_group_id: a.recurrenceGroupId ?? null,
-          needs_renewal: a.needsRenewal ?? false,
+          status: a.status || 'active',
+          is_recurring: true,
+          recurrence_frequency: a.recurrenceFrequency ?? RecurrenceFrequency.SEMANAL,
+          recurrence_group_id: groupId,
+          needs_renewal: i === 3,
           custom_price: a.customPrice ?? null,
           custom_repass_amount: a.customRepassAmount ?? null,
           billing_batch_id: a.billingBatchId ?? null,
@@ -282,11 +386,48 @@ export const supabaseService: AppService = {
           denial_reason: a.denialReason ?? null,
           denial_resolution: a.denialResolution ?? null,
           confirmation_status: 'pending',
-        })
-        .select()
-        .single()
-    );
-    return toAppointment(row);
+          cancellation_billing: a.cancellationBilling ?? null,
+        });
+      }
+
+      const { data, error } = await supabase.from('appointments').insert(appointmentsToInsert).select();
+      if (error) throw new Error(error.message);
+      if (!data || data.length === 0) throw new Error('Falha ao criar agendamentos');
+      
+      return toAppointment(data[0]);
+    } else {
+      const dateObj = new Date(a.date + 'T12:00:00');
+      const row = await throwOnError(
+        supabase
+          .from('appointments')
+          .insert({
+            customer_id: a.customerId,
+            psychologist_id: a.psychologistId,
+            room_id: a.roomId ?? null,
+            mode: a.mode,
+            type: a.type,
+            procedure_code: a.procedureCode ?? null,
+            date: a.date,
+            day_of_week: dateObj.getDay(),
+            start_time: a.startTime,
+            end_time: a.endTime,
+            status: a.status || 'active',
+            is_recurring: false,
+            needs_renewal: false,
+            custom_price: a.customPrice ?? null,
+            custom_repass_amount: a.customRepassAmount ?? null,
+            billing_batch_id: a.billingBatchId ?? null,
+            billing_status: a.billingStatus ?? null,
+            denial_reason: a.denialReason ?? null,
+            denial_resolution: a.denialResolution ?? null,
+            confirmation_status: 'pending',
+            cancellation_billing: a.cancellationBilling ?? null,
+          })
+          .select()
+          .single()
+      );
+      return toAppointment(row);
+    }
   },
 
   updateAppointment: async (id, a) => {
@@ -296,6 +437,7 @@ export const supabaseService: AppService = {
     if (a.roomId !== undefined) updates.room_id = a.roomId;
     if (a.mode !== undefined) updates.mode = a.mode;
     if (a.type !== undefined) updates.type = a.type;
+    if (a.procedureCode !== undefined) updates.procedure_code = a.procedureCode;
     if (a.date !== undefined) updates.date = a.date;
     if (a.dayOfWeek !== undefined) updates.day_of_week = a.dayOfWeek;
     if (a.startTime !== undefined) updates.start_time = a.startTime;
@@ -307,6 +449,7 @@ export const supabaseService: AppService = {
     if (a.reminderSentAt !== undefined) updates.reminder_sent_at = a.reminderSentAt;
     if (a.patientNotes !== undefined) updates.patient_notes = a.patientNotes;
     if (a.isRecurring !== undefined) updates.is_recurring = a.isRecurring;
+    if (a.recurrenceFrequency !== undefined) updates.recurrence_frequency = a.recurrenceFrequency;
     if (a.recurrenceGroupId !== undefined) updates.recurrence_group_id = a.recurrenceGroupId;
     if (a.needsRenewal !== undefined) updates.needs_renewal = a.needsRenewal;
     if (a.customPrice !== undefined) updates.custom_price = a.customPrice;
@@ -315,6 +458,7 @@ export const supabaseService: AppService = {
     if (a.billingStatus !== undefined) updates.billing_status = a.billingStatus;
     if (a.denialReason !== undefined) updates.denial_reason = a.denialReason;
     if (a.denialResolution !== undefined) updates.denial_resolution = a.denialResolution;
+    if (a.cancellationBilling !== undefined) updates.cancellation_billing = a.cancellationBilling;
 
     const row = await throwOnError(
       supabase.from('appointments').update(updates).eq('id', id).select().single()
@@ -326,12 +470,55 @@ export const supabaseService: AppService = {
     const { error } = await supabase.from('appointments').delete().eq('id', id);
     if (error) throw new Error(error.message);
   },
+  
+  deleteFutureAppointments: async (groupId, fromDate) => {
+    const { error } = await supabase
+      .from('appointments')
+      .delete()
+      .eq('recurrence_group_id', groupId)
+      .gte('date', fromDate);
+    if (error) throw new Error(error.message);
+  },
 
   // ── Customers ─────────────────────────────────────────
   getCustomers: async () => {
-    const { data, error } = await supabase.from('customers').select('*').order('name');
-    if (error) throw new Error(error.message);
-    return (data ?? []).map(toCustomer);
+    // 1. Fetch customers
+    const { data: customersData, error: customersError } = await supabase
+      .from('customers')
+      .select('*')
+      .order('name');
+
+    if (customersError) throw new Error(customersError.message);
+    if (!customersData) return [];
+
+    // 2. Fetch all appointments summary (just what's needed for metrics)
+    // To be efficient, we only need id, customer_id, date, and status
+    const { data: appData, error: appError } = await supabase
+      .from('appointments')
+      .select('customer_id, date, status')
+      .in('status', ['active']); // We only care about active appointments for these metrics
+
+    if (appError) throw new Error(appError.message);
+
+    const today = new Date().toISOString().split('T')[0];
+
+    // 3. Process metrics in memory
+    return customersData.map(row => {
+      const customer = toCustomer(row);
+      const customerApps = (appData || []).filter(a => a.customer_id === customer.id);
+
+      // Quantidade de atendimentos realizados (past active)
+      const pastApps = customerApps.filter(a => a.date < today).sort((a, b) => b.date.localeCompare(a.date));
+      const futureApps = customerApps.filter(a => a.date >= today).sort((a, b) => a.date.localeCompare(b.date));
+      const allSorted = [...customerApps].sort((a, b) => a.date.localeCompare(b.date));
+
+      customer.totalAppointmentsPerformed = pastApps.length;
+      customer.lastAppointmentDate = pastApps[0]?.date;
+      customer.nextAppointmentDate = futureApps[0]?.date;
+      customer.firstAppointmentDate = allSorted[0]?.date;
+
+      return customer;
+    });
   },
 
   createCustomer: async (c) => {
@@ -345,9 +532,11 @@ export const supabaseService: AppService = {
           health_plan: c.healthPlan,
           psychologist_id: c.psychologistId,
           status: c.status,
+          inactivation_reason: c.inactivationReason ?? null,
           notes: c.notes ?? null,
           custom_price: c.customPrice ?? null,
           custom_repass_amount: c.customRepassAmount ?? null,
+          birth_date: c.birthDate ?? null,
         })
         .select()
         .single()
@@ -363,9 +552,11 @@ export const supabaseService: AppService = {
     if (c.healthPlan !== undefined) updates.health_plan = c.healthPlan;
     if (c.psychologistId !== undefined) updates.psychologist_id = c.psychologistId;
     if (c.status !== undefined) updates.status = c.status;
+    if (c.inactivationReason !== undefined) updates.inactivation_reason = c.inactivationReason;
     if (c.notes !== undefined) updates.notes = c.notes;
     if (c.customPrice !== undefined) updates.custom_price = c.customPrice;
     if (c.customRepassAmount !== undefined) updates.custom_repass_amount = c.customRepassAmount;
+    if (c.birthDate !== undefined) updates.birth_date = c.birthDate;
 
     const row = await throwOnError(
       supabase.from('customers').update(updates).eq('id', id).select().single()
@@ -580,5 +771,114 @@ export const supabaseService: AppService = {
   deleteBillingBatch: async (id) => {
     const { error } = await supabase.from('billing_batches').delete().eq('id', id);
     if (error) throw new Error(error.message);
+  },
+
+  // ── Repasses ──────────────────────────────────────────
+  getRepasses: async () => {
+    const { data, error } = await supabase
+      .from('repasses')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (error) throw new Error(error.message);
+    return (data ?? []).map((row: any): Repasse => ({
+      id: row.id,
+      psychologistId: row.psychologist_id,
+      billingBatchId: row.billing_batch_id,
+      appointmentIds: row.appointment_ids ?? [],
+      totalAmount: row.total_amount,
+      status: row.status as RepasseStatus,
+      paidAt: row.paid_at ?? undefined,
+      notes: row.notes ?? undefined,
+      createdAt: row.created_at,
+    }));
+  },
+
+  createRepasse: async (r) => {
+    const row = await throwOnError(
+      supabase
+        .from('repasses')
+        .insert({
+          psychologist_id: r.psychologistId,
+          billing_batch_id: r.billingBatchId,
+          appointment_ids: r.appointmentIds,
+          total_amount: r.totalAmount,
+          status: r.status,
+          paid_at: r.paidAt ?? null,
+          notes: r.notes ?? null,
+        })
+        .select()
+        .single()
+    );
+    return {
+      id: row.id,
+      psychologistId: row.psychologist_id,
+      billingBatchId: row.billing_batch_id,
+      appointmentIds: row.appointment_ids ?? [],
+      totalAmount: row.total_amount,
+      status: row.status as RepasseStatus,
+      paidAt: row.paid_at ?? undefined,
+      notes: row.notes ?? undefined,
+      createdAt: row.created_at,
+    };
+  },
+
+  updateRepasse: async (id, r) => {
+    const updates: Record<string, any> = {};
+    if (r.status !== undefined) updates.status = r.status;
+    if (r.paidAt !== undefined) updates.paid_at = r.paidAt;
+    if (r.notes !== undefined) updates.notes = r.notes;
+    if (r.totalAmount !== undefined) updates.total_amount = r.totalAmount;
+
+    const row = await throwOnError(
+      supabase.from('repasses').update(updates).eq('id', id).select().single()
+    );
+    return {
+      id: row.id,
+      psychologistId: row.psychologist_id,
+      billingBatchId: row.billing_batch_id,
+      appointmentIds: row.appointment_ids ?? [],
+      totalAmount: row.total_amount,
+      status: row.status as RepasseStatus,
+      paidAt: row.paid_at ?? undefined,
+      notes: row.notes ?? undefined,
+      createdAt: row.created_at,
+    };
+  },
+
+  deleteRepasse: async (id) => {
+    const { error } = await supabase.from('repasses').delete().eq('id', id);
+    if (error) throw new Error(error.message);
+  },
+
+  // ── Settings ──────────────────────────────────────────
+  getSettings: async () => {
+    let { data, error } = await supabase.from('settings').select('*').limit(1).maybeSingle();
+    
+    // Se não existir nenhuma configuração, criar uma linha vazia padrão
+    if (!data && !error) {
+      const { data: newData, error: newErr } = await supabase
+        .from('settings')
+        .insert({})
+        .select()
+        .single();
+      if (newErr) throw new Error(newErr.message);
+      data = newData;
+    } else if (error) {
+      throw new Error(error.message);
+    }
+    
+    return toSettings(data);
+  },
+
+  updateSettings: async (id, settings) => {
+    const updates: any = {};
+    if (settings.zapiUrl !== undefined) updates.zapi_url = settings.zapiUrl;
+    if (settings.zapiToken !== undefined) updates.zapi_token = settings.zapiToken;
+    updates.updated_at = new Date().toISOString();
+
+    const row = await throwOnError(
+      supabase.from('settings').update(updates).eq('id', id).select().single()
+    );
+    return toSettings(row);
   },
 };

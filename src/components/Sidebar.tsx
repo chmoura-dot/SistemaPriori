@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { 
   LayoutDashboard, 
   Users, 
@@ -12,11 +12,27 @@ import {
   BarChart3,
   Trash2,
   TrendingDown,
-  FileText
+  FileText,
+  ArrowRightLeft,
+  Blocks
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { api } from '../services/api';
-import { UserRole } from '../services/types';
+
+const menuItems = [
+  { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
+  { icon: CalendarIcon, label: 'Agenda', path: '/agenda' },
+  { icon: Users, label: 'Pacientes', path: '/clientes' },
+  { icon: Package, label: 'Planos', path: '/planos' },
+  { icon: BarChart3, label: 'Financeiro', path: '/financeiro' },
+  { icon: CreditCard, label: 'Pagamentos', path: '/pagamentos' },
+  { icon: FileText, label: 'Faturamento', path: '/faturamento' },
+  { icon: ArrowRightLeft, label: 'Repasse', path: '/repasse' },
+  { icon: BarChart3, label: 'Capacidade', path: '/capacidade' },
+  { icon: TrendingDown, label: 'Despesas', path: '/despesas' },
+  { icon: Users, label: 'Psicólogos', path: '/psicologos' },
+  { icon: Blocks, label: 'Integrações', path: '/settings' },
+];
 
 interface SidebarProps {
   currentPath: string;
@@ -25,19 +41,6 @@ interface SidebarProps {
 
 export const Sidebar = ({ currentPath, onNavigate }: SidebarProps) => {
   const [isOpen, setIsOpen] = useState(false);
-  const user = api.getCurrentUser();
-
-  const menuItems = [
-    { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
-    { icon: CalendarIcon, label: 'Agenda', path: '/agenda' },
-    { icon: Users, label: 'Clientes', path: '/clientes' },
-    { icon: Package, label: 'Planos', path: '/planos' },
-    { icon: BarChart3, label: 'Financeiro', path: '/financeiro', adminOnly: true },
-    { icon: CreditCard, label: 'Pagamentos', path: '/pagamentos' },
-    { icon: FileText, label: 'Faturamento', path: '/faturamento', adminOnly: true },
-    { icon: TrendingDown, label: 'Despesas', path: '/despesas', adminOnly: true },
-    { icon: Users, label: 'Psicólogos', path: '/psicologos' },
-  ].filter(item => !item.adminOnly || user?.role === UserRole.ADMIN);
 
   const handleLogout = () => {
     api.logout();
@@ -47,7 +50,7 @@ export const Sidebar = ({ currentPath, onNavigate }: SidebarProps) => {
   return (
     <>
       {/* Mobile Header */}
-        <div className="lg:hidden flex items-center justify-between bg-priori-navy border-b border-priori-navy px-4 py-4 fixed top-0 w-full z-40">
+      <div className="lg:hidden flex items-center justify-between bg-priori-navy border-b border-priori-navy px-4 py-4 fixed top-0 w-full z-40">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-lg bg-priori-gold flex items-center justify-center">
             <Activity size={20} className="text-white" />
@@ -75,53 +78,56 @@ export const Sidebar = ({ currentPath, onNavigate }: SidebarProps) => {
         "fixed top-0 left-0 h-full w-64 bg-priori-navy z-50 transition-transform lg:translate-x-0 flex flex-col",
         isOpen ? "translate-x-0" : "-translate-x-full"
       )}>
-        <div className="p-6 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-priori-gold flex items-center justify-center shadow-lg shadow-priori-gold/20">
-            <Activity size={24} className="text-white" />
+        <div className="p-8 flex flex-col items-center gap-4">
+          <div className="w-20 h-20 rounded-3xl bg-white flex items-center justify-center shadow-2xl shadow-black/20 p-4">
+            <Activity size={40} className="text-priori-navy" />
           </div>
-          <div>
-            <h1 className="font-bold text-white leading-none">Núcleo Priori</h1>
-            <p className="text-[10px] text-zinc-300 uppercase tracking-widest mt-1 font-semibold">Neuropsicologia</p>
+          <div className="text-center">
+            <h1 className="font-bold text-xl text-white tracking-tight">Núcleo Priori</h1>
+            <p className="text-[10px] text-white/60 uppercase tracking-[0.2em] mt-1 font-bold">Neuropsicologia</p>
           </div>
         </div>
 
-        <nav className="flex-1 px-4 py-6 space-y-1">
-          {menuItems.map((item) => (
+        <nav className="flex-1 px-4 py-4 space-y-1.5 overflow-y-auto custom-scrollbar">
+          {menuItems.map((item, index) => (
             <button
-              key={item.path}
+              key={`${item.path}-${index}`}
               onClick={() => {
                 onNavigate(item.path);
                 setIsOpen(false);
               }}
               className={cn(
-                "w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all",
+                "w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl text-sm font-semibold transition-all duration-300",
                 currentPath === item.path 
-                  ? "bg-priori-gold text-white shadow-lg shadow-priori-gold/20" 
-                  : "text-zinc-300 hover:bg-white/5 hover:text-white"
+                  ? "bg-priori-gold text-priori-navy shadow-lg shadow-priori-gold/30 scale-[1.02]" 
+                  : "text-white/70 hover:bg-white/10 hover:text-white"
               )}
             >
-              <item.icon size={20} />
+              <item.icon size={20} className={cn(
+                "transition-colors",
+                currentPath === item.path ? "text-priori-navy" : "text-white/40"
+              )} />
               {item.label}
             </button>
           ))}
         </nav>
 
-        <div className="p-4 border-t border-white/10 space-y-2">
+        <div className="p-4 border-t border-white/5 space-y-2 bg-black/10">
           <button 
             onClick={() => {
-              if (confirm('Deseja resetar todos os dados do sistema para os padrões (incluindo os novos nomes dos planos)? Isso excluirá seus cadastros atuais.')) {
+              if (confirm('Deseja resetar todos os dados do sistema para os padrões?')) {
                 localStorage.clear();
                 window.location.reload();
               }
             }}
-            className="w-full flex items-center gap-3 px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-zinc-400 hover:text-red-400 hover:bg-red-500/5 rounded-xl transition-all"
+            className="w-full flex items-center gap-3 px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-white/30 hover:text-red-400 hover:bg-red-500/5 rounded-xl transition-all"
           >
             <Trash2 size={14} />
             Resetar Dados
           </button>
           <button
             onClick={handleLogout}
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-zinc-300 hover:bg-red-500/10 hover:text-red-500 transition-all"
+            className="w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl text-sm font-bold text-white/60 hover:bg-red-500/20 hover:text-red-400 transition-all duration-300"
           >
             <LogOut size={20} />
             Sair

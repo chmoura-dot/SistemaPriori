@@ -18,7 +18,8 @@ export const PlansPage = () => {
     amount: 0,
     adjustPrice: true,
     adjustRepass: true,
-    selectedPlanIds: [] as string[]
+    selectedPlanIds: [] as string[],
+    effectiveDate: new Date().toISOString().split('T')[0]
   });
 
   const [formData, setFormData] = useState({
@@ -69,7 +70,8 @@ export const PlansPage = () => {
       amount: 0,
       adjustPrice: true,
       adjustRepass: true,
-      selectedPlanIds: plans.filter(p => p.active).map(p => p.id)
+      selectedPlanIds: plans.filter(p => p.active).map(p => p.id),
+      effectiveDate: new Date().toISOString().split('T')[0]
     });
     setIsBulkModalOpen(true);
   };
@@ -79,7 +81,9 @@ export const PlansPage = () => {
     setIsSaving(true);
     try {
       const plansToUpdate = plans.filter(p => bulkData.selectedPlanIds.includes(p.id));
+      const planNames = plansToUpdate.map(p => p.name.toUpperCase());
       
+      // 1. Update Plans
       await Promise.all(plansToUpdate.map(plan => {
         const updatedProcedures = (plan.procedures || []).map(proc => ({
           ...proc,
@@ -89,8 +93,44 @@ export const PlansPage = () => {
         return api.updatePlan(plan.id, { procedures: updatedProcedures });
       }));
 
+      // 2. Update Appointments (Retroactive)
+      // Only for non-billed appointments after effectiveDate
+      const allApps = await api.getAppointments();
+      const customers = await api.getCustomers();
+      
+      const appsToUpdate = allApps.filter(app => {
+        if (app.billingBatchId) return false;
+        if (app.date < bulkData.effectiveDate) return false;
+        
+        const customer = customers.find(c => c.id === app.customerId);
+        if (!customer) return false;
+        
+        return planNames.includes((customer.healthPlan || '').toUpperCase());
+      });
+
+      await Promise.all(appsToUpdate.map(app => {
+        const customer = customers.find(c => c.id === app.customerId);
+        const plan = plansToUpdate.find(p => p.name.toUpperCase() === (customer?.healthPlan || '').toUpperCase());
+        const proc = plan?.procedures?.find(pr => pr.type === app.type);
+        
+        if (!proc) return Promise.resolve();
+
+        const updates: any = {};
+        if (bulkData.adjustPrice) {
+          const currentPrice = app.customPrice ?? proc.price;
+          updates.customPrice = currentPrice + bulkData.amount;
+        }
+        if (bulkData.adjustRepass) {
+          const currentRepass = app.customRepassAmount ?? proc.repassAmount;
+          updates.customRepassAmount = currentRepass + bulkData.amount;
+        }
+
+        return api.updateAppointment(app.id, updates);
+      }));
+
       await loadPlans();
       setIsBulkModalOpen(false);
+      alert(`${plansToUpdate.length} planos e ${appsToUpdate.length} agendamentos reajustados com sucesso!`);
     } catch (error) {
       alert('Erro ao aplicar reajuste');
     } finally {
@@ -175,11 +215,11 @@ export const PlansPage = () => {
                 <div key={idx} className="p-2 bg-zinc-50 rounded-lg border border-zinc-100 group/proc">
                   <div className="flex justify-between items-start mb-1">
                     <span className="text-[10px] font-bold text-priori-navy truncate max-w-[140px]">{proc.description}</span>
-                    <span className="text-[10px] font-bold text-priori-gold">R$ {proc.price.toLocaleString()}</span>
+                    <span className="text-[10px] font-bold text-priori-gold">R$ {proc.price.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-[9px] text-zinc-500 font-mono">TUSS: {proc.code || '---'}</span>
-                    <span className="text-[9px] text-zinc-400">Repasse: R$ {proc.repassAmount.toLocaleString()}</span>
+                    <span className="text-[9px] text-zinc-400">Repasse: R$ {proc.repassAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                   </div>
                 </div>
               ))}
@@ -215,8 +255,28 @@ export const PlansPage = () => {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         title={editingPlan ? 'Editar Plano' : 'Novo Plano'}
+        footer={
+          <div className="flex gap-3">
+            <Button 
+              type="button" 
+              variant="outline" 
+              className="flex-1 border-zinc-200 text-priori-navy hover:bg-zinc-100" 
+              onClick={() => setIsModalOpen(false)}
+            >
+              Cancelar
+            </Button>
+            <Button 
+              type="submit" 
+              form="plan-form"
+              className="flex-1 bg-priori-navy hover:bg-priori-navy/90 text-white" 
+              isLoading={isSaving}
+            >
+              {editingPlan ? 'Salvar Alterações' : 'Criar Plano'}
+            </Button>
+          </div>
+        }
       >
-        <form onSubmit={handleSubmit} className="space-y-6 max-h-[80vh] overflow-y-auto pr-2 custom-scrollbar">
+        <form id="plan-form" onSubmit={handleSubmit} className="space-y-6">
           <Input
             label="Nome do Plano"
             value={formData.name}
@@ -330,6 +390,7 @@ export const PlansPage = () => {
                       </label>
                       <input
                         type="number"
+                        step="0.01"
                         className="w-full bg-white border border-zinc-200 rounded-xl px-3 py-2 text-xs text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/20"
                         value={proc.price}
                         onChange={(e) => {
@@ -346,6 +407,7 @@ export const PlansPage = () => {
                       </label>
                       <input
                         type="number"
+                        step="0.01"
                         className="w-full bg-white border border-zinc-200 rounded-xl px-3 py-2 text-xs text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/20"
                         value={proc.repassAmount}
                         onChange={(e) => {
@@ -387,23 +449,6 @@ export const PlansPage = () => {
             />
             <label htmlFor="active" className="text-sm text-zinc-600">Plano Ativo</label>
           </div>
-          <div className="flex gap-3 pt-4 sticky bottom-0 bg-white pb-2">
-            <Button 
-              type="button" 
-              variant="outline" 
-              className="flex-1 border-priori-navy text-priori-navy hover:bg-priori-navy/5" 
-              onClick={() => setIsModalOpen(false)}
-            >
-              Cancelar
-            </Button>
-            <Button 
-              type="submit" 
-              className="flex-1 bg-priori-navy hover:bg-priori-navy/90" 
-              isLoading={isSaving}
-            >
-              {editingPlan ? 'Salvar Alterações' : 'Criar Plano'}
-            </Button>
-          </div>
         </form>
       </Modal>
 
@@ -411,8 +456,29 @@ export const PlansPage = () => {
         isOpen={isBulkModalOpen}
         onClose={() => setIsBulkModalOpen(false)}
         title="Reajuste Anual de Preços"
+        footer={
+          <div className="flex gap-3">
+            <Button 
+              type="button" 
+              variant="outline" 
+              className="flex-1 border-zinc-200 text-priori-navy hover:bg-zinc-100" 
+              onClick={() => setIsBulkModalOpen(false)}
+            >
+              Cancelar
+            </Button>
+            <Button 
+              type="submit" 
+              form="bulk-plan-form"
+              className="flex-1 bg-priori-navy hover:bg-priori-navy/90 text-white" 
+              isLoading={isSaving}
+              disabled={bulkData.selectedPlanIds.length === 0 || bulkData.amount === 0}
+            >
+              Aplicar Reajuste
+            </Button>
+          </div>
+        }
       >
-        <form onSubmit={handleBulkAdjustment} className="space-y-6">
+        <form id="bulk-plan-form" onSubmit={handleBulkAdjustment} className="space-y-6">
           <div className="bg-priori-navy/5 border border-priori-navy/10 p-4 rounded-xl space-y-4">
             <div className="flex items-center gap-3">
               <div className="p-2 bg-priori-navy rounded-lg text-white">
@@ -427,20 +493,33 @@ export const PlansPage = () => {
             <div className="bg-priori-gold/10 border border-priori-gold/20 p-3 rounded-lg flex items-start gap-3">
               <AlertCircle size={16} className="text-priori-gold mt-0.5 shrink-0" />
               <p className="text-[10px] text-priori-gold leading-relaxed">
-                <span className="font-bold uppercase">Atenção:</span> Este reajuste será aplicado apenas em **novos agendamentos** realizados a partir de agora. Agendamentos já existentes (passados ou futuros) manterão os valores originais de quando foram marcados.
+                <span className="font-bold uppercase">Impacto:</span> Este reajuste será aplicado em planos e em todos os agendamentos **não faturados** a partir da data de vigência selecionada abaixo. Agendamentos já vinculados a lotes de faturamento não serão alterados.
               </p>
             </div>
 
-            <div className="flex items-center gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="flex-1">
+                <Input
+                  label="Data de Vigência"
+                  type="date"
+                  value={bulkData.effectiveDate}
+                  onChange={(e) => setBulkData({ ...bulkData, effectiveDate: e.target.value })}
+                  required
+                />
+              </div>
               <div className="flex-1">
                 <Input
                   label="Valor do Aumento (R$)"
                   type="number"
+                  step="0.01"
                   value={bulkData.amount}
                   onChange={(e) => setBulkData({ ...bulkData, amount: Number(e.target.value) })}
                   required
                 />
               </div>
+            </div>
+
+            <div className="flex items-center gap-4">
               <div className="flex flex-col gap-2 pt-5">
                 <label className="flex items-center gap-2 cursor-pointer group">
                   <div className={cn(
@@ -490,24 +569,6 @@ export const PlansPage = () => {
             </div>
           </div>
 
-          <div className="flex gap-3 pt-4 border-t border-zinc-100">
-            <Button 
-              type="button" 
-              variant="outline" 
-              className="flex-1 border-priori-navy text-priori-navy hover:bg-priori-navy/5" 
-              onClick={() => setIsBulkModalOpen(false)}
-            >
-              Cancelar
-            </Button>
-            <Button 
-              type="submit" 
-              className="flex-1 bg-priori-navy hover:bg-priori-navy/90" 
-              isLoading={isSaving}
-              disabled={bulkData.selectedPlanIds.length === 0 || bulkData.amount === 0}
-            >
-              Aplicar Reajuste
-            </Button>
-          </div>
         </form>
       </Modal>
     </div>

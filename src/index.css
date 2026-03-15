@@ -1,12 +1,16 @@
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Outfit", "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
-  --color-priori-navy: #1B365D;
-  --color-priori-gold: #C5A059;
-  --color-priori-bg: #FDFCFB;
-  --color-priori-text: #2D3748;
+  --color-priori-navy: #15397F;
+  --color-priori-navy-light: #1E4EAA;
+  --color-priori-gold: #EFC34F;
+  --color-priori-gold-dark: #D4A93B;
+  --color-priori-green: #50B480;
+  --color-priori-orange: #E78330;
+  --color-priori-bg: #F8FAFC;
+  --color-priori-text: #0F172A;
 }
 
 @layer base {
@@ -45,5 +49,34 @@ body {
 
 input[type="date"]::-webkit-calendar-picker-indicator {
   filter: none;
+}
+
+/* Decorative Blobs */
+.bg-blob {
+  position: fixed;
+  z-index: -1;
+  filter: blur(80px);
+  opacity: 0.15;
+  pointer-events: none;
+  border-radius: 50%;
+  animation: blob-float 20s infinite alternate ease-in-out;
+}
+
+@keyframes blob-float {
+  from { transform: translate(0, 0) scale(1); }
+  to { transform: translate(20px, 40px) scale(1.1); }
+}
+
+.blob-navy { background-color: var(--color-priori-navy); }
+.blob-gold { background-color: var(--color-priori-gold); }
+.blob-green { background-color: var(--color-priori-green); }
+.blob-orange { background-color: var(--color-priori-orange); }
+
+.glass-card {
+  @apply bg-white/80 backdrop-blur-md border border-white/20 shadow-xl shadow-priori-navy/5;
+}
+
+.btn-premium {
+  @apply transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] shadow-md hover:shadow-lg;
 }
 

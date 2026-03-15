@@ -11,9 +11,9 @@ Deno.serve(async (req) => {
   try {
     const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
 
-    // 1. Buscar agendamentos que precisam de lembrete (Janela de 36h a 48h)
+    // 1. Buscar agendamentos que precisam de lembrete (Janela de 12h)
     const now = new Date();
-    const dateLimit = new Date(now.getTime() + 72 * 60 * 60 * 1000).toISOString().split('T')[0];
+    const dateLimit = new Date(now.getTime() + 48 * 60 * 60 * 1000).toISOString().split('T')[0];
 
     const { data: appointments, error } = await supabase
       .from('appointments')
@@ -41,8 +41,8 @@ Deno.serve(async (req) => {
       const diffMs = appDateTime.getTime() - now.getTime();
       const hoursDiff = diffMs / (1000 * 60 * 60);
 
-      // Janela de 35h a 49h
-      if (hoursDiff >= 35 && hoursDiff <= 49) {
+      // Janela de 11h a 13h (para garantir captura caso o cron demore um pouco)
+      if (hoursDiff >= 11 && hoursDiff <= 13) {
         const customer = Array.isArray(app.customer) ? app.customer[0] : app.customer;
         const psychologist = Array.isArray(app.psychologist) ? app.psychologist[0] : app.psychologist;
 

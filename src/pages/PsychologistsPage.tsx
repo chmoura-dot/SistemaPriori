@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, Phone, Calendar, MessageCircle, FileText, X, Globe, Home, Layers } from 'lucide-react';
+import { Plus, Edit2, Trash2, Phone, Calendar, MessageCircle, FileText, X, Globe, Home, Layers, Mail } from 'lucide-react';
 import { api } from '../services/api';
 import { Psychologist, PsychologistAvailability } from '../services/types';
 import { Button } from '../components/Button';
@@ -19,6 +19,7 @@ export const PsychologistsPage = () => {
 
   const [formData, setFormData] = useState({
     name: '',
+    email: '',
     specialties: [] as string[],
     phone: '',
     active: true,
@@ -43,6 +44,7 @@ export const PsychologistsPage = () => {
       setEditingPsychologist(psy);
       setFormData({
         name: psy.name,
+        email: psy.email || '',
         specialties: psy.specialties || [],
         phone: psy.phone || '',
         active: psy.active,
@@ -52,6 +54,7 @@ export const PsychologistsPage = () => {
       setEditingPsychologist(null);
       setFormData({
         name: '',
+        email: '',
         specialties: [],
         phone: '',
         active: true,
@@ -108,7 +111,7 @@ export const PsychologistsPage = () => {
       ...formData,
       availability: [
         ...formData.availability,
-        { dayOfWeek: 1, startTime: '08:00', endTime: '18:00', mode: 'Ambos' as const }
+        { dayOfWeek: 1, startTime: '08:00', endTime: '20:00', mode: 'Ambos' as const }
       ]
     });
   };
@@ -181,6 +184,11 @@ export const PsychologistsPage = () => {
                 <span className="text-sm">{psy.phone || 'Sem telefone'}</span>
               </div>
 
+              <div className="flex items-center gap-2 text-zinc-500">
+                <Mail size={14} className="text-priori-navy" />
+                <span className="text-sm truncate" title={psy.email}>{psy.email || 'Sem e-mail (agenda desativada)'}</span>
+              </div>
+
               <div className="space-y-2">
                 <div className="flex items-center gap-2 text-zinc-400 text-[10px] font-bold uppercase tracking-widest">
                   <Calendar size={12} /> Agenda Disponível
@@ -251,8 +259,28 @@ export const PsychologistsPage = () => {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         title={editingPsychologist ? 'Editar Psicólogo' : 'Novo Psicólogo'}
+        footer={
+          <div className="flex gap-3">
+            <Button 
+              type="button" 
+              variant="outline" 
+              className="flex-1 border-zinc-200 text-priori-navy hover:bg-zinc-100" 
+              onClick={() => setIsModalOpen(false)}
+            >
+              Cancelar
+            </Button>
+            <Button 
+              type="submit" 
+              form="psychologist-form"
+              className="flex-1 bg-priori-navy hover:bg-priori-navy/90 text-white" 
+              isLoading={isSaving}
+            >
+              {editingPsychologist ? 'Salvar Alterações' : 'Criar Psicólogo'}
+            </Button>
+          </div>
+        }
       >
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form id="psychologist-form" onSubmit={handleSubmit} className="space-y-6">
           <div className="space-y-4">
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Nome Completo</label>
@@ -262,6 +290,17 @@ export const PsychologistsPage = () => {
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 placeholder="Ex: Dra. Ana Beatriz"
                 required
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest">E-mail para Agenda</label>
+              <input
+                className="w-full bg-white border border-zinc-100 rounded-xl px-4 py-3 text-sm text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/5"
+                value={formData.email}
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                placeholder="Ex: ana@prioriclinica.com.br"
+                type="email"
               />
             </div>
 
@@ -389,15 +428,6 @@ export const PsychologistsPage = () => {
                 ))}
               </div>
             </div>
-          </div>
-
-          <div className="flex gap-3 pt-4 border-t border-zinc-100">
-            <Button type="button" variant="outline" className="flex-1 border-zinc-100 text-priori-navy hover:bg-zinc-50" onClick={() => setIsModalOpen(false)}>
-              Cancelar
-            </Button>
-            <Button type="submit" className="flex-1 bg-priori-navy hover:bg-priori-navy/90 text-white" isLoading={isSaving}>
-              {editingPsychologist ? 'Salvar Alterações' : 'Criar Psicólogo'}
-            </Button>
           </div>
         </form>
       </Modal>

@@ -13,11 +13,14 @@ import {
   AlertCircle,
   Search,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Edit2,
   Bell,
   BellOff,
   UserCheck,
-  UserX
+  UserX,
+  Check
 } from 'lucide-react';
 import { api } from '../services/api';
 import { 
@@ -29,23 +32,35 @@ import {
   AttendanceMode,
   HealthPlan,
   AppointmentStatus,
-  UserRole
+  UserRole,
+  Plan,
+  RecurrenceFrequency
 } from '../services/types';
 import { Button } from '../components/Button';
 import { Modal } from '../components/Modal';
 import { cn } from '../lib/utils';
+import { supabase } from '../lib/supabase';
 
 export const SchedulePage = () => {
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  
+  const changeDate = (days: number) => {
+    const d = new Date(date + 'T12:00:00');
+    d.setDate(d.getDate() + days);
+    setDate(d.toISOString().split('T')[0]);
+  };
+
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [rooms, setRooms] = useState<Room[]>([]);
   const [psychologists, setPsychologists] = useState<Psychologist[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [plans, setPlans] = useState<Plan[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const user = api.getCurrentUser();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [cancellationModalAppId, setCancellationModalAppId] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
     customerId: '',
@@ -53,12 +68,14 @@ export const SchedulePage = () => {
     roomId: '',
     mode: AttendanceMode.PRESENCIAL,
     type: AppointmentType.ADULTO,
+    procedureCode: '',
     date: date,
     startTime: '08:00',
     endTime: '09:00',
     customPrice: undefined as number | undefined,
     customRepassAmount: undefined as number | undefined,
-    isRecurring: false
+    isRecurring: false,
+    recurrenceFrequency: RecurrenceFrequency.SEMANAL
   });
 
   const [viewMode, setViewMode] = useState<'daily' | 'weekly' | 'psychologist'>('daily');
@@ -91,11 +108,12 @@ export const SchedulePage = () => {
 
   const loadData = async () => {
     setIsLoading(true);
-    const [a, r, p, c] = await Promise.all([
+    const [a, r, p, c, plansData] = await Promise.all([
       api.getAppointments(), // Load all for weekly view
       api.getRooms(),
       api.getPsychologists(),
-      api.getCustomers()
+      api.getCustomers(),
+      api.getPlans()
     ]);
     setAppointments(a);
     setRooms(r);
@@ -103,6 +121,7 @@ export const SchedulePage = () => {
     setPsychologists(p);
     if (p.length > 0 && !selectedPsychologistId) setSelectedPsychologistId(p[0].id);
     setCustomers(c.filter(cust => cust.status === 'active'));
+    setPlans(plansData);
     setIsLoading(false);
   };
 
@@ -137,8 +156,8 @@ export const SchedulePage = () => {
       } else {
         await api.createAppointment({
           ...formData,
-          date,
-          dayOfWeek: new Date(date + 'T12:00:00').getDay(),
+          date: formData.date,
+          dayOfWeek: new Date(formData.date + 'T12:00:00').getDay(),
           status: AppointmentStatus.ACTIVE,
           roomId: formData.mode === AttendanceMode.ONLINE ? undefined : formData.roomId
         });
@@ -163,17 +182,36 @@ export const SchedulePage = () => {
       date: appointment.date,
       startTime: appointment.startTime,
       endTime: appointment.endTime,
+      procedureCode: appointment.procedureCode || '',
       customPrice: appointment.customPrice,
       customRepassAmount: appointment.customRepassAmount,
-      isRecurring: appointment.isRecurring
+      isRecurring: appointment.isRecurring,
+      recurrenceFrequency: appointment.recurrenceFrequency || RecurrenceFrequency.SEMANAL
     });
     setEditingId(appointment.id);
     setIsModalOpen(true);
   };
 
-  const handleDelete = async (id: string) => {
-    if (confirm('Deseja desmarcar este horário?')) {
-      await api.deleteAppointment(id);
+  const handleDelete = async (appointment: Appointment) => {
+    if (appointment.isRecurring && appointment.recurrenceGroupId) {
+      const choice = confirm('Este é um agendamento recorrente.\n\nClique em OK para excluir TODOS os agendamentos FUTUROS deste grupo.\nClique em CANCELAR para excluir APENAS este horário específico.');
+      
+      if (choice) {
+        // Delete all future
+        try {
+          await api.deleteFutureAppointments(appointment.recurrenceGroupId, appointment.date);
+          await loadData();
+          return;
+        } catch (error) {
+          alert('Erro ao excluir recorrências');
+          return;
+        }
+      }
+    }
+
+    // Single delete logic (default or if specifically chosen)
+    if (confirm('Deseja realmente desmarcar este horário específico?')) {
+      await api.deleteAppointment(appointment.id);
       await loadData();
     }
   };
@@ -186,6 +224,21 @@ export const SchedulePage = () => {
       await loadData();
     } catch (error) {
       alert('Erro ao confirmar');
+    }
+  };
+
+  const handleCancelBillingChoice = async (billingMode: 'none' | 'plan' | 'particular') => {
+    if (!cancellationModalAppId) return;
+    try {
+      await api.updateAppointment(cancellationModalAppId, {
+        status: AppointmentStatus.CANCELED,
+        cancellationBilling: billingMode
+      });
+      await loadData();
+    } catch (error) {
+      alert('Erro ao cancelar agendamento');
+    } finally {
+      setCancellationModalAppId(null);
     }
   };
 
@@ -215,15 +268,26 @@ export const SchedulePage = () => {
         isRecurring: true
       });
 
-      // Mark current as renewed (we can just clear needsRenewal or similar)
+      // Mark current as renewed
       await api.updateAppointment(appointment.id, { needsRenewal: false });
       
       await loadData();
-      alert('Agendamento renovado com sucesso!');
+      alert('Agendamento renovado com sucesso! Mais 4 semanas foram bloqueadas.');
     } catch (error: any) {
       alert(error.message || 'Erro ao renovar agendamento');
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleDismissRenewal = async (id: string) => {
+    if (!confirm('Deseja apenas desconsiderar este alerta? (O horário não será bloqueado para as próximas semanas)')) return;
+    
+    try {
+      await api.updateAppointment(id, { needsRenewal: false });
+      await loadData();
+    } catch (error) {
+      alert('Erro ao desconsiderar alerta');
     }
   };
 
@@ -263,33 +327,24 @@ export const SchedulePage = () => {
     }
   };
 
-  const findRemindersNeeded = () => {
-    const now = new Date();
-    const future36h = new Date(now.getTime() + 36 * 60 * 60 * 1000);
-    const future48h = new Date(now.getTime() + 48 * 60 * 60 * 1000);
-
-    const needingReminders = appointments.filter(a => {
-      if (a.reminderSentAt || a.confirmationStatus !== 'pending') return false;
-      const appDate = new Date(a.date + 'T' + a.startTime);
-      return appDate >= future36h && appDate <= future48h;
-    });
-
-    if (needingReminders.length === 0) {
-      alert('Nenhum agendamento pendente de lembrete (Janela de 36-48h).');
-    } else {
-      const names = needingReminders.map(a => customers.find(c => c.id === a.customerId)?.name).join('\n');
-      if (confirm(`Encontrados ${needingReminders.length} lembretes pendentes:\n\n${names}\n\nDeseja disparar o primeiro agora?`)) {
-        handleReminder(needingReminders[0]);
-      }
-    }
-  };
 
   const getAppointmentDuration = (customerId: string) => {
     const customer = customers.find(c => c.id === customerId);
     if (!customer) return 40;
-    if (customer.healthPlan === HealthPlan.PORTO_SEGURO || customer.healthPlan === HealthPlan.MEDSENIOR) {
+    
+    const plan = customer.healthPlan;
+    
+    // 50 min: AMS Petrobras, PAE, Saude Caixa, Particular
+    if (plan === HealthPlan.AMS_PETROBRAS || plan === HealthPlan.PAE || plan === HealthPlan.SAUDE_CAIXA || plan === HealthPlan.PARTICULAR) {
+      return 50;
+    }
+    
+    // 30 min: Porto Saude, Medsenior, Saude Blue, Gama Saude
+    if (plan === HealthPlan.PORTO_SAUDE || plan === HealthPlan.MEDSENIOR || plan === HealthPlan.SAUDE_BLUE || plan === HealthPlan.GAMA) {
       return 30;
     }
+    
+    // 40 min: Real Grandeza, Fundação Saúde etc.
     return 40;
   };
 
@@ -353,23 +408,33 @@ export const SchedulePage = () => {
     }
   }, [formData.date, formData.startTime, formData.endTime]);
 
-  const timeSlots = Array.from({ length: 12 * 6 + 1 }, (_, i) => {
-    const totalMinutes = 8 * 60 + i * 10;
-    const hour = Math.floor(totalMinutes / 60);
-    const minute = totalMinutes % 60;
-    return `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
-  }).filter(slot => {
-    const [h] = slot.split(':').map(Number);
-    return h <= 20;
-  });
+  const timeSlots = useMemo(() => {
+    const d = new Date(date + 'T12:00:00');
+    const dayOfWeek = d.getDay();
+    const isSaturday = dayOfWeek === 6;
+    const limitHour = isSaturday ? 14 : 20;
 
-  const allTimeSlots = Array.from({ length: 14 * 6 + 1 }, (_, i) => {
-    const totalMinutes = 7 * 60 + i * 10; // Start a bit earlier for selection if needed
+    return Array.from({ length: 12 * 6 + 1 }, (_, i) => {
+      const totalMinutes = 8 * 60 + i * 10;
+      const hour = Math.floor(totalMinutes / 60);
+      const minute = totalMinutes % 60;
+      return `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+    }).filter(slot => {
+      const [h, m] = slot.split(':').map(Number);
+      if (h > limitHour) return false;
+      if (h === limitHour && m > 0) return false;
+      return true;
+    });
+  }, [date]);
+
+  const allTimeSlots = Array.from({ length: 16 * 6 + 1 }, (_, i) => {
+    const totalMinutes = 7 * 60 + i * 10;
     const hour = Math.floor(totalMinutes / 60);
     const minute = totalMinutes % 60;
     return `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
   }).filter(slot => {
     const [h] = slot.split(':').map(Number);
+    // Seletor permite até 22:50 para On-line
     return h <= 22;
   });
 
@@ -412,6 +477,66 @@ export const SchedulePage = () => {
     );
     
     return !hasConflict;
+  };
+
+  const hasMinSpace = (slot: string, dateStr: string, roomId?: string, psyId?: string) => {
+    const minDuration = 30;
+    const minEndTime = addMinutes(slot, minDuration);
+    
+    // Check limits for PRESENCIAL
+    const isOnline = formData.mode === AttendanceMode.ONLINE;
+    const dateObj = new Date(dateStr + 'T12:00:00');
+    const dayOfWeek = dateObj.getDay();
+    const isSaturday = dayOfWeek === 6;
+    const limit = isSaturday ? '14:00' : '20:00';
+
+    if (!isOnline && minEndTime > limit) return false;
+    
+    // Day of week check (Sunday still blocked)
+    if (dayOfWeek === 0) return false;
+
+    if (roomId) {
+      const hasConflict = appointments.some(a => 
+        a.date === dateStr && 
+        a.roomId === roomId && 
+        a.status !== AppointmentStatus.CANCELED &&
+        ((slot >= a.startTime && slot < a.endTime) ||
+         (minEndTime > a.startTime && minEndTime <= a.endTime) ||
+         (slot <= a.startTime && minEndTime >= a.endTime))
+      );
+      if (hasConflict) return false;
+    }
+
+    if (psyId) {
+      const psy = psychologists.find(p => p.id === psyId);
+      if (!psy || !psy.active) return false;
+      
+      const dateObj = new Date(dateStr + 'T12:00:00');
+      const dayOfWeek = dateObj.getDay();
+      
+      const isWithinAvailability = psy.availability.some(s => 
+        s.dayOfWeek === dayOfWeek && slot >= s.startTime && minEndTime <= s.endTime
+      );
+      if (!isWithinAvailability) return false;
+
+      const hasPsyConflict = appointments.some(a => 
+        a.date === dateStr && 
+        a.psychologistId === psyId && 
+        a.status !== AppointmentStatus.CANCELED &&
+        ((slot >= a.startTime && slot < a.endTime) ||
+         (minEndTime > a.startTime && minEndTime <= a.endTime) ||
+         (slot <= a.startTime && minEndTime >= a.endTime))
+      );
+      if (hasPsyConflict) return false;
+    }
+
+    return true;
+  };
+
+  const getSlotCount = (start: string, end: string) => {
+    const [h1, m1] = start.split(':').map(Number);
+    const [h2, m2] = end.split(':').map(Number);
+    return Math.max(1, (h2 * 60 + m2 - (h1 * 60 + m1)) / 10);
   };
 
   const StatusIcons = ({ appointment }: { appointment: Appointment }) => {
@@ -480,16 +605,28 @@ export const SchedulePage = () => {
                   Psicólogo
                 </button>
               </div>
-              <input
-                type="date"
-                className="bg-white border border-zinc-100 rounded-xl px-4 py-2 text-sm text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/10 shadow-sm"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-              />
-              <Button onClick={findRemindersNeeded} className="bg-white border border-zinc-100 text-priori-navy hover:bg-zinc-50 shadow-sm">
-                <Bell size={18} className="mr-2" />
-                Lembretes (36h)
-              </Button>
+              <div className="flex items-center bg-white border border-zinc-100 rounded-xl p-1 shadow-sm">
+                <button 
+                  onClick={() => changeDate(-1)}
+                  className="p-1.5 hover:bg-zinc-50 rounded-lg transition-colors text-priori-navy"
+                  title="Dia anterior"
+                >
+                  <ChevronLeft size={18} />
+                </button>
+                <input
+                  type="date"
+                  value={date}
+                  onChange={(e) => setDate(e.target.value)}
+                  className="bg-transparent border-none px-2 py-1 text-sm font-bold text-priori-navy focus:outline-none text-center"
+                />
+                <button 
+                  onClick={() => changeDate(1)}
+                  className="p-1.5 hover:bg-zinc-50 rounded-lg transition-colors text-priori-navy"
+                  title="Próximo dia"
+                >
+                  <ChevronRight size={18} />
+                </button>
+              </div>
               <Button onClick={() => {
                 setFormData({ ...formData, date, mode: AttendanceMode.PRESENCIAL });
                 setIsModalOpen(true);
@@ -554,11 +691,13 @@ export const SchedulePage = () => {
                       confirmed: "bg-emerald-50/50 border-emerald-100 border-l-emerald-500",
                       declined: "bg-red-50/50 border-red-100 border-l-red-500",
                       pending_sent: "bg-amber-50/50 border-amber-100 border-l-amber-500",
+                      canceled: "bg-zinc-100 border-zinc-200 border-l-zinc-400 opacity-60",
                       active: "bg-priori-navy/5 border-priori-navy/10 border-l-priori-navy"
                     };
 
                     let currentStatus: keyof typeof statusColors = 'active';
-                    if (app.confirmationStatus === 'confirmed') currentStatus = 'confirmed';
+                    if (app.status === AppointmentStatus.CANCELED) currentStatus = 'canceled';
+                    else if (app.confirmationStatus === 'confirmed') currentStatus = 'confirmed';
                     else if (app.confirmationStatus === 'declined') currentStatus = 'declined';
                     else if (app.reminderSentAt) currentStatus = 'pending_sent';
 
@@ -577,26 +716,34 @@ export const SchedulePage = () => {
                             <button onClick={() => handleReminder(app)} className={cn("p-0.5 transition-colors", app.reminderSentAt ? "text-amber-600" : "text-zinc-400 hover:text-priori-navy")} title="Enviar Lembrete WhatsApp"><Bell size={12} /></button>
                             <button onClick={() => sendWhatsApp(app, 'psychologist')} className="p-0.5 text-zinc-400 hover:text-priori-navy" title="WhatsApp Psicólogo"><MessageCircle size={12} /></button>
                             <button onClick={() => handleEdit(app)} className="p-0.5 text-zinc-400 hover:text-priori-navy" title="Editar"><Edit2 size={12} /></button>
-                            <button onClick={() => handleDelete(app.id)} className="p-0.5 text-zinc-400 hover:text-red-600"><Trash2 size={12} /></button>
+                             <button onClick={() => handleDelete(app)} className="p-0.5 text-zinc-400 hover:text-red-600" title="Excluir"><Trash2 size={12} /></button>
                           </div>
                         </div>
-                        <p className="text-xs font-black text-priori-navy truncate leading-tight">{customer?.name}</p>
+                        <p className={cn("text-xs font-black truncate leading-tight", currentStatus === 'canceled' ? "text-zinc-500 line-through" : "text-priori-navy")}>{customer?.name}</p>
                         {viewMode !== 'psychologist' && <p className="text-[10px] text-zinc-600 font-medium truncate">{psychologist?.name}</p>}
                         
                         <StatusIcons appointment={app} />
                         
                         {app.needsRenewal && (
-                          <div className="mt-1.5 p-1.5 bg-white/60 border border-amber-200 rounded-lg flex items-center justify-between gap-1.5">
+                          <div className="mt-1.5 p-1.5 bg-white/60 border border-amber-200 rounded-lg flex flex-col gap-1.5">
                             <div className="flex items-center gap-1 text-amber-600">
-                              <AlertCircle size={12} />
-                              <span className="text-[8px] font-bold uppercase whitespace-nowrap">Renovação</span>
+                              <AlertCircle size={10} />
+                              <span className="text-[8px] font-bold uppercase whitespace-nowrap">Ciclo de 4 semanas encerrado</span>
                             </div>
-                            <button 
-                              onClick={() => handleRenew(app)}
-                              className="text-[8px] bg-amber-500 text-white px-1.5 py-0.5 rounded font-bold hover:bg-amber-600 transition-colors shadow-sm"
-                            >
-                              Renovar
-                            </button>
+                            <div className="flex gap-1">
+                              <button 
+                                onClick={() => handleRenew(app)}
+                                className="flex-1 text-[8px] bg-amber-500 text-white px-1.5 py-0.5 rounded font-bold hover:bg-amber-600 transition-colors shadow-sm"
+                              >
+                                Renovar +4 sem
+                              </button>
+                              <button 
+                                onClick={() => handleDismissRenewal(app.id)}
+                                className="flex-1 text-[8px] bg-white border border-zinc-200 text-zinc-500 px-1.5 py-0.5 rounded font-bold hover:bg-zinc-50 transition-colors shadow-sm"
+                              >
+                                Desconsiderar
+                              </button>
+                            </div>
                           </div>
                         )}
                         <div className="mt-2 flex gap-1.5">
@@ -612,6 +759,14 @@ export const SchedulePage = () => {
                           >
                             Psi {app.confirmedPsychologist ? '✓' : '?'}
                           </button>
+                          {app.status !== AppointmentStatus.CANCELED && (
+                            <button 
+                              onClick={() => setCancellationModalAppId(app.id)}
+                              className="text-[8px] px-1.5 py-0.5 rounded border border-red-100 bg-red-50 text-red-500 font-bold hover:bg-red-100 transition-all shadow-sm"
+                            >
+                              Psi ✕
+                            </button>
+                          )}
                         </div>
                       </div>
                     );
@@ -674,23 +829,29 @@ export const SchedulePage = () => {
                                       confirmed: "bg-emerald-50/70 border-emerald-200 border-l-emerald-500",
                                       declined: "bg-red-50/70 border-red-200 border-l-red-500",
                                       pending_sent: "bg-amber-50/70 border-amber-200 border-l-amber-500",
+                                      canceled: "bg-zinc-100 border-zinc-200 border-l-zinc-300 opacity-60",
                                       active: "bg-priori-navy/10 border-priori-navy/20 border-l-priori-navy"
                                     };
 
                                     let currentStatus: keyof typeof statusColors = 'active';
-                                    if (appointment.confirmationStatus === 'confirmed') currentStatus = 'confirmed';
+                                    if (appointment.status === AppointmentStatus.CANCELED) currentStatus = 'canceled';
+                                    else if (appointment.confirmationStatus === 'confirmed') currentStatus = 'confirmed';
                                     else if (appointment.confirmationStatus === 'declined') currentStatus = 'declined';
                                     else if (appointment.reminderSentAt) currentStatus = 'pending_sent';
 
+                                    const slotCount = getSlotCount(appointment.startTime, appointment.endTime);
                                     return (
-                                      <div className={cn(
-                                        "h-full w-full border rounded-md p-1.5 flex flex-col justify-between transition-all z-10 shadow-sm overflow-hidden border-l-4 hover:shadow-md",
-                                        statusColors[currentStatus]
-                                      )}>
+                                      <div 
+                                        className={cn(
+                                          "absolute top-0.5 left-0.5 right-0.5 border rounded-md p-1.5 flex flex-col justify-between transition-all z-20 shadow-sm overflow-hidden border-l-4 hover:shadow-md",
+                                          statusColors[currentStatus]
+                                        )}
+                                        style={{ height: `calc(${slotCount * 100}% + ${slotCount - 1}px)` }}
+                                      >
                                         <div className="flex justify-between items-start gap-1">
                                           <div className="flex flex-col min-w-0 flex-1">
                                             <div className="flex items-center gap-1">
-                                              <p className="text-[10px] font-black text-priori-navy truncate leading-none">{customer?.name}</p>
+                                              <p className={cn("text-[10px] font-black truncate leading-none", currentStatus === 'canceled' ? "text-zinc-500 line-through" : "text-priori-navy")}>{customer?.name}</p>
                                               {appointment.isRecurring && <CalendarIcon size={8} className="text-priori-gold shrink-0" />}
                                             </div>
                                             <p className="text-[8px] text-zinc-600 font-bold truncate leading-none mt-1">
@@ -705,25 +866,52 @@ export const SchedulePage = () => {
                                           <div className="flex flex-col gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                                             <button onClick={() => handleReminder(appointment)} className={cn("transition-colors", appointment.reminderSentAt ? "text-amber-600" : "text-zinc-400 hover:text-priori-navy")} title="Enviar Lembrete"><Bell size={10} /></button>
                                             <button onClick={() => handleEdit(appointment)} className="text-zinc-400 hover:text-priori-navy"><Edit2 size={10} /></button>
-                                            <button onClick={() => handleDelete(appointment.id)} className="text-zinc-400 hover:text-red-500"><Trash2 size={10} /></button>
+                                            {currentStatus !== 'canceled' && <button type="button" onClick={(e) => { e.stopPropagation(); setCancellationModalAppId(appointment.id); }} className="text-red-400 hover:text-red-600 font-bold bg-red-50 px-1 rounded transition-colors text-[10px]" title="Cancelar Sessão">✕</button>}
+                                            <button onClick={() => handleDelete(appointment)} className="text-zinc-400 hover:text-red-500"><Trash2 size={10} /></button>
                                           </div>
                                         </div>
+                                        {appointment.needsRenewal && (
+                                          <div className="mt-1 p-1 bg-white/60 border border-amber-200 rounded-md flex flex-col gap-1">
+                                            <div className="flex items-center gap-1 text-amber-600">
+                                              <AlertCircle size={8} />
+                                              <span className="text-[7px] font-bold uppercase whitespace-nowrap">Renovar +4 sem?</span>
+                                            </div>
+                                            <div className="flex gap-1">
+                                              <button 
+                                                onClick={() => handleRenew(appointment)}
+                                                className="flex-1 text-[7px] bg-amber-500 text-white px-1 py-0.5 rounded font-bold hover:bg-amber-600 transition-colors"
+                                              >
+                                                Sim
+                                              </button>
+                                              <button 
+                                                onClick={() => handleDismissRenewal(appointment.id)}
+                                                className="flex-1 text-[7px] bg-white border border-zinc-200 text-zinc-500 px-1 py-0.5 rounded font-bold hover:bg-zinc-50 transition-colors"
+                                              >
+                                                Não
+                                              </button>
+                                            </div>
+                                          </div>
+                                        )}
                                       </div>
                                     );
                                   })()
                                 ) : (
-                                  <div className="h-full w-full bg-priori-navy/5 border-x border-priori-navy/5" />
+                                  <div className="h-full w-full" />
                                 )
                               ) : (
-                                <button 
-                                  onClick={() => {
-                                    setFormData({ ...formData, roomId: room.id, startTime: slot, date, mode: AttendanceMode.PRESENCIAL });
-                                    setIsModalOpen(true);
-                                  }}
-                                  className="h-full w-full rounded-md border border-dashed border-zinc-100 hover:border-priori-navy/20 hover:bg-zinc-50 transition-all flex items-center justify-center text-zinc-200 hover:text-priori-navy/30"
-                                >
-                                  <Plus size={10} />
-                                </button>
+                                hasMinSpace(slot, date, room.id) ? (
+                                  <button 
+                                    onClick={() => {
+                                      setFormData({ ...formData, roomId: room.id, startTime: slot, date, mode: AttendanceMode.PRESENCIAL });
+                                      setIsModalOpen(true);
+                                    }}
+                                    className="h-full w-full rounded-md border border-dashed border-zinc-100 hover:border-priori-navy/20 hover:bg-zinc-50 transition-all flex items-center justify-center text-zinc-200 hover:text-priori-navy/30"
+                                  >
+                                    <Plus size={10} />
+                                  </button>
+                                ) : (
+                                  <div className="h-full w-full bg-zinc-50/30" />
+                                )
                               )}
                             </div>
                           );
@@ -748,23 +936,29 @@ export const SchedulePage = () => {
                                       confirmed: "bg-emerald-50/70 border-emerald-200 border-l-emerald-500",
                                       declined: "bg-red-50/70 border-red-200 border-l-red-500",
                                       pending_sent: "bg-amber-50/70 border-amber-200 border-l-amber-500",
+                                      canceled: "bg-zinc-100 border-zinc-200 border-l-zinc-300 opacity-60",
                                       active: "bg-priori-navy/10 border-priori-navy/20 border-l-priori-navy"
                                     };
 
                                     let currentStatus: keyof typeof statusColors = 'active';
-                                    if (appointment.confirmationStatus === 'confirmed') currentStatus = 'confirmed';
+                                    if (appointment.status === AppointmentStatus.CANCELED) currentStatus = 'canceled';
+                                    else if (appointment.confirmationStatus === 'confirmed') currentStatus = 'confirmed';
                                     else if (appointment.confirmationStatus === 'declined') currentStatus = 'declined';
                                     else if (appointment.reminderSentAt) currentStatus = 'pending_sent';
 
+                                    const slotCount = getSlotCount(appointment.startTime, appointment.endTime);
                                     return (
-                                      <div className={cn(
-                                        "h-full w-full border rounded-md p-1.5 flex flex-col justify-between transition-all z-10 shadow-sm overflow-hidden border-l-4 hover:shadow-md",
-                                        statusColors[currentStatus]
-                                      )}>
+                                      <div 
+                                        className={cn(
+                                          "absolute top-0.5 left-0.5 right-0.5 border rounded-md p-1.5 flex flex-col justify-between transition-all z-20 shadow-sm overflow-hidden border-l-4 hover:shadow-md",
+                                          statusColors[currentStatus]
+                                        )}
+                                        style={{ height: `calc(${slotCount * 100}% + ${slotCount - 1}px)` }}
+                                      >
                                         <div className="flex justify-between items-start gap-1">
                                           <div className="flex flex-col min-w-0 flex-1">
                                             <div className="flex items-center gap-1">
-                                              <p className="text-[10px] font-black text-priori-navy truncate leading-none">{customer?.name}</p>
+                                              <p className={cn("text-[10px] font-black truncate leading-none", currentStatus === 'canceled' ? "text-zinc-500 line-through" : "text-priori-navy")}>{customer?.name}</p>
                                               {appointment.isRecurring && <CalendarIcon size={8} className="text-priori-gold shrink-0" />}
                                             </div>
                                             <p className="text-[8px] text-zinc-600 font-bold truncate mt-1">
@@ -779,26 +973,53 @@ export const SchedulePage = () => {
                                           <div className="flex flex-col gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                                             <button onClick={() => handleReminder(appointment)} className={cn("transition-colors", appointment.reminderSentAt ? "text-amber-600" : "text-zinc-400 hover:text-priori-navy")} title="Enviar Lembrete"><Bell size={10} /></button>
                                             <button onClick={() => handleEdit(appointment)} className="text-zinc-400 hover:text-priori-navy"><Edit2 size={10} /></button>
-                                            <button onClick={() => handleDelete(appointment.id)} className="text-zinc-400 hover:text-red-500"><Trash2 size={10} /></button>
+                                            {currentStatus !== 'canceled' && <button type="button" onClick={(e) => { e.stopPropagation(); setCancellationModalAppId(appointment.id); }} className="text-red-400 hover:text-red-600 font-bold bg-red-50 px-1 rounded transition-colors text-[10px]" title="Cancelar Sessão">✕</button>}
+                                            <button onClick={() => handleDelete(appointment)} className="text-zinc-400 hover:text-red-500"><Trash2 size={10} /></button>
                                           </div>
                                         </div>
+                                        {appointment.needsRenewal && (
+                                          <div className="mt-1 p-1 bg-white/60 border border-amber-200 rounded-md flex flex-col gap-1">
+                                            <div className="flex items-center gap-1 text-amber-600">
+                                              <AlertCircle size={8} />
+                                              <span className="text-[7px] font-bold uppercase whitespace-nowrap">Renovar +4 sem?</span>
+                                            </div>
+                                            <div className="flex gap-1">
+                                              <button 
+                                                onClick={() => handleRenew(appointment)}
+                                                className="flex-1 text-[7px] bg-amber-500 text-white px-1 py-0.5 rounded font-bold hover:bg-amber-600 transition-colors"
+                                              >
+                                                Sim
+                                              </button>
+                                              <button 
+                                                onClick={() => handleDismissRenewal(appointment.id)}
+                                                className="flex-1 text-[7px] bg-white border border-zinc-200 text-zinc-500 px-1 py-0.5 rounded font-bold hover:bg-zinc-50 transition-colors"
+                                              >
+                                                Não
+                                              </button>
+                                            </div>
+                                          </div>
+                                        )}
                                       </div>
                                     );
                                   })()
                                 ) : (
-                                  <div className="h-full w-full bg-priori-navy/5 border-x border-priori-navy/5" />
+                                  <div className="h-full w-full" />
                                 )
                               ) : (
-                                <button 
-                                  onClick={() => {
-                                    const roomToSet = viewMode === 'psychologist' ? '' : selectedRoom;
-                                    setFormData({ ...formData, roomId: roomToSet, startTime: slot, date: day, mode: AttendanceMode.PRESENCIAL });
-                                    setIsModalOpen(true);
-                                  }}
-                                  className="h-full w-full rounded-md border border-dashed border-zinc-100 hover:border-priori-navy/20 hover:bg-zinc-50 transition-all flex items-center justify-center text-zinc-200 hover:text-priori-navy/30"
-                                >
-                                  <Plus size={10} />
-                                </button>
+                                hasMinSpace(slot, day, viewMode === 'psychologist' ? undefined : selectedRoom, viewMode === 'psychologist' ? selectedPsychologistId : undefined) ? (
+                                  <button 
+                                    onClick={() => {
+                                      const roomToSet = viewMode === 'psychologist' ? '' : selectedRoom;
+                                      setFormData({ ...formData, roomId: roomToSet, startTime: slot, date: day, mode: AttendanceMode.PRESENCIAL });
+                                      setIsModalOpen(true);
+                                    }}
+                                    className="h-full w-full rounded-md border border-dashed border-zinc-100 hover:border-priori-navy/20 hover:bg-zinc-50 transition-all flex items-center justify-center text-zinc-200 hover:text-priori-navy/30"
+                                  >
+                                    <Plus size={10} />
+                                  </button>
+                                ) : (
+                                  <div className="h-full w-full bg-zinc-50/30" />
+                                )
                               )}
                             </div>
                           );
@@ -820,254 +1041,340 @@ export const SchedulePage = () => {
           setEditingId(null);
         }}
         title={editingId ? "Editar Agendamento" : "Novo Agendamento"}
-      >
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-1 gap-4">
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Modo</label>
-              <select
-                className="w-full rounded-lg bg-white border border-zinc-200 px-4 py-2.5 text-sm text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/10 transition-all"
-                value={formData.mode}
-                onChange={(e) => setFormData({ ...formData, mode: e.target.value as AttendanceMode })}
-                required
-              >
-                {Object.values(AttendanceMode).map(mode => (
-                  <option key={mode} value={mode}>{mode}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-1.5 relative" ref={dropdownRef}>
-              <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Paciente</label>
-              <div className="relative">
-                <div 
-                  className="w-full rounded-lg bg-white border border-zinc-200 px-4 py-2.5 text-sm text-priori-navy flex items-center justify-between cursor-pointer focus-within:ring-2 focus-within:ring-priori-navy/10 transition-all"
-                  onClick={() => setIsCustomerDropdownOpen(!isCustomerDropdownOpen)}
-                >
-                  <span className={cn(!formData.customerId && "text-zinc-400")}>
-                    {customers.find(c => c.id === formData.customerId)?.name || 'Selecione um paciente...'}
-                  </span>
-                  <ChevronDown size={16} className={cn("text-zinc-400 transition-transform", isCustomerDropdownOpen && "rotate-180")} />
-                </div>
-
-                {isCustomerDropdownOpen && (
-                  <div className="absolute top-full left-0 w-full mt-2 bg-white border border-zinc-100 rounded-xl shadow-2xl z-[100] overflow-hidden animate-in fade-in zoom-in duration-200">
-                    <div className="p-2 border-b border-zinc-100">
-                      <div className="relative">
-                        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
-                        <input
-                          autoFocus
-                          className="w-full bg-zinc-50 border border-zinc-100 rounded-lg pl-9 pr-4 py-2 text-xs text-priori-navy focus:outline-none focus:ring-1 focus:ring-priori-navy/50"
-                          placeholder="Buscar paciente..."
-                          value={customerSearch}
-                          onChange={(e) => setCustomerSearch(e.target.value)}
-                          onClick={(e) => e.stopPropagation()}
-                        />
-                      </div>
-                    </div>
-                    <div className="max-h-[200px] overflow-y-auto custom-scrollbar">
-                      {filteredCustomers.length > 0 ? (
-                        filteredCustomers.map(c => (
-                          <button
-                            key={c.id}
-                            type="button"
-                            className={cn(
-                              "w-full text-left px-4 py-2.5 text-sm hover:bg-priori-navy/5 hover:text-priori-navy transition-colors flex items-center justify-between",
-                              formData.customerId === c.id && "bg-priori-navy/5 text-priori-navy"
-                            )}
-                            onClick={() => {
-                              setFormData({ ...formData, customerId: c.id });
-                              setIsCustomerDropdownOpen(false);
-                              setCustomerSearch('');
-                            }}
-                          >
-                            <span>{c.name}</span>
-                            {formData.customerId === c.id && <CheckCircle2 size={14} />}
-                          </button>
-                        ))
-                      ) : (
-                        <div className="px-4 py-8 text-center">
-                          <p className="text-xs text-zinc-400">Nenhum paciente encontrado</p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-              {/* Hidden input for HTML5 validation if needed, though we handle it via state */}
-              <input type="hidden" value={formData.customerId} required />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Tipo de Atendimento</label>
-              <select
-                className="w-full rounded-lg bg-white border border-zinc-200 px-4 py-2.5 text-sm text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/10 transition-all"
-                value={formData.type}
-                onChange={(e) => setFormData({ ...formData, type: e.target.value as AppointmentType })}
-                required
-              >
-                {Object.values(AppointmentType).map(type => (
-                  <option key={type} value={type}>{type}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Psicólogo</label>
-              <select
-                className="w-full rounded-lg bg-white border border-zinc-200 px-4 py-2.5 text-sm text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/10 transition-all"
-                value={formData.psychologistId}
-                onChange={(e) => setFormData({ ...formData, psychologistId: e.target.value })}
-                required
-              >
-                <option value="">Selecione...</option>
-                {psychologists
-                  .filter(p => p.active)
-                  .map(p => {
-                    const available = isPsychologistAvailable(p.id, formData.date, formData.startTime, formData.endTime, formData.mode);
-                    return (
-                      <option
-                        key={p.id}
-                        value={p.id}
-                        disabled={!available}
-                        style={{ color: available ? 'inherit' : '#a1a1aa' }}
-                      >
-                        {available ? '✓' : '✗'} {p.name} {available ? '' : '— Indisponível/Conflito'}
-                      </option>
-                    );
-                  })
-                }
-              </select>
-              {formData.psychologistId && !isPsychologistAvailable(formData.psychologistId, formData.date, formData.startTime, formData.endTime, formData.mode) && (
-                <div className="flex items-center gap-2 mt-1 p-2 bg-red-50 border border-red-100 rounded-lg">
-                  <AlertCircle size={13} className="text-red-500 shrink-0" />
-                  <p className="text-[11px] text-red-600 font-medium">
-                    Este psicólogo está indisponível ou tem conflito neste horário.
-                  </p>
-                </div>
-              )}
-              {!formData.psychologistId && psychologists.filter(p => p.active && isPsychologistAvailable(p.id, formData.date, formData.startTime, formData.endTime, formData.mode)).length === 0 && psychologists.filter(p => p.active).length > 0 && (
-                <div className="flex items-center gap-2 mt-1 p-2 bg-amber-50 border border-amber-100 rounded-lg">
-                  <AlertCircle size={13} className="text-amber-500 shrink-0" />
-                  <p className="text-[11px] text-amber-600 font-medium">
-                    Nenhum psicólogo disponível para este horário. Altere a data ou o horário.
-                  </p>
-                </div>
-              )}
-            </div>
-            {formData.mode === AttendanceMode.PRESENCIAL && (
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Sala</label>
-                <select
-                  className="w-full rounded-lg bg-white border border-zinc-200 px-4 py-2.5 text-sm text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/10 transition-all"
-                  value={formData.roomId}
-                  onChange={(e) => setFormData({ ...formData, roomId: e.target.value })}
-                  required
-                >
-                  <option value="">Selecione...</option>
-                  {rooms.map(r => (
-                    <option key={r.id} value={r.id}>{r.name}</option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Hora Início</label>
-              <select
-                className="w-full rounded-lg bg-white border border-zinc-200 px-4 py-2.5 text-sm text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/10 transition-all"
-                value={formData.startTime}
-                onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
-              >
-                {allTimeSlots.map(t => (
-                  <option key={t} value={t}>{t}</option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Hora Fim</label>
-              <select
-                className="w-full rounded-lg bg-white border border-zinc-200 px-4 py-2.5 text-sm text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/10 transition-all"
-                value={formData.endTime}
-                onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
-              >
-                {allTimeSlots.map(t => (
-                  <option key={t} value={t}>{t}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          {(() => {
-            const customer = customers.find(c => c.id === formData.customerId);
-            const canSeeValues = user?.role === UserRole.ADMIN || customer?.healthPlan === HealthPlan.PARTICULAR;
-            
-            if (canSeeValues && customer) {
-              return (
-                <div className="grid grid-cols-2 gap-4 p-4 bg-priori-navy/5 border border-priori-navy/10 rounded-xl">
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Valor da Sessão (R$)</label>
-                    <input
-                      type="number"
-                      className="w-full rounded-lg bg-white border border-zinc-200 px-4 py-2.5 text-sm text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/10 transition-all"
-                      value={formData.customPrice || ''}
-                      onChange={(e) => setFormData({ ...formData, customPrice: e.target.value ? Number(e.target.value) : undefined })}
-                      placeholder="Ex: 150"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Valor do Repasse (R$)</label>
-                    <input
-                      type="number"
-                      className="w-full rounded-lg bg-white border border-zinc-200 px-4 py-2.5 text-sm text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/10 transition-all"
-                      value={formData.customRepassAmount || ''}
-                      onChange={(e) => setFormData({ ...formData, customRepassAmount: e.target.value ? Number(e.target.value) : undefined })}
-                      placeholder="Ex: 100"
-                    />
-                  </div>
-                  <p className="col-span-full text-[10px] text-priori-navy/50 font-medium uppercase tracking-wider">
-                    * {customer.healthPlan === HealthPlan.PARTICULAR ? 'Valores negociados com o paciente' : 'Sobrescrita de valor do plano (Admin)'}
-                  </p>
-                </div>
-              );
-            }
-            return null;
-          })()}
-
-          <div className="flex items-center gap-2 p-4 bg-zinc-50 border border-zinc-100 rounded-xl">
-            <input
-              type="checkbox"
-              id="isRecurring"
-              className="w-4 h-4 rounded border-zinc-200 bg-white text-priori-navy focus:ring-priori-navy/10"
-              checked={formData.isRecurring}
-              onChange={(e) => setFormData({ ...formData, isRecurring: e.target.checked })}
-            />
-            <label htmlFor="isRecurring" className="text-sm text-zinc-600 font-medium cursor-pointer">
-              Agendamento Recorrente (Bloquear horário por 4 semanas)
-            </label>
-          </div>
-
-          <div className="flex gap-3 pt-4">
+        footer={
+          <div className="flex gap-3">
             <Button 
               type="button" 
               variant="outline" 
-              className="flex-1" 
+              className="flex-1 border-zinc-200 text-priori-navy hover:bg-zinc-100" 
               onClick={() => setIsModalOpen(false)}
             >
               Cancelar
             </Button>
             <Button 
               type="submit" 
-              className="flex-1" 
+              form="schedule-form"
+              className="flex-1 bg-priori-navy hover:bg-priori-navy/90 text-white" 
               isLoading={isSaving}
             >
               {editingId ? 'Salvar Alterações' : 'Agendar'}
             </Button>
           </div>
+        }
+      >
+        <form id="schedule-form" onSubmit={handleSubmit} className="space-y-4">
+          {/* 1. MODO */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Modo</label>
+            <select
+              className="w-full rounded-lg bg-white border border-zinc-200 px-4 py-2.5 text-sm text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/10 transition-all"
+              value={formData.mode}
+              onChange={(e) => setFormData({ ...formData, mode: e.target.value as AttendanceMode })}
+              required
+            >
+              {Object.values(AttendanceMode).map(mode => (
+                <option key={mode} value={mode}>{mode}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* 2. PACIENTE */}
+          <div className="space-y-1.5 relative" ref={dropdownRef}>
+            <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Paciente</label>
+            <div className="relative">
+              <div 
+                className="w-full rounded-lg bg-white border border-zinc-200 px-4 py-2.5 text-sm text-priori-navy flex items-center justify-between cursor-pointer focus-within:ring-2 focus-within:ring-priori-navy/10 transition-all"
+                onClick={() => setIsCustomerDropdownOpen(!isCustomerDropdownOpen)}
+              >
+                <span className={cn(!formData.customerId && "text-zinc-400")}>
+                  {customers.find(c => c.id === formData.customerId)?.name || 'Selecione um paciente...'}
+                </span>
+                <ChevronDown size={16} className={cn("text-zinc-400 transition-transform", isCustomerDropdownOpen && "rotate-180")} />
+              </div>
+
+              {isCustomerDropdownOpen && (
+                <div className="absolute top-full left-0 w-full mt-2 bg-white border border-zinc-100 rounded-xl shadow-2xl z-[100] overflow-hidden animate-in fade-in zoom-in duration-200">
+                  <div className="p-2 border-b border-zinc-100">
+                    <div className="relative">
+                      <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
+                      <input
+                        autoFocus
+                        className="w-full bg-zinc-50 border border-zinc-100 rounded-lg pl-9 pr-4 py-2 text-xs text-priori-navy focus:outline-none focus:ring-1 focus:ring-priori-navy/50"
+                        placeholder="Buscar paciente..."
+                        value={customerSearch}
+                        onChange={(e) => setCustomerSearch(e.target.value)}
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    </div>
+                  </div>
+                  <div className="max-h-[200px] overflow-y-auto custom-scrollbar">
+                    {filteredCustomers.length > 0 ? (
+                      filteredCustomers.map(c => (
+                        <button
+                          key={c.id}
+                          type="button"
+                          className={cn(
+                            "w-full text-left px-4 py-2.5 text-sm hover:bg-priori-navy/5 hover:text-priori-navy transition-colors flex items-center justify-between",
+                            formData.customerId === c.id && "bg-priori-navy/5 text-priori-navy"
+                          )}
+                          onClick={() => {
+                            setFormData({ 
+                              ...formData, 
+                              customerId: c.id, 
+                              psychologistId: c.psychologistId || formData.psychologistId,
+                              startTime: '',
+                              endTime: '',
+                              procedureCode: '' 
+                            });
+                            setIsCustomerDropdownOpen(false);
+                            setCustomerSearch('');
+                          }}
+                        >
+                          <span>{c.name} ({c.healthPlan})</span>
+                          {formData.customerId === c.id && <CheckCircle2 size={14} />}
+                        </button>
+                      ))
+                    ) : (
+                      <div className="px-4 py-8 text-center">
+                        <p className="text-xs text-zinc-400">Nenhum paciente encontrado</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+            <input type="hidden" value={formData.customerId} required />
+          </div>
+
+          {formData.customerId && (
+            <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+              {/* 3. PSICÓLOGO */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Psicólogo</label>
+                <select
+                  className="w-full rounded-lg bg-white border border-zinc-200 px-4 py-2.5 text-sm text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/10 transition-all"
+                  value={formData.psychologistId}
+                  onChange={(e) => setFormData({ ...formData, psychologistId: e.target.value, startTime: '', endTime: '' })}
+                  required
+                >
+                  <option value="">Selecione um psicólogo...</option>
+                  {psychologists
+                    .filter(p => p.active)
+                    .map(p => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))
+                  }
+                </select>
+              </div>
+
+              {formData.psychologistId && (
+                <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                  {/* 4. HORÁRIO */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Hora Início</label>
+                      <select
+                        className="w-full rounded-lg bg-white border border-zinc-200 px-4 py-2.5 text-sm text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/10 transition-all"
+                        value={formData.startTime}
+                        onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
+                        required
+                      >
+                        <option value="">Selecione...</option>
+                        {allTimeSlots.filter(t => {
+                          const duration = getAppointmentDuration(formData.customerId);
+                          const endTimeMatch = addMinutes(t, duration);
+                          return isPsychologistAvailable(formData.psychologistId, formData.date, t, endTimeMatch, formData.mode);
+                        }).map(t => (
+                          <option key={t} value={t}>{t}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Hora Fim</label>
+                      <input
+                        readOnly
+                        placeholder="--"
+                        className="w-full rounded-lg bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm text-zinc-500 focus:outline-none cursor-not-allowed"
+                        value={formData.startTime ? formData.endTime : ''}
+                      />
+                    </div>
+                  </div>
+
+                  {formData.startTime && (
+                    <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                      {/* 5. SALA (Preencial apenas) */}
+                      {formData.mode === AttendanceMode.PRESENCIAL && (
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Sala</label>
+                          <select
+                            className="w-full rounded-lg bg-white border border-zinc-200 px-4 py-2.5 text-sm text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/10 transition-all"
+                            value={formData.roomId}
+                            onChange={(e) => setFormData({ ...formData, roomId: e.target.value })}
+                            required
+                          >
+                            <option value="">Selecione uma sala...</option>
+                            {rooms.filter(r => r.active).filter(r => {
+                              const hasConflict = appointments.some(a => 
+                                a.roomId === r.id && 
+                                a.date === formData.date &&
+                                a.id !== editingId &&
+                                ((formData.startTime >= a.startTime && formData.startTime < a.endTime) ||
+                                 (formData.endTime > a.startTime && formData.endTime <= a.endTime) ||
+                                 (formData.startTime <= a.startTime && formData.endTime >= a.endTime))
+                              );
+                              return !hasConflict;
+                            }).map(r => (
+                              <option key={r.id} value={r.id}>{r.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+
+                      {/* TIPO DE ATENDIMENTO / TUSS */}
+                      <div className="pt-4 border-t border-zinc-100">
+                        {(() => {
+                          const customer = customers.find(c => c.id === formData.customerId);
+                          if (customer?.healthPlan === HealthPlan.PARTICULAR) {
+                            return (
+                              <div className="space-y-4">
+                                <div className="p-3 bg-emerald-50 border border-emerald-100 rounded-xl">
+                                  <p className="text-xs font-bold text-emerald-800 uppercase tracking-widest flex items-center gap-2">
+                                     <Check size={14} /> Atendimento Particular
+                                  </p>
+                                </div>
+                                <div className="space-y-1.5">
+                                  <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Tipo de Atendimento</label>
+                                  <select
+                                    className="w-full rounded-lg bg-white border border-zinc-200 px-4 py-2.5 text-sm text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/10 transition-all"
+                                    value={formData.type}
+                                    onChange={(e) => setFormData({ ...formData, type: e.target.value as AppointmentType })}
+                                    required
+                                  >
+                                    {Object.values(AppointmentType).map(type => (
+                                      <option key={type} value={type}>{type}</option>
+                                    ))}
+                                  </select>
+                                </div>
+                              </div>
+                            );
+                          } else if (customer) {
+                            const plan = plans.find(p => p.name.toUpperCase() === customer.healthPlan.toUpperCase());
+                            return (
+                              <div className="space-y-4">
+                                <div className="p-3 bg-priori-navy/5 border border-priori-navy/10 rounded-xl">
+                                  <p className="text-xs font-bold text-priori-navy uppercase tracking-widest flex items-center gap-2">
+                                     <Globe size={14} /> Convênio: {customer.healthPlan}
+                                  </p>
+                                </div>
+                                <div className="space-y-1.5">
+                                  <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Atendimento / Código TUSS</label>
+                                  <select
+                                    className="w-full rounded-lg bg-white border border-zinc-200 px-4 py-2.5 text-sm text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/10 transition-all"
+                                    value={formData.procedureCode}
+                                    onChange={(e) => {
+                                      const proc = plan?.procedures.find(p => p.code === e.target.value);
+                                      setFormData({ 
+                                        ...formData, 
+                                        procedureCode: e.target.value,
+                                        type: proc ? proc.type : formData.type
+                                      });
+                                    }}
+                                    required
+                                  >
+                                    <option value="">Selecione o procedimento...</option>
+                                    {plan?.procedures.map(proc => (
+                                      <option key={proc.code} value={proc.code}>
+                                        {proc.code} - {proc.type} ({proc.description})
+                                      </option>
+                                    ))}
+                                    {!plan && <option disabled>Nenhum procedimento cadastrado para este plano</option>}
+                                  </select>
+                                </div>
+                              </div>
+                            );
+                          }
+                          return null;
+                        })()}
+                      </div>
+
+                      {/* RECORRÊNCIA */}
+                      <div className="space-y-3 p-4 bg-zinc-50 border border-zinc-100 rounded-xl mt-4">
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            id="isRecurring"
+                            className="w-4 h-4 rounded border-zinc-200 bg-white text-priori-navy focus:ring-priori-navy/10"
+                            checked={formData.isRecurring}
+                            onChange={(e) => setFormData({ ...formData, isRecurring: e.target.checked })}
+                          />
+                          <label htmlFor="isRecurring" className="text-sm text-zinc-600 font-medium cursor-pointer">
+                            Agendamento Recorrente
+                          </label>
+                        </div>
+                        {formData.isRecurring && (
+                          <div className="pl-6 space-y-1.5 animate-in fade-in slide-in-from-top-1 duration-200">
+                            <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Frequência</label>
+                            <select
+                              className="w-full rounded-lg bg-white border border-zinc-200 px-3 py-2 text-sm text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/10 transition-all"
+                              value={formData.recurrenceFrequency}
+                              onChange={(e) => setFormData({ ...formData, recurrenceFrequency: e.target.value as RecurrenceFrequency })}
+                            >
+                              <option value={RecurrenceFrequency.SEMANAL}>Semanal (4 sessões seguidas)</option>
+                              <option value={RecurrenceFrequency.QUINZENAL}>Quinzenal (1 sessão a cada 15 dias - 4 sessões total)</option>
+                            </select>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </form>
+      </Modal>
+
+      <Modal 
+        isOpen={!!cancellationModalAppId} 
+        onClose={() => setCancellationModalAppId(null)}
+        title="Cancelar Sessão"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-zinc-600">
+            O paciente faltou ou cancelou esta sessão. Como deseja registrar o faturamento?
+          </p>
+          <div className="grid grid-cols-1 gap-3">
+            <button
+              onClick={() => handleCancelBillingChoice('none')}
+              className="flex items-center justify-center p-3 border border-zinc-200 rounded-xl hover:bg-zinc-50 transition-colors"
+            >
+              <div className="text-center">
+                <span className="block font-bold text-zinc-700 text-sm">Não Cobrar</span>
+                <span className="block text-xs text-zinc-500 mt-1">Sessão cancelada sem custo</span>
+              </div>
+            </button>
+            
+            <button
+              onClick={() => handleCancelBillingChoice('plan')}
+              className="flex items-center justify-center p-3 border border-priori-navy/20 bg-priori-navy/5 rounded-xl hover:bg-priori-navy/10 transition-colors"
+            >
+              <div className="text-center">
+                <span className="block font-bold text-priori-navy text-sm">Cobrar no Convênio</span>
+                <span className="block text-xs text-priori-navy/70 mt-1">Sessão será faturada via convênio normalmente</span>
+              </div>
+            </button>
+            
+            <button
+              onClick={() => handleCancelBillingChoice('particular')}
+              className="flex items-center justify-center p-3 border border-emerald-200 bg-emerald-50 rounded-xl hover:bg-emerald-100 transition-colors"
+            >
+              <div className="text-center">
+                <span className="block font-bold text-emerald-700 text-sm">Cobrar Particular</span>
+                <span className="block text-xs text-emerald-600/70 mt-1">Sessão será faturada do particular</span>
+              </div>
+            </button>
+          </div>
+        </div>
       </Modal>
     </div>
   );

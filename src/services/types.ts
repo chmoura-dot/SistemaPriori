@@ -3,20 +3,39 @@ export enum CustomerStatus {
   INACTIVE = 'inactive'
 }
 
+export enum InactivationReason {
+  DESISTENCIA = 'Desistência',
+  PERDA_PLANO = 'Perda do Plano',
+  ALTA_PSICOLOGO = 'Liberação / Alta por psicólogo'
+}
+
 export enum SubscriptionStatus {
   ACTIVE = 'active',
   EXPIRED = 'expired',
   CANCELLED = 'cancelled'
 }
 
+export enum RepasseStatus {
+  PENDING = 'pending',
+  PAID = 'paid'
+}
+
 export enum HealthPlan {
   AMS_PETROBRAS = 'AMS Petrobras',
+  PAE = 'PAE',
+  PORTO_SAUDE = 'Porto Saude',
   MEDSENIOR = 'Medsenior',
-  PORTO_SEGURO = 'Porto Seguro',
-  GAMA = 'Gama Saúde',
-  SAUDE_CAIXA = 'Saúde Caixa',
+  REAL_GRANDEZA = 'Real Grandeza',
+  SAUDE_BLUE = 'Saude Blue',
+  GAMA = 'Gama Saude',
+  SAUDE_CAIXA = 'Saude Caixa',
   FUNDACAO_SAUDE = 'Fundação Saúde Itaú',
   PARTICULAR = 'Particular'
+}
+
+export enum RecurrenceFrequency {
+  SEMANAL = 'Semanal',
+  QUINZENAL = 'Quinzenal'
 }
 
 export enum AppointmentType {
@@ -37,6 +56,7 @@ export interface PsychologistAvailability {
 export interface Psychologist {
   id: string;
   name: string;
+  email: string;
   specialties: string[];
   phone: string;
   active: boolean;
@@ -57,10 +77,17 @@ export interface Customer {
   healthPlan: HealthPlan;
   psychologistId: string;
   status: CustomerStatus;
+  inactivationReason?: InactivationReason;
   notes?: string;
   customPrice?: number;
   customRepassAmount?: number;
+  birthDate?: string;
   createdAt: string;
+  // Metrics
+  totalAppointmentsPerformed?: number;
+  nextAppointmentDate?: string;
+  lastAppointmentDate?: string;
+  firstAppointmentDate?: string;
 }
 
 export enum AttendanceMode {
@@ -70,7 +97,8 @@ export enum AttendanceMode {
 
 export enum AppointmentStatus {
   ACTIVE = 'active',
-  RELEASED = 'released'
+  RELEASED = 'released',
+  CANCELED = 'canceled'
 }
 
 export interface Appointment {
@@ -80,6 +108,7 @@ export interface Appointment {
   roomId?: string; // Optional for Online
   mode: AttendanceMode;
   type: AppointmentType;
+  procedureCode?: string;
   date: string; // Start date (YYYY-MM-DD)
   dayOfWeek: number; // 0-6 (Sunday-Saturday)
   startTime: string; // HH:mm
@@ -91,6 +120,7 @@ export interface Appointment {
   reminderSentAt?: string;
   patientNotes?: string;
   isRecurring: boolean;
+  recurrenceFrequency?: RecurrenceFrequency;
   recurrenceGroupId?: string;
   needsRenewal?: boolean;
   customPrice?: number;
@@ -100,6 +130,7 @@ export interface Appointment {
   denialReason?: string;
   denialResolution?: 'accepted' | 'appealed';
   createdAt: string;
+  cancellationBilling?: 'none' | 'plan' | 'particular';
 }
 
 export enum BillingBatchStatus {
@@ -183,6 +214,26 @@ export interface DashboardStats {
   mrr: number;
 }
 
+export interface Repasse {
+  id: string;
+  psychologistId: string;
+  billingBatchId: string;
+  appointmentIds: string[];
+  totalAmount: number;
+  status: RepasseStatus;
+  paidAt?: string;
+  notes?: string;
+  createdAt: string;
+}
+
+export interface Settings {
+  id: string;
+  zapiUrl?: string;
+  zapiToken?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export enum UserRole {
   ADMIN = 'admin',
   SECRETARIA = 'secretaria'
@@ -211,9 +262,12 @@ export interface AppService {
 
   // Appointments
   getAppointments: (date?: string) => Promise<Appointment[]>;
+  getAppointmentsByRange: (startDate: string, endDate: string) => Promise<Appointment[]>;
+  getAppointmentsNeedingRenewal: () => Promise<Appointment[]>;
   createAppointment: (appointment: Omit<Appointment, 'id' | 'createdAt' | 'confirmedPatient' | 'confirmedPsychologist'>) => Promise<Appointment>;
   updateAppointment: (id: string, appointment: Partial<Appointment>) => Promise<Appointment>;
   deleteAppointment: (id: string) => Promise<void>;
+  deleteFutureAppointments: (groupId: string, fromDate: string) => Promise<void>;
 
   // Customers
   getCustomers: () => Promise<Customer[]>;
@@ -249,4 +303,14 @@ export interface AppService {
   createBillingBatch: (batch: Omit<BillingBatch, 'id' | 'createdAt'>) => Promise<BillingBatch>;
   updateBillingBatch: (id: string, batch: Partial<BillingBatch>) => Promise<BillingBatch>;
   deleteBillingBatch: (id: string) => Promise<void>;
+
+  // Repasses
+  getRepasses: () => Promise<Repasse[]>;
+  createRepasse: (repasse: Omit<Repasse, 'id' | 'createdAt'>) => Promise<Repasse>;
+  updateRepasse: (id: string, repasse: Partial<Repasse>) => Promise<Repasse>;
+  deleteRepasse: (id: string) => Promise<void>;
+
+  // Settings
+  getSettings: () => Promise<Settings>;
+  updateSettings: (id: string, settings: Partial<Settings>) => Promise<Settings>;
 }

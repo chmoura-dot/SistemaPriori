@@ -10,9 +10,13 @@ import { FinancialPage } from './pages/FinancialPage';
 import { SchedulePage } from './pages/SchedulePage';
 import { PsychologistsPage } from './pages/PsychologistsPage';
 import { ConfirmationPage } from './pages/ConfirmationPage';
+import { MagicConfirmationPage } from './pages/MagicConfirmationPage';
 import { BillingPage } from './pages/BillingPage';
+import { RepassePage } from './pages/RepassePage';
+import { CapacityPage } from './pages/CapacityPage';
+import { SettingsPage } from './pages/SettingsPage';
+import { RenewalAlert } from './components/RenewalAlert';
 import { api } from './services/api';
-import { UserRole } from './services/types';
 import { cn } from './lib/utils';
 
 export default function App() {
@@ -36,21 +40,23 @@ export default function App() {
 
   // Auth Guard Effect
   useEffect(() => {
-    if (!isAuthenticated && currentPath !== '/login') {
+    if (!isAuthenticated && currentPath !== '/login' && !currentPath.startsWith('/confirmacao')) {
       navigate('/login');
     }
   }, [isAuthenticated, currentPath]);
 
   const renderPage = () => {
-    if (!isAuthenticated || currentPath === '/login') {
-      return <LoginPage onNavigate={navigate} />;
+    // Rotas Públicas (acessíveis sem login)
+    if (currentPath === '/confirmacao') {
+      return <MagicConfirmationPage />;
     }
-
-    const user = api.getCurrentUser();
-    const isAdmin = user?.role === UserRole.ADMIN;
 
     if (currentPath.startsWith('/confirmacao/')) {
       return <ConfirmationPage />;
+    }
+
+    if (!isAuthenticated || currentPath === '/login') {
+      return <LoginPage onNavigate={navigate} />;
     }
 
     switch (currentPath) {
@@ -59,39 +65,53 @@ export default function App() {
         return <DashboardPage onNavigate={navigate} />;
       case '/agenda':
         return <SchedulePage />;
+      case '/capacidade':
+        return <CapacityPage />;
       case '/clientes':
         return <CustomersPage />;
       case '/planos':
         return <PlansPage />;
       case '/financeiro':
-        return isAdmin ? <FinancialPage key="financeiro-page" /> : <DashboardPage onNavigate={navigate} />;
+        return <FinancialPage key="financeiro-page" />;
       case '/pagamentos':
         return <PaymentsPage />;
       case '/faturamento':
-        return isAdmin ? <BillingPage /> : <DashboardPage onNavigate={navigate} />;
+        return <BillingPage />;
+      case '/repasse':
+        return <RepassePage />;
       case '/despesas':
-        return isAdmin ? <ExpensesPage /> : <DashboardPage onNavigate={navigate} />;
+        return <ExpensesPage />;
       case '/psicologos':
         return <PsychologistsPage />;
+      case '/settings':
+        return <SettingsPage />;
       default:
         return <DashboardPage onNavigate={navigate} />;
     }
   };
 
   return (
-    <div className="min-h-screen bg-priori-bg text-priori-text flex">
-      {isAuthenticated && currentPath !== '/login' && !currentPath.startsWith('/confirmacao/') && (
+    <div className="min-h-screen bg-priori-bg text-priori-text flex overflow-hidden relative">
+      {/* Background Blobs */}
+      <div className="bg-blob blob-navy w-[600px] h-[600px] -top-48 -left-48 opacity-10"></div>
+      <div className="bg-blob blob-gold w-[400px] h-[400px] top-1/2 -right-24 opacity-[0.08]"></div>
+      <div className="bg-blob blob-green w-[300px] h-[300px] bottom-0 left-1/4 opacity-[0.05]"></div>
+      <div className="bg-blob blob-orange w-[500px] h-[500px] -bottom-24 -right-24 opacity-[0.07]"></div>
+
+      {isAuthenticated && currentPath !== '/login' && !currentPath.startsWith('/confirmacao') && (
         <Sidebar currentPath={currentPath} onNavigate={navigate} />
       )}
       
       <main className={cn(
         "flex-1",
-        isAuthenticated && currentPath !== '/login' && !currentPath.startsWith('/confirmacao/') ? "lg:pl-64 pt-20 lg:pt-0" : ""
+        isAuthenticated && currentPath !== '/login' && !currentPath.startsWith('/confirmacao') ? "lg:pl-64 pt-20 lg:pt-0" : ""
       )}>
         <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
           {renderPage()}
         </div>
       </main>
+
+      {isAuthenticated && <RenewalAlert />}
     </div>
   );
 }

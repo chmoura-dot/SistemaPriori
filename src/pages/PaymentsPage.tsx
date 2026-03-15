@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { CreditCard, Search, Calendar, User, DollarSign } from 'lucide-react';
 import { api } from '../services/api';
-import { Payment, Subscription, Customer, Plan, Appointment, AttendanceMode } from '../services/types';
+import { Payment, Subscription, Customer, Plan, Appointment, Psychologist, AttendanceMode } from '../services/types';
 import { cn } from '../lib/utils';
+import { calcRepass } from '../lib/repassRules';
 
 export const PaymentsPage = () => {
   const [payments, setPayments] = useState<Payment[]>([]);
@@ -10,24 +11,27 @@ export const PaymentsPage = () => {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [plans, setPlans] = useState<Plan[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [psychologists, setPsychologists] = useState<Psychologist[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [filterType, setFilterType] = useState<'all' | 'subscription' | 'appointment'>('all');
   const [filterSub, setFilterSub] = useState('');
 
   useEffect(() => {
     const loadData = async () => {
-      const [pay, sub, cust, pl, app] = await Promise.all([
+      const [pay, sub, cust, pl, app, psy] = await Promise.all([
         api.getPayments(),
         api.getSubscriptions(),
         api.getCustomers(),
         api.getPlans(),
-        api.getAppointments()
+        api.getAppointments(),
+        api.getPsychologists()
       ]);
       setPayments(pay);
       setSubscriptions(sub);
       setCustomers(cust);
       setPlans(pl);
       setAppointments(app.filter(a => a.confirmedPsychologist));
+      setPsychologists(psy);
       setIsLoading(false);
     };
     loadData();
@@ -50,7 +54,7 @@ export const PaymentsPage = () => {
       const sortedApps = [...customerApps].sort((a, b) => a.date.localeCompare(b.date));
       const firstApp = sortedApps[0];
       const customer = customers.find(c => c.id === firstApp.customerId);
-      const plan = plans.find(p => p.name === customer?.healthPlan);
+      const plan = plans.find(p => p.name.toUpperCase() === (customer?.healthPlan ?? '').toUpperCase());
       const procedure = plan?.procedures?.find(proc => proc.type === firstApp.type);
 
       sortedApps.forEach((app, idx) => {
@@ -59,7 +63,9 @@ export const PaymentsPage = () => {
 
         // If it's a one-time charge and not the first session, the amount is 0
         const amount = (isOneTime && !isFirst) ? 0 : (app.customPrice ?? customer?.customPrice ?? procedure?.price ?? 0);
-        const repassAmount = (isOneTime && !isFirst) ? 0 : (app.customRepassAmount ?? customer?.customRepassAmount ?? procedure?.repassAmount ?? 0);
+        const psy = psychologists.find(p => p.id === app.psychologistId);
+        const fixedRepass = (isOneTime && !isFirst) ? 0 : (app.customRepassAmount ?? customer?.customRepassAmount ?? procedure?.repassAmount ?? 0);
+        const repassAmount = (isOneTime && !isFirst) ? 0 : calcRepass(amount, psy?.name, fixedRepass);
 
         items.push({
           id: app.id,
@@ -76,7 +82,7 @@ export const PaymentsPage = () => {
     });
 
     return items;
-  }, [appointments, customers, plans]);
+  }, [appointments, customers, plans, psychologists]);
 
   const subscriptionPayments = payments.map(p => {
     const sub = subscriptions.find(s => s.id === p.subscriptionId);

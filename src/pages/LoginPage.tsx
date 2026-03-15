@@ -13,15 +13,19 @@ export const LoginPage = ({ onNavigate }: LoginPageProps) => {
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
+  const [error, setError] = useState<string | null>(null);
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
+    setError(null);
+
     const user = await api.login(email, password);
     if (user) {
       onNavigate('/dashboard');
     } else {
       setIsLoading(false);
-      alert('E-mail ou senha incorretos.');
+      setError('E-mail ou senha incorretos. Verifique se o usuário foi criado no painel do Supabase.');
     }
   };
 
@@ -37,6 +41,11 @@ export const LoginPage = ({ onNavigate }: LoginPageProps) => {
         </div>
 
         <form onSubmit={handleLogin} className="bg-white border border-zinc-100 p-8 rounded-3xl space-y-6 shadow-xl shadow-priori-navy/5">
+          {error && (
+            <div className="p-4 bg-red-50 border border-red-100 text-red-600 text-sm rounded-2xl animate-in fade-in slide-in-from-top-1 duration-300">
+              {error}
+            </div>
+          )}
           <div className="space-y-4">
             <Input
               label="E-mail"
@@ -60,21 +69,7 @@ export const LoginPage = ({ onNavigate }: LoginPageProps) => {
             Entrar no Sistema
           </Button>
 
-          <div className="space-y-2">
-            <p className="text-[10px] text-zinc-400 text-center uppercase tracking-widest font-bold">Acessos de Teste</p>
-            <div className="grid grid-cols-2 gap-2">
-              <div className="p-2 bg-zinc-50 rounded-lg border border-zinc-100 text-[10px]">
-                <p className="font-bold text-priori-navy">Admin:</p>
-                <p className="text-zinc-500">admin@prioriclinica.com.br</p>
-                <p className="text-zinc-500">admin123</p>
-              </div>
-              <div className="p-2 bg-zinc-50 rounded-lg border border-zinc-100 text-[10px]">
-                <p className="font-bold text-priori-navy">Secretaria:</p>
-                <p className="text-zinc-500">secretaria@prioriclinica.com.br</p>
-                <p className="text-zinc-500">sec123</p>
-              </div>
-            </div>
-          </div>
+
         </form>
       </div>
     </div>

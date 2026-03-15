@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, MoreVertical, Edit2, Trash2, Mail, Phone, User, UserX, UserCheck, TrendingUp, Check, AlertCircle } from 'lucide-react';
+import { Plus, Search, MoreVertical, Edit2, Trash2, Mail, Phone, User, UserX, UserCheck, TrendingUp, Check, AlertCircle, FileUp, Download } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { api } from '../services/api';
-import { Customer, CustomerStatus, HealthPlan, Psychologist, UserRole } from '../services/types';
+import { Customer, CustomerStatus, HealthPlan, Psychologist, UserRole, InactivationReason } from '../services/types';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { Modal } from '../components/Modal';
@@ -23,17 +24,24 @@ export const CustomersPage = () => {
     adjustRepass: true,
     selectedCustomerIds: [] as string[]
   });
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [importResults, setImportResults] = useState<{ success: number; errors: string[] } | null>(null);
+  const [isInactivationModalOpen, setIsInactivationModalOpen] = useState(false);
+  const [customerToInactivate, setCustomerToInactivate] = useState<Customer | null>(null);
+  const [selectedInactivationReason, setSelectedInactivationReason] = useState<InactivationReason | null>(null);
+  const [statusFilter, setStatusFilter] = useState<'active' | 'inactive' | 'all'>('active');
 
   // Form state
   const [formData, setFormData] = useState({
     name: '',
     phone: '',
     healthPlan: HealthPlan.PARTICULAR,
-    psychologistId: '',
+    psychologistId: psychologists[0]?.id || '',
     status: CustomerStatus.ACTIVE,
     notes: '',
     customPrice: undefined as number | undefined,
-    customRepassAmount: undefined as number | undefined
+    customRepassAmount: undefined as number | undefined,
+    birthDate: ''
   });
 
   const loadData = async () => {
@@ -62,7 +70,8 @@ export const CustomersPage = () => {
         status: customer.status,
         notes: customer.notes || '',
         customPrice: customer.customPrice,
-        customRepassAmount: customer.customRepassAmount
+        customRepassAmount: customer.customRepassAmount,
+        birthDate: customer.birthDate || ''
       });
     } else {
       setEditingCustomer(null);
@@ -74,10 +83,110 @@ export const CustomersPage = () => {
         status: CustomerStatus.ACTIVE,
         notes: '',
         customPrice: undefined,
-        customRepassAmount: undefined
+        customRepassAmount: undefined,
+        birthDate: ''
       });
     }
     setIsModalOpen(true);
+  };
+
+  const downloadTemplate = () => {
+    const ws = XLSX.utils.json_to_sheet([
+      {
+        'Nome': 'Nome do Paciente',
+        'Telefone': '(11) 99999-9999',
+        'Plano': 'Particular',
+        'Psicólogo': psychologists[0]?.name || 'Psicólogo Principal',
+        'Nascimento': '15-05-1990'
+      }
+    ]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Pacientes');
+    XLSX.writeFile(wb, 'modelo_importacao_pacientes.xlsx');
+  };
+
+  const handleImportExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsSaving(true);
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      try {
+        const bstr = evt.target?.result;
+        const wb = XLSX.read(bstr, { type: 'binary' });
+        const wsname = wb.SheetNames[0];
+        const ws = wb.Sheets[wsname];
+        const data = XLSX.utils.sheet_to_json(ws) as any[];
+
+        let successCount = 0;
+        const errorList: string[] = [];
+
+        for (const row of data) {
+          try {
+            const nome = row['Nome'] || row['nome'];
+            const telefone = row['Telefone'] || row['telefone'] || '';
+            const planoStr = row['Plano'] || row['plano'] || 'Particular';
+            const psiNome = row['Psicólogo'] || row['psicólogo'] || row['Psicologo'] || row['psicologo'];
+            const nascimento = row['Nascimento'] || row['nascimento'] || row['Data de Nascimento'] || row['data_nascimento'];
+
+            if (!nome) {
+              errorList.push(`Linha ignorada: Nome não encontrado.`);
+              continue;
+            }
+
+            // Find psychologist by name or use the first one
+            const psychologist = psychologists.find(p => 
+              p.name.toLowerCase().includes(psiNome?.toLowerCase() || '')
+            ) || psychologists[0];
+
+            // Normalize HealthPlan
+            let healthPlan = HealthPlan.PARTICULAR;
+            const pLower = planoStr.toLowerCase();
+            if (pLower.includes('petrobras')) healthPlan = HealthPlan.AMS_PETROBRAS;
+            else if (pLower.includes('medsenior')) healthPlan = HealthPlan.MEDSENIOR;
+            else if (pLower.includes('porto') || pLower.includes('porto saude')) healthPlan = HealthPlan.PORTO_SAUDE;
+            else if (pLower.includes('gama')) healthPlan = HealthPlan.GAMA;
+            else if (pLower.includes('caixa')) healthPlan = HealthPlan.SAUDE_CAIXA;
+            else if (pLower.includes('ita') || pLower.includes('funda')) healthPlan = HealthPlan.FUNDACAO_SAUDE;
+
+            const parseExcelDate = (val: any): string | undefined => {
+              if (!val) return undefined;
+              if (typeof val === 'number') {
+                return new Date(Math.round((val - 25569) * 86400 * 1000)).toISOString().split('T')[0];
+              }
+              const s = val.toString().trim();
+              const brMatch = s.match(/^(\d{2})[-/](\d{2})[-/](\d{4})$/);
+              if (brMatch) return `${brMatch[3]}-${brMatch[2]}-${brMatch[1]}`;
+              if (s.match(/^\d{4}-\d{2}-\d{2}/)) return s.split(' ')[0];
+              return undefined;
+            };
+
+            await api.createCustomer({
+              name: nome,
+              email: `${nome.toLowerCase().replace(/\s+/g, '.')}@exemplo.com`, // Required field
+              phone: telefone.toString(),
+              healthPlan,
+              psychologistId: psychologist?.id || '',
+              status: CustomerStatus.ACTIVE,
+              birthDate: parseExcelDate(nascimento),
+              notes: 'Importado via Excel'
+            });
+            successCount++;
+          } catch (err: any) {
+            errorList.push(`Erro ao importar ${row['Nome'] || 'Registro'}: ${err.message}`);
+          }
+        }
+
+        setImportResults({ success: successCount, errors: errorList });
+        await loadData();
+      } catch (err: any) {
+        alert('Erro ao processar arquivo: ' + err.message);
+      } finally {
+        setIsSaving(false);
+      }
+    };
+    reader.readAsBinaryString(file);
   };
 
   const handleOpenBulkModal = () => {
@@ -132,64 +241,151 @@ export const CustomersPage = () => {
       await loadData();
       setIsModalOpen(false);
     } catch (error) {
-      alert('Erro ao salvar cliente');
+      alert('Erro ao salvar paciente');
     } finally {
       setIsSaving(false);
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (confirm('Tem certeza que deseja excluir este cliente?')) {
-      await api.deleteCustomer(id);
-      await loadData();
-    }
+      if (confirm('Tem certeza que deseja excluir este paciente?')) {
+        await api.deleteCustomer(id);
+        await loadData();
+      }
   };
 
   const handleToggleStatus = async (customer: Customer) => {
-    const newStatus = customer.status === CustomerStatus.ACTIVE ? CustomerStatus.INACTIVE : CustomerStatus.ACTIVE;
-    try {
-      await api.updateCustomer(customer.id, { status: newStatus });
-      await loadData();
-    } catch (error) {
-      alert('Erro ao alterar status do cliente');
+    if (customer.status === CustomerStatus.ACTIVE) {
+      setCustomerToInactivate(customer);
+      setSelectedInactivationReason(null);
+      setIsInactivationModalOpen(true);
+    } else {
+      try {
+        await api.updateCustomer(customer.id, { status: CustomerStatus.ACTIVE, inactivationReason: undefined });
+        await loadData();
+      } catch (error) {
+        alert('Erro ao ativar paciente');
+      }
     }
   };
 
-  const filteredCustomers = customers.filter(c => 
-    c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    c.phone.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const confirmInactivation = async () => {
+    if (!customerToInactivate || !selectedInactivationReason) return;
+    
+    setIsSaving(true);
+    try {
+      await api.updateCustomer(customerToInactivate.id, { 
+        status: CustomerStatus.INACTIVE, 
+        inactivationReason: selectedInactivationReason 
+      });
+      await loadData();
+      setIsInactivationModalOpen(false);
+      setCustomerToInactivate(null);
+    } catch (error) {
+      alert('Erro ao desativar paciente');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const filteredCustomers = customers.filter(c => {
+    const matchesSearch = c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         c.phone.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         c.healthPlan.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    const matchesStatus = statusFilter === 'all' || 
+                         (statusFilter === 'active' && c.status === CustomerStatus.ACTIVE) ||
+                         (statusFilter === 'inactive' && c.status === CustomerStatus.INACTIVE);
+    
+    return matchesSearch && matchesStatus;
+  });
+
+  const formatDate = (dateStr?: string) => {
+    if (!dateStr) return '-';
+    return dateStr.split('-').reverse().join('/');
+  };
+
+  const calculateClincTime = (firstDate?: string, createdAt?: string) => {
+    const start = firstDate ? new Date(firstDate) : (createdAt ? new Date(createdAt) : new Date());
+    const now = new Date();
+    
+    let years = now.getFullYear() - start.getFullYear();
+    let months = now.getMonth() - start.getMonth();
+    
+    if (months < 0) {
+      years--;
+      months += 12;
+    }
+    
+    if (years > 0) {
+      return `${years} ${years === 1 ? 'ano' : 'anos'}${months > 0 ? ` e ${months} ${months === 1 ? 'mês' : 'meses'}` : ''}`;
+    }
+    return `${months} ${months === 1 ? 'mês' : 'meses'}`;
+  };
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-priori-navy">Clientes</h2>
+          <h2 className="text-2xl font-bold text-priori-navy">Pacientes</h2>
           <p className="text-zinc-500">Gerencie os pacientes da clínica.</p>
         </div>
         <div className="flex gap-2 w-full sm:w-auto">
-          {user?.role === UserRole.ADMIN && (
-            <Button variant="outline" onClick={handleOpenBulkModal} className="flex-1 sm:flex-none border-zinc-100 text-priori-navy hover:bg-zinc-50">
-              <TrendingUp size={20} className="mr-2 text-priori-gold" />
-              Reajuste Particular
-            </Button>
-          )}
+          <Button variant="outline" onClick={() => setIsImportModalOpen(true)} className="flex-1 sm:flex-none border-zinc-100 text-priori-navy hover:bg-zinc-50">
+            <FileUp size={20} className="mr-2 text-priori-navy" />
+            Importar Excel
+          </Button>
+          <Button variant="outline" onClick={handleOpenBulkModal} className="flex-1 sm:flex-none border-zinc-100 text-priori-navy hover:bg-zinc-50">
+            <TrendingUp size={20} className="mr-2 text-priori-gold" />
+            Reajuste Particular
+          </Button>
           <Button onClick={() => handleOpenModal()} className="flex-1 sm:flex-none bg-priori-navy hover:bg-priori-navy/90 text-white">
             <Plus size={20} className="mr-2" />
-            Novo Cliente
+            Novo Paciente
           </Button>
         </div>
       </div>
 
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={18} />
-        <input
-          type="text"
-          placeholder="Buscar por nome, e-mail ou plano..."
-          className="w-full bg-white border border-zinc-100 rounded-xl pl-10 pr-4 py-2.5 text-sm text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/5 transition-all"
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-        />
+      <div className="flex flex-col sm:flex-row gap-4 items-center">
+        <div className="relative flex-1 w-full">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={18} />
+          <input
+            type="text"
+            placeholder="Buscar por nome, e-mail ou plano..."
+            className="w-full bg-white border border-zinc-100 rounded-xl pl-10 pr-4 py-2.5 text-sm text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/5 transition-all"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+        </div>
+        <div className="flex bg-zinc-100 p-1 rounded-xl w-full sm:w-auto">
+          <button
+            onClick={() => setStatusFilter('active')}
+            className={cn(
+              "px-4 py-1.5 text-xs font-bold uppercase tracking-wider rounded-lg transition-all",
+              statusFilter === 'active' ? "bg-white text-priori-navy shadow-sm" : "text-zinc-500 hover:text-priori-navy"
+            )}
+          >
+            Ativos
+          </button>
+          <button
+            onClick={() => setStatusFilter('inactive')}
+            className={cn(
+              "px-4 py-1.5 text-xs font-bold uppercase tracking-wider rounded-lg transition-all",
+              statusFilter === 'inactive' ? "bg-white text-priori-navy shadow-sm" : "text-zinc-500 hover:text-priori-navy"
+            )}
+          >
+            Inativos
+          </button>
+          <button
+            onClick={() => setStatusFilter('all')}
+            className={cn(
+              "px-4 py-1.5 text-xs font-bold uppercase tracking-wider rounded-lg transition-all",
+              statusFilter === 'all' ? "bg-white text-priori-navy shadow-sm" : "text-zinc-500 hover:text-priori-navy"
+            )}
+          >
+            Todos
+          </button>
+        </div>
       </div>
 
       <div className="bg-white border border-zinc-100 rounded-2xl overflow-hidden shadow-sm">
@@ -197,10 +393,10 @@ export const CustomersPage = () => {
           <table className="w-full text-left">
             <thead>
               <tr className="border-b border-zinc-100">
-                <th className="px-6 py-4 text-xs font-semibold text-zinc-400 uppercase tracking-wider">Paciente</th>
-                <th className="px-6 py-4 text-xs font-semibold text-zinc-400 uppercase tracking-wider">Telefone</th>
-                <th className="px-6 py-4 text-xs font-semibold text-zinc-400 uppercase tracking-wider">Plano / Psicólogo</th>
-                <th className="px-6 py-4 text-xs font-semibold text-zinc-400 uppercase tracking-wider">Status</th>
+                <th className="px-6 py-4 text-xs font-semibold text-zinc-400 uppercase tracking-wider">Paciente / Tempo</th>
+                <th className="px-6 py-4 text-xs font-semibold text-zinc-400 uppercase tracking-wider">Última / Próxima</th>
+                <th className="px-6 py-4 text-xs font-semibold text-zinc-400 uppercase tracking-wider">Total Sessões</th>
+                <th className="px-6 py-4 text-xs font-semibold text-zinc-400 uppercase tracking-wider">Plano / Profissional</th>
                 <th className="px-6 py-4 text-xs font-semibold text-zinc-400 uppercase tracking-wider text-right">Ações</th>
               </tr>
             </thead>
@@ -217,36 +413,54 @@ export const CustomersPage = () => {
                   <tr key={customer.id} className="hover:bg-zinc-50 transition-colors">
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-zinc-50 flex items-center justify-center text-zinc-400 border border-zinc-100">
+                        <div className="w-8 h-8 rounded-full bg-zinc-50 flex items-center justify-center text-zinc-400 border border-zinc-100 shrink-0">
                           <User size={16} />
                         </div>
-                        <div>
-                          <p className="text-sm font-medium text-priori-navy">{customer.name}</p>
-                          <p className="text-[10px] text-zinc-400 uppercase tracking-wider">ID: {customer.id}</p>
+                        <div className="min-w-0">
+                          <p className="text-sm font-bold text-priori-navy truncate">{customer.name}</p>
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                            <span className="flex items-center gap-1 text-[10px] text-zinc-400">
+                              <Phone size={10} />
+                              {customer.phone}
+                            </span>
+                            <span className="text-[10px] text-priori-gold font-bold uppercase tracking-wider">
+                              {calculateClincTime(customer.firstAppointmentDate, customer.createdAt)}
+                            </span>
+                          </div>
                         </div>
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <div className="flex items-center gap-1.5 text-sm text-zinc-500">
-                        <Phone size={14} className="text-priori-navy" />
-                        {customer.phone}
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] text-zinc-400 uppercase font-bold w-12">L: {formatDate(customer.lastAppointmentDate)}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] text-priori-navy uppercase font-bold w-12">P: {formatDate(customer.nextAppointmentDate)}</span>
+                        </div>
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <div>
-                        <p className="text-sm text-priori-navy">{customer.healthPlan}</p>
-                        <p className="text-xs text-priori-gold font-medium">{psy?.name || 'Não atribuído'}</p>
+                      <div className="flex items-center gap-2">
+                        <div className="px-2 py-0.5 bg-priori-navy/5 border border-priori-navy/10 rounded text-xs font-bold text-priori-navy">
+                          {customer.totalAppointmentsPerformed || 0}
+                        </div>
+                        <span className="text-[10px] text-zinc-400 uppercase font-medium">Sessões</span>
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <span className={cn(
-                        "inline-flex items-center px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider",
-                        customer.status === CustomerStatus.ACTIVE 
-                          ? "bg-priori-gold/10 text-priori-gold" 
-                          : "bg-zinc-100 text-zinc-500"
-                      )}>
-                        {customer.status === CustomerStatus.ACTIVE ? 'Ativo' : 'Inativo'}
-                      </span>
+                      <div className="min-w-[120px]">
+                        <p className="text-[11px] font-bold text-priori-navy truncate uppercase tracking-tight">{customer.healthPlan}</p>
+                        <p className="text-[10px] text-priori-gold font-bold truncate uppercase">{psy?.name || 'Não atribuído'}</p>
+                        <span className={cn(
+                          "inline-block mt-1 px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest",
+                          customer.status === CustomerStatus.ACTIVE 
+                            ? "bg-emerald-50 text-emerald-600 border border-emerald-100" 
+                            : "bg-zinc-100 text-zinc-500 border border-zinc-200"
+                        )}>
+                          {customer.status === CustomerStatus.ACTIVE ? 'Ativo' : 'Inativo'}
+                        </span>
+                      </div>
                     </td>
                     <td className="px-6 py-4 text-right">
                       <div className="flex items-center justify-end gap-2">
@@ -258,7 +472,7 @@ export const CustomersPage = () => {
                               ? "text-zinc-400 hover:text-amber-500 hover:bg-amber-500/5" 
                               : "text-zinc-400 hover:text-priori-gold hover:bg-priori-gold/5"
                           )}
-                          title={customer.status === CustomerStatus.ACTIVE ? "Desativar Cliente" : "Ativar Cliente"}
+                          title={customer.status === CustomerStatus.ACTIVE ? "Desativar Paciente" : "Ativar Paciente"}
                         >
                           {customer.status === CustomerStatus.ACTIVE ? <UserX size={16} /> : <UserCheck size={16} />}
                         </button>
@@ -287,9 +501,29 @@ export const CustomersPage = () => {
       <Modal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        title={editingCustomer ? 'Editar Cliente' : 'Novo Cliente'}
+        title={editingCustomer ? 'Editar Paciente' : 'Novo Paciente'}
+        footer={
+          <div className="flex gap-3">
+            <Button 
+              type="button" 
+              variant="outline" 
+              className="flex-1 border-zinc-200 text-priori-navy hover:bg-zinc-100" 
+              onClick={() => setIsModalOpen(false)}
+            >
+              Cancelar
+            </Button>
+            <Button 
+              type="submit" 
+              form="customer-form"
+              className="flex-1 bg-priori-navy hover:bg-priori-navy/90 text-white" 
+              isLoading={isSaving}
+            >
+              {editingCustomer ? 'Salvar Alterações' : 'Criar Paciente'}
+            </Button>
+          </div>
+        }
       >
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form id="customer-form" onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-4">
             <Input
               label="Nome Completo"
@@ -303,6 +537,12 @@ export const CustomersPage = () => {
               onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
               required
               placeholder="(00) 00000-0000"
+            />
+            <Input
+              label="Data de Nascimento"
+              type="date"
+              value={formData.birthDate}
+              onChange={(e) => setFormData({ ...formData, birthDate: e.target.value })}
             />
           </div>
           
@@ -334,13 +574,14 @@ export const CustomersPage = () => {
           </div>
 
           {(() => {
-            const canSeeValues = user?.role === UserRole.ADMIN || formData.healthPlan === HealthPlan.PARTICULAR;
+            const canSeeValues = formData.healthPlan === HealthPlan.PARTICULAR;
             if (canSeeValues) {
               return (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 bg-priori-gold/5 border border-priori-gold/10 rounded-xl">
                   <Input
                     label="Valor da Sessão (R$)"
                     type="number"
+                    step="0.01"
                     value={formData.customPrice || ''}
                     onChange={(e) => setFormData({ ...formData, customPrice: e.target.value ? Number(e.target.value) : undefined })}
                     placeholder="Ex: 150"
@@ -348,6 +589,7 @@ export const CustomersPage = () => {
                   <Input
                     label="Valor do Repasse (R$)"
                     type="number"
+                    step="0.01"
                     value={formData.customRepassAmount || ''}
                     onChange={(e) => setFormData({ ...formData, customRepassAmount: e.target.value ? Number(e.target.value) : undefined })}
                     placeholder="Ex: 100"
@@ -362,18 +604,6 @@ export const CustomersPage = () => {
           })()}
 
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Status</label>
-            <select
-              className="w-full rounded-lg bg-white border border-zinc-100 px-4 py-2.5 text-sm text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/5 transition-all"
-              value={formData.status}
-              onChange={(e) => setFormData({ ...formData, status: e.target.value as CustomerStatus })}
-            >
-              <option value={CustomerStatus.ACTIVE}>Ativo</option>
-              <option value={CustomerStatus.INACTIVE}>Inativo</option>
-            </select>
-          </div>
-          
-          <div className="space-y-1.5">
             <label className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Notas</label>
             <textarea
               className="w-full rounded-lg bg-white border border-zinc-100 px-4 py-2.5 text-sm text-priori-navy placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-priori-navy/5 transition-all min-h-[80px]"
@@ -382,23 +612,6 @@ export const CustomersPage = () => {
               placeholder="Observações sobre o paciente..."
             />
           </div>
-          <div className="flex gap-3 pt-4">
-            <Button 
-              type="button" 
-              variant="outline" 
-              className="flex-1 border-zinc-100 text-priori-navy hover:bg-zinc-50" 
-              onClick={() => setIsModalOpen(false)}
-            >
-              Cancelar
-            </Button>
-            <Button 
-              type="submit" 
-              className="flex-1 bg-priori-navy hover:bg-priori-navy/90 text-white" 
-              isLoading={isSaving}
-            >
-              {editingCustomer ? 'Salvar Alterações' : 'Criar Cliente'}
-            </Button>
-          </div>
         </form>
       </Modal>
 
@@ -406,8 +619,29 @@ export const CustomersPage = () => {
         isOpen={isBulkModalOpen}
         onClose={() => setIsBulkModalOpen(false)}
         title="Reajuste de Taxas Particulares"
+        footer={
+          <div className="flex gap-3">
+            <Button 
+              type="button" 
+              variant="outline" 
+              className="flex-1 border-zinc-200 text-priori-navy hover:bg-zinc-100" 
+              onClick={() => setIsBulkModalOpen(false)}
+            >
+              Cancelar
+            </Button>
+            <Button 
+              type="submit" 
+              form="bulk-adjustment-form"
+              className="flex-1 bg-priori-navy hover:bg-priori-navy/90 text-white" 
+              isLoading={isSaving}
+              disabled={bulkData.selectedCustomerIds.length === 0 || bulkData.amount === 0}
+            >
+              Aplicar Reajuste
+            </Button>
+          </div>
+        }
       >
-        <form onSubmit={handleBulkAdjustment} className="space-y-6">
+        <form id="bulk-adjustment-form" onSubmit={handleBulkAdjustment} className="space-y-6">
           <div className="bg-priori-gold/5 border border-priori-gold/10 p-4 rounded-xl space-y-4">
             <div className="flex items-center gap-3">
               <div className="p-2 bg-priori-gold rounded-lg text-white">
@@ -431,6 +665,7 @@ export const CustomersPage = () => {
                 <Input
                   label="Valor do Aumento (R$)"
                   type="number"
+                  step="0.01"
                   value={bulkData.amount}
                   onChange={(e) => setBulkData({ ...bulkData, amount: Number(e.target.value) })}
                   required
@@ -481,7 +716,7 @@ export const CustomersPage = () => {
                   <div className="flex flex-col">
                     <span className="text-xs font-bold">{customer.name}</span>
                     <span className="text-[10px] opacity-70">
-                      Atual: R$ {customer.customPrice || 0} / R$ {customer.customRepassAmount || 0}
+                      Atual: R$ {(customer.customPrice || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} / R$ {(customer.customRepassAmount || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                     </span>
                   </div>
                   {bulkData.selectedCustomerIds.includes(customer.id) && <Check size={14} className="text-priori-gold" />}
@@ -492,26 +727,176 @@ export const CustomersPage = () => {
               )}
             </div>
           </div>
+        </form>
+      </Modal>
 
-          <div className="flex gap-3 pt-4 border-t border-zinc-100">
+      <Modal
+        isOpen={isImportModalOpen}
+        onClose={() => {
+          setIsImportModalOpen(false);
+          setImportResults(null);
+        }}
+        title="Importar Pacientes via Excel"
+        footer={
+          <div className="flex gap-3">
             <Button 
               type="button" 
               variant="outline" 
-              className="flex-1 border-zinc-100 text-priori-navy hover:bg-zinc-50" 
-              onClick={() => setIsBulkModalOpen(false)}
+              className="flex-1 border-zinc-200 text-priori-navy hover:bg-zinc-100" 
+              onClick={() => {
+                setIsImportModalOpen(false);
+                setImportResults(null);
+              }}
+            >
+              Fechar
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-6">
+          {!importResults ? (
+            <>
+              <div className="bg-priori-navy/5 border border-priori-navy/10 p-4 rounded-xl space-y-3">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-priori-navy rounded-lg text-white">
+                    <FileUp size={20} />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-priori-navy">Instruções de Importação</h4>
+                    <p className="text-[10px] text-zinc-500 uppercase tracking-wider">Siga o modelo para evitar erros</p>
+                  </div>
+                </div>
+                <ul className="text-xs text-zinc-600 space-y-1 ml-1">
+                  <li className="flex items-center gap-2">• As colunas obrigatórias são: <span className="font-bold text-priori-navy">Nome, Telefone, Plano, Psicólogo</span>.</li>
+                  <li className="flex items-center gap-2">• <span className="font-bold">Planos aceitos:</span> Particular, AMS Petrobras, Medsenior, Porto Seguro, Gama Saúde, Saúde Caixa, Fundação Saúde Itaú.</li>
+                  <li className="flex items-center gap-2">• O nome do psicólogo deve ser igual ao cadastrado no sistema.</li>
+                </ul>
+                <button 
+                  onClick={downloadTemplate}
+                  className="flex items-center gap-2 text-priori-gold hover:text-priori-gold/80 text-xs font-bold transition-colors"
+                >
+                  <Download size={14} />
+                  Baixar Planilha Modelo
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <label className="block">
+                  <span className="sr-only">Escolha o arquivo Excel</span>
+                  <input 
+                    type="file" 
+                    accept=".xlsx, .xls"
+                    onChange={handleImportExcel}
+                    className="block w-full text-sm text-zinc-500
+                      file:mr-4 file:py-2.5 file:px-4
+                      file:rounded-xl file:border-0
+                      file:text-sm file:font-semibold
+                      file:bg-priori-navy file:text-white
+                      hover:file:bg-priori-navy/90
+                      transition-all"
+                  />
+                </label>
+                {isSaving && (
+                  <div className="flex items-center justify-center gap-3 p-4 bg-zinc-50 rounded-xl border border-dashed border-zinc-200">
+                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-priori-navy border-t-transparent" />
+                    <span className="text-xs font-medium text-priori-navy">Processando planilha e cadastrando pacientes...</span>
+                  </div>
+                )}
+              </div>
+            </>
+          ) : (
+            <div className="space-y-4">
+              <div className={cn(
+                "p-4 rounded-xl border flex flex-col items-center gap-2 text-center",
+                importResults.errors.length === 0 ? "bg-emerald-50 border-emerald-100" : "bg-amber-50 border-amber-100"
+              )}>
+                <div className={cn(
+                  "p-3 rounded-full mb-2",
+                  importResults.errors.length === 0 ? "bg-emerald-500 text-white" : "bg-amber-500 text-white"
+                )}>
+                  {importResults.errors.length === 0 ? <Check size={24} /> : <AlertCircle size={24} />}
+                </div>
+                <h4 className="font-bold text-priori-navy">Importação Finalizada</h4>
+                <p className="text-sm text-zinc-600">
+                  <span className="font-bold text-emerald-600">{importResults.success}</span> pacientes cadastrados com sucesso.
+                </p>
+              </div>
+
+              {importResults.errors.length > 0 && (
+                <div className="space-y-2">
+                  <h5 className="text-[10px] font-bold text-red-500 uppercase tracking-widest flex items-center gap-2">
+                    <AlertCircle size={12} />
+                    Erros Identificados ({importResults.errors.length})
+                  </h5>
+                  <div className="max-h-[150px] overflow-y-auto bg-red-50 border border-red-100 rounded-xl p-3 space-y-1 custom-scrollbar">
+                    {importResults.errors.map((error, idx) => (
+                      <p key={idx} className="text-[10px] text-red-700 leading-tight">• {error}</p>
+                    ))}
+                  </div>
+                </div>
+              )}
+              
+              <Button 
+                onClick={() => {
+                  setIsImportModalOpen(false);
+                  setImportResults(null);
+                }}
+                className="w-full bg-priori-navy hover:bg-priori-navy/90 text-white mt-2"
+              >
+                Concluir
+              </Button>
+            </div>
+          )}
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={isInactivationModalOpen}
+        onClose={() => setIsInactivationModalOpen(false)}
+        title="Motivo da Desativação"
+        footer={
+          <div className="flex gap-3">
+            <Button 
+              type="button" 
+              variant="outline" 
+              className="flex-1 border-zinc-200 text-priori-navy hover:bg-zinc-100" 
+              onClick={() => setIsInactivationModalOpen(false)}
             >
               Cancelar
             </Button>
             <Button 
-              type="submit" 
+              onClick={confirmInactivation}
               className="flex-1 bg-priori-navy hover:bg-priori-navy/90 text-white" 
               isLoading={isSaving}
-              disabled={bulkData.selectedCustomerIds.length === 0 || bulkData.amount === 0}
+              disabled={!selectedInactivationReason}
             >
-              Aplicar Reajuste
+              Confirmar Desativação
             </Button>
           </div>
-        </form>
+        }
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-zinc-500">
+            Para desativar o paciente <span className="font-bold text-priori-navy">{customerToInactivate?.name}</span>, por favor selecione um motivo:
+          </p>
+          
+          <div className="grid grid-cols-1 gap-2">
+            {Object.values(InactivationReason).map((reason) => (
+              <button
+                key={reason}
+                onClick={() => setSelectedInactivationReason(reason)}
+                className={cn(
+                  "p-4 rounded-xl border text-left transition-all",
+                  selectedInactivationReason === reason
+                    ? "bg-priori-navy/5 border-priori-navy/30 text-priori-navy font-bold"
+                    : "bg-white border-zinc-100 text-zinc-500 hover:border-priori-gold/30"
+                )}
+              >
+                {reason}
+              </button>
+            ))}
+          </div>
+        </div>
       </Modal>
     </div>
   );

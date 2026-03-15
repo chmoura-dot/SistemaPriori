@@ -128,7 +128,7 @@ export const ExpensesPage = () => {
             </div>
             <p className="text-sm font-bold text-zinc-400 uppercase tracking-wider">Total de Despesas</p>
           </div>
-          <p className="text-3xl font-bold text-priori-navy">R$ {totalExpenses.toLocaleString()}</p>
+          <p className="text-3xl font-bold text-priori-navy">R$ {totalExpenses.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
         </div>
       </div>
 
@@ -174,7 +174,7 @@ export const ExpensesPage = () => {
                       <p className="text-sm text-zinc-500">{new Date(expense.date).toLocaleDateString()}</p>
                     </td>
                     <td className="px-6 py-4">
-                      <p className="text-sm font-bold text-red-500">R$ {expense.amount.toLocaleString()}</p>
+                      <p className="text-sm font-bold text-red-500">R$ {expense.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                     </td>
                     <td className="px-6 py-4">
                       {expense.isRecurring ? (

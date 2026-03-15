@@ -16,9 +16,11 @@ import {
   Appointment,
   Expense,
   ExpenseCategory,
-  UserRole
+  UserRole,
+  AppointmentStatus
 } from '../services/types';
 import { cn } from '../lib/utils';
+import { calcRepass } from '../lib/repassRules';
 
 export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => void }) => {
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -43,7 +45,7 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
       setCustomers(c);
       setSubscriptions(s);
       setPlans(p);
-      setAppointments(a.filter(app => app.confirmedPsychologist));
+      setAppointments(a); // Mantém todos para poder separar Previsto de Realizado
       setPsychologists(psy);
       setExpenses(exp);
       setIsLoading(false);
@@ -60,6 +62,10 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
     return acc + price;
   }, 0);
 
+  // Helper: busca de plano case-insensitive (banco usa MAIÚSCULAS, pacientes usam capitalização mista)
+  const findPlan = (healthPlan?: string) =>
+    plans.find(p => p.name.toUpperCase() === (healthPlan ?? '').toUpperCase());
+
   const calculateRevenue = (apps: Appointment[]) => {
     // Group by customer and type to handle one-time charges
     const grouped = apps.reduce((acc: Record<string, Appointment[]>, app) => {
@@ -72,7 +78,7 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
     return Object.values(grouped).reduce((total, customerApps) => {
       const firstApp = customerApps[0];
       const customer = customers.find(c => c.id === firstApp.customerId);
-      const plan = plans.find(p => p.name === customer?.healthPlan);
+      const plan = findPlan(customer?.healthPlan);
       const procedure = plan?.procedures?.find(proc => proc.type === firstApp.type);
       
       if (procedure?.isOneTimeCharge) {
@@ -90,17 +96,26 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
     }, 0);
   };
 
-  const appointmentRevenue = calculateRevenue(appointments);
+  const isCanceledButBilled = (app: Appointment) => 
+    app.status === AppointmentStatus.CANCELED && 
+    (app.cancellationBilling === 'plan' || app.cancellationBilling === 'particular');
 
-  const totalRevenue = subscriptionRevenue + appointmentRevenue;
+  const appsRealizados = appointments.filter(app => app.confirmedPsychologist || isCanceledButBilled(app));
+  const appsPrevistos = appointments.filter(app => !app.confirmedPsychologist && app.status !== AppointmentStatus.CANCELED);
+
+  const revenueRealizado = calculateRevenue(appsRealizados) + subscriptionRevenue;
+  const revenuePrevisto = calculateRevenue(appsPrevistos);
+  const totalGeralPrevisto = revenueRealizado + revenuePrevisto;
+
   const totalExpenses = expenses.reduce((acc, exp) => acc + exp.amount, 0);
-  const netProfit = totalRevenue - totalExpenses;
+  const netProfit = revenueRealizado - totalExpenses;
 
   const stats = [
-    { label: 'Total de Clientes', value: customers.length, icon: Users, color: 'text-priori-navy', bg: 'bg-priori-navy/10', path: '/clientes' },
-    { label: 'Faturamento Bruto', value: `R$ ${totalRevenue.toLocaleString()}`, icon: TrendingUp, color: 'text-priori-gold', bg: 'bg-priori-gold/10', path: '/financeiro', adminOnly: true },
-    { label: 'Resultado Líquido', value: `R$ ${netProfit.toLocaleString()}`, icon: ShieldCheck, color: netProfit >= 0 ? 'text-priori-gold' : 'text-red-500', bg: netProfit >= 0 ? 'bg-priori-gold/10' : 'bg-red-500/10', path: '/despesas', adminOnly: true },
-  ].filter(stat => !stat.adminOnly || user?.role === UserRole.ADMIN);
+    { label: 'Total de Pacientes', value: customers.length, icon: Users, color: 'text-priori-navy', bg: 'bg-priori-navy/10', path: '/clientes' },
+    { label: 'Faturamento Realizado', value: `R$ ${revenueRealizado.toLocaleString()}`, icon: TrendingUp, color: 'text-emerald-500', bg: 'bg-emerald-500/10', path: '/financeiro' },
+    { label: 'Faturamento Previsto', value: `R$ ${totalGeralPrevisto.toLocaleString()}`, icon: Activity, color: 'text-priori-gold', bg: 'bg-priori-gold/10', path: '/financeiro' },
+    { label: 'Resultado Líquido Atual', value: `R$ ${netProfit.toLocaleString()}`, icon: ShieldCheck, color: netProfit >= 0 ? 'text-priori-gold' : 'text-red-500', bg: netProfit >= 0 ? 'bg-priori-gold/10' : 'bg-red-500/10', path: '/despesas' },
+  ];
 
   // Summaries
   const revenueByPlan = plans.map(plan => {
@@ -108,9 +123,9 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
       .filter(s => s.planId === plan.id)
       .reduce((acc, s) => acc + (plan.procedures?.[0]?.price || 0), 0);
     
-    const planApps = appointments.filter(app => {
+    const planApps = appsRealizados.filter(app => {
       const customer = customers.find(c => c.id === app.customerId);
-      return customer?.healthPlan === plan.name;
+      return (customer?.healthPlan ?? '').toUpperCase() === plan.name.toUpperCase();
     });
 
     const appRevenue = calculateRevenue(planApps);
@@ -119,42 +134,53 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
   }).filter(p => p.total > 0).sort((a, b) => b.total - a.total);
 
   const revenueByPsychologist = psychologists.map(psy => {
-    const psyApps = appointments.filter(app => app.psychologistId === psy.id);
+    const psyApps = appsRealizados.filter(app => app.psychologistId === psy.id);
     const appRevenue = calculateRevenue(psyApps);
     
     return { name: psy.name, total: appRevenue };
   }).filter(p => p.total > 0).sort((a, b) => b.total - a.total);
 
-  const monthlyRevenue = appointments.reduce((acc: any, app) => {
-    const month = new Date(app.date + 'T12:00:00').toLocaleString('pt-BR', { month: 'long', year: 'numeric' });
-    
-    // For monthly breakdown, we still need to handle one-time charges correctly.
-    // This is tricky because a one-time charge might span multiple months if sessions are spread out.
-    // But usually, it's charged in the month of the first session.
-    
-    const customer = customers.find(c => c.id === app.customerId);
-    const plan = plans.find(p => p.name === customer?.healthPlan);
-    const procedure = plan?.procedures?.find(proc => proc.type === app.type);
-
-    if (procedure?.isOneTimeCharge) {
-      // Check if this is the first appointment of this type for this customer
-      const firstApp = appointments
-        .filter(a => a.customerId === app.customerId && a.type === app.type)
-        .sort((a, b) => a.date.localeCompare(b.date))[0];
+  const monthlyRevenue = appointments
+    .filter(app => app.status !== AppointmentStatus.CANCELED || isCanceledButBilled(app))
+    .reduce((acc: any, app) => {
+      const month = new Date(app.date + 'T12:00:00').toLocaleString('pt-BR', { month: 'long', year: 'numeric' });
       
-      if (firstApp.id === app.id) {
-        const amount = app.customPrice ?? customer?.customPrice ?? (procedure?.price || 0);
-        acc[month] = (acc[month] || 0) + amount;
+      if (!acc[month]) {
+        acc[month] = { realizado: 0, previsto: 0 };
       }
-    } else {
-      const amount = app.customPrice ?? customer?.customPrice ?? (procedure?.price || 0);
-      acc[month] = (acc[month] || 0) + amount;
-    }
-    
-    return acc;
-  }, {});
 
-  const monthlyData = Object.entries(monthlyRevenue).map(([month, total]) => ({ month, total: total as number }));
+      const customer = customers.find(c => c.id === app.customerId);
+      const plan = findPlan(customer?.healthPlan);
+      const procedure = plan?.procedures?.find(proc => proc.type === app.type);
+
+      let amount = 0;
+      if (procedure?.isOneTimeCharge) {
+        const firstApp = appointments
+          .filter(a => a.customerId === app.customerId && a.type === app.type && (a.status !== AppointmentStatus.CANCELED || isCanceledButBilled(a)))
+          .sort((a, b) => a.date.localeCompare(b.date))[0];
+        
+        if (firstApp.id === app.id) {
+          amount = app.customPrice ?? customer?.customPrice ?? (procedure?.price || 0);
+        }
+      } else {
+        amount = app.customPrice ?? customer?.customPrice ?? (procedure?.price || 0);
+      }
+      
+      if (app.confirmedPsychologist || isCanceledButBilled(app)) {
+        acc[month].realizado += amount;
+      } else {
+        acc[month].previsto += amount;
+      }
+      
+      return acc;
+    }, {});
+
+  const monthlyData = Object.entries(monthlyRevenue).map(([month, data]: [string, any]) => ({ 
+    month, 
+    realizado: data.realizado,
+    previsto: data.previsto,
+    total: data.realizado + data.previsto
+  }));
 
   return (
     <div className="space-y-8 min-h-[400px]">
@@ -169,87 +195,94 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
             <p className="text-zinc-500">Acompanhe o desempenho da clínica em tempo real.</p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {stats.map((stat) => (
               <div 
                 key={stat.label} 
-                className="bg-white border border-zinc-100 p-6 rounded-2xl hover:border-priori-gold/30 shadow-sm transition-all cursor-pointer group"
+                className="glass-card p-6 rounded-[2.5rem] btn-premium group"
                 onClick={() => stat.path && onNavigate(stat.path)}
               >
                 <div className="flex items-center justify-between mb-4">
-                  <div className={cn("p-2 rounded-lg", stat.bg)}>
-                    <stat.icon size={20} className={stat.color} />
+                  <div className={cn("p-4 rounded-3xl", stat.bg)}>
+                    <stat.icon size={24} className={stat.color} />
                   </div>
-                  <ArrowUpRight size={16} className="text-zinc-400 group-hover:text-priori-gold transition-colors" />
+                  <ArrowUpRight size={18} className="text-zinc-300 group-hover:text-priori-gold transition-colors" />
                 </div>
-                <p className="text-zinc-500 text-sm font-medium">{stat.label}</p>
+                <p className="text-zinc-400 text-xs font-bold uppercase tracking-widest">{stat.label}</p>
                 <h3 className="text-2xl font-bold text-priori-navy mt-1">{stat.value}</h3>
               </div>
             ))}
           </div>
 
-          {user?.role === UserRole.ADMIN && (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Revenue by Plan */}
-              <div className="bg-white border border-zinc-100 rounded-2xl p-6 shadow-sm">
-                <h3 className="text-sm font-bold text-zinc-400 uppercase tracking-widest mb-6">Faturamento por Plano</h3>
-                <div className="space-y-4">
-                  {revenueByPlan.map(item => (
-                    <div key={item.name} className="flex items-center justify-between">
-                      <span className="text-sm text-priori-navy">{item.name}</span>
-                      <span className="text-sm font-bold text-priori-gold">R$ {item.total.toLocaleString()}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Revenue by Psychologist */}
-              <div className="bg-white border border-zinc-100 rounded-2xl p-6 shadow-sm">
-                <h3 className="text-sm font-bold text-zinc-400 uppercase tracking-widest mb-6">Faturamento por Psicólogo</h3>
-                <div className="space-y-4">
-                  {revenueByPsychologist.map(item => (
-                    <div key={item.name} className="flex items-center justify-between">
-                      <span className="text-sm text-priori-navy">{item.name}</span>
-                      <span className="text-sm font-bold text-priori-gold">R$ {item.total.toLocaleString()}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Monthly Revenue */}
-              <div className="bg-white border border-zinc-100 rounded-2xl p-6 shadow-sm">
-                <h3 className="text-sm font-bold text-zinc-400 uppercase tracking-widest mb-6">Faturamento Mensal (Consultas)</h3>
-                <div className="space-y-4">
-                  {monthlyData.map(item => (
-                    <div key={item.month} className="flex items-center justify-between">
-                      <span className="text-sm text-priori-navy capitalize">{item.month}</span>
-                      <span className="text-sm font-bold text-priori-navy">R$ {item.total.toLocaleString()}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Expenses Summary */}
-              <div className="bg-white border border-zinc-100 rounded-2xl p-6 shadow-sm lg:col-span-3">
-                <div className="flex items-center justify-between mb-6">
-                  <h3 className="text-sm font-bold text-zinc-400 uppercase tracking-widest">Resumo de Despesas por Categoria</h3>
-                  <span className="text-xs font-bold text-red-500">Total: R$ {totalExpenses.toLocaleString()}</span>
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                  {Object.values(ExpenseCategory).map(cat => {
-                    const catTotal = expenses.filter(e => e.category === cat).reduce((acc, e) => acc + e.amount, 0);
-                    if (catTotal === 0) return null;
-                    return (
-                      <div key={cat} className="p-4 bg-zinc-50 rounded-xl border border-zinc-100">
-                        <p className="text-[10px] text-zinc-500 uppercase font-bold mb-1">{cat}</p>
-                        <p className="text-lg font-bold text-priori-navy">R$ {catTotal.toLocaleString()}</p>
-                      </div>
-                    );
-                  })}
-                </div>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Revenue by Plan */}
+            <div className="bg-white border border-zinc-100 rounded-2xl p-6 shadow-sm">
+              <h3 className="text-sm font-bold text-zinc-400 uppercase tracking-widest mb-6">Faturamento por Plano</h3>
+              <div className="space-y-4">
+                {revenueByPlan.map(item => (
+                  <div key={item.name} className="flex items-center justify-between">
+                    <span className="text-sm text-priori-navy">{item.name}</span>
+                    <span className="text-sm font-bold text-priori-gold">R$ {item.total.toLocaleString()}</span>
+                  </div>
+                ))}
               </div>
             </div>
-          )}
+
+            {/* Revenue by Psychologist */}
+            <div className="bg-white border border-zinc-100 rounded-2xl p-6 shadow-sm">
+              <h3 className="text-sm font-bold text-zinc-400 uppercase tracking-widest mb-6">Faturamento por Psicólogo</h3>
+              <div className="space-y-4">
+                {revenueByPsychologist.map(item => (
+                  <div key={item.name} className="flex items-center justify-between">
+                    <span className="text-sm text-priori-navy">{item.name}</span>
+                    <span className="text-sm font-bold text-priori-gold">R$ {item.total.toLocaleString()}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Monthly Revenue */}
+            <div className="bg-white border border-zinc-100 rounded-2xl p-6 shadow-sm">
+              <h3 className="text-sm font-bold text-zinc-400 uppercase tracking-widest mb-6">Faturamento Mensal (Consultas)</h3>
+              <div className="space-y-4 max-h-[250px] overflow-y-auto pr-2 custom-scrollbar">
+                {monthlyData.map(item => (
+                  <div key={item.month} className="flex flex-col gap-1 py-1 border-b border-zinc-50 last:border-0">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-semibold text-priori-navy capitalize">{item.month}</span>
+                      <span className="text-sm font-bold text-priori-navy">Total: R$ {item.total.toLocaleString()}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-emerald-600">Realizado: R$ {item.realizado.toLocaleString()}</span>
+                      <span className="text-priori-gold">Previsto: R$ {item.previsto.toLocaleString()}</span>
+                    </div>
+                  </div>
+                ))}
+                {monthlyData.length === 0 && (
+                  <p className="text-sm text-zinc-400 text-center py-4">Nenhum dado financeiro</p>
+                )}
+              </div>
+            </div>
+
+            {/* Expenses Summary */}
+            <div className="bg-white border border-zinc-100 rounded-2xl p-6 shadow-sm lg:col-span-3">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-sm font-bold text-zinc-400 uppercase tracking-widest">Resumo de Despesas por Categoria</h3>
+                <span className="text-xs font-bold text-red-500">Total: R$ {totalExpenses.toLocaleString()}</span>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                {Object.values(ExpenseCategory).map(cat => {
+                  const catTotal = expenses.filter(e => e.category === cat).reduce((acc, e) => acc + e.amount, 0);
+                  if (catTotal === 0) return null;
+                  return (
+                    <div key={cat} className="p-4 bg-zinc-50 rounded-xl border border-zinc-100">
+                      <p className="text-[10px] text-zinc-500 uppercase font-bold mb-1">{cat}</p>
+                      <p className="text-lg font-bold text-priori-navy">R$ {catTotal.toLocaleString()}</p>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
 
           <div className="bg-white border border-zinc-100 rounded-2xl p-6 shadow-sm flex flex-col justify-center items-center text-center space-y-4">
             <div className="w-16 h-16 rounded-full bg-priori-gold/10 flex items-center justify-center">
