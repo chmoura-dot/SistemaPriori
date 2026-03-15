@@ -73,6 +73,7 @@ function toCustomer(row: any): Customer {
     notes: row.notes,
     customPrice: row.custom_price ?? undefined,
     customRepassAmount: row.custom_repass_amount ?? undefined,
+    particularBillingType: row.particular_billing_type ?? undefined,
     birthDate: row.birth_date ?? undefined,
     createdAt: row.created_at,
   };
@@ -541,6 +542,7 @@ export const supabaseService: AppService = {
           notes: c.notes ?? null,
           custom_price: c.customPrice ?? null,
           custom_repass_amount: c.customRepassAmount ?? null,
+          particular_billing_type: c.particularBillingType ?? null,
           birth_date: c.birthDate ?? null,
         })
         .select()
@@ -561,6 +563,7 @@ export const supabaseService: AppService = {
     if (c.notes !== undefined) updates.notes = c.notes;
     if (c.customPrice !== undefined) updates.custom_price = c.customPrice;
     if (c.customRepassAmount !== undefined) updates.custom_repass_amount = c.customRepassAmount;
+    if (c.particularBillingType !== undefined) updates.particular_billing_type = c.particularBillingType;
     if (c.birthDate !== undefined) updates.birth_date = c.birthDate;
 
     const row = await throwOnError(

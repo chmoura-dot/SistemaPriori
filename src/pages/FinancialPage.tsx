@@ -29,7 +29,7 @@ import {
   Pie
 } from 'recharts';
 import { api } from '../services/api';
-import { Appointment, Customer, Plan, Psychologist, AppointmentStatus } from '../services/types';
+import { Appointment, Customer, Plan, Psychologist, AppointmentStatus, HealthPlan, ParticularBillingType } from '../services/types';
 import { cn } from '../lib/utils';
 import { calcRepass } from '../lib/repassRules';
 
@@ -77,7 +77,8 @@ export const FinancialPage = () => {
     const customer = customers.find(c => c.id === app.customerId);
     const plan = findPlan(customer?.healthPlan);
     const procedure = plan?.procedures?.find(proc => proc.type === app.type);
-    const isOneTime = procedure?.isOneTimeCharge;
+    const isPackage = customer?.healthPlan === HealthPlan.PARTICULAR && customer?.particularBillingType === ParticularBillingType.PACKAGE;
+    const isOneTime = procedure?.isOneTimeCharge || isPackage;
     if (isOneTime && !firstInGroup) return { amount: 0, repass: 0 };
     const amount = app.customPrice ?? customer?.customPrice ?? procedure?.price ?? 0;
     const psy = psychologists.find(p => p.id === app.psychologistId);
@@ -148,17 +149,23 @@ export const FinancialPage = () => {
   }, [billedItems, customers, plans]);
 
   const psyDistribution = useMemo(() => {
+    const grouped = appointments.reduce((acc: Record<string, Appointment[]>, app) => {
+      const key = `${app.customerId}-${app.type}`;
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(app);
+      return acc;
+    }, {} as Record<string, Appointment[]>);
+
     const dist: { [key: string]: number } = {};
-    appointments.forEach(app => {
-      const psy = psychologists.find(p => p.id === app.psychologistId);
-      const psyName = psy?.name || 'Não Atribuído';
-      const customer = customers.find(c => c.id === app.customerId);
-      const plan = findPlan(customer?.healthPlan);
-      const procedure = plan?.procedures?.find(proc => proc.type === app.type);
-      const amount = app.customPrice ?? customer?.customPrice ?? procedure?.price ?? 0;
-      const fixedRepass = app.customRepassAmount ?? customer?.customRepassAmount ?? procedure?.repassAmount ?? 0;
-      const repass = calcRepass(amount, psy?.name, fixedRepass);
-      dist[psyName] = (dist[psyName] || 0) + repass;
+    
+    (Object.values(grouped) as Appointment[][]).forEach(group => {
+      const sorted = [...group].sort((a, b) => a.date.localeCompare(b.date));
+      sorted.forEach((app, idx) => {
+        const psy = psychologists.find(p => p.id === app.psychologistId);
+        const psyName = psy?.name || 'Não Atribuído';
+        const { repass } = getAppAmount(app, idx === 0);
+        dist[psyName] = (dist[psyName] || 0) + repass;
+      });
     });
     return Object.entries(dist)
       .map(([name, value]) => ({ name, value }))

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { CreditCard, Search, Calendar, User, DollarSign } from 'lucide-react';
 import { api } from '../services/api';
-import { Payment, Subscription, Customer, Plan, Appointment, Psychologist, AttendanceMode } from '../services/types';
+import { Payment, Subscription, Customer, Plan, Appointment, Psychologist, AttendanceMode, HealthPlan, ParticularBillingType } from '../services/types';
 import { cn } from '../lib/utils';
 import { calcRepass } from '../lib/repassRules';
 
@@ -58,10 +58,10 @@ export const PaymentsPage = () => {
       const procedure = plan?.procedures?.find(proc => proc.type === firstApp.type);
 
       sortedApps.forEach((app, idx) => {
-        const isOneTime = procedure?.isOneTimeCharge;
+        const isOneTime = procedure?.isOneTimeCharge || (customer?.healthPlan === HealthPlan.PARTICULAR && customer?.particularBillingType === ParticularBillingType.PACKAGE);
         const isFirst = idx === 0;
 
-        // If it's a one-time charge and not the first session, the amount is 0
+        // If it's a one-time charge or package and not the first session, the amount is 0
         const amount = (isOneTime && !isFirst) ? 0 : (app.customPrice ?? customer?.customPrice ?? procedure?.price ?? 0);
         const psy = psychologists.find(p => p.id === app.psychologistId);
         const fixedRepass = (isOneTime && !isFirst) ? 0 : (app.customRepassAmount ?? customer?.customRepassAmount ?? procedure?.repassAmount ?? 0);

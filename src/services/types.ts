@@ -69,6 +69,11 @@ export interface Room {
   active: boolean;
 }
 
+export enum ParticularBillingType {
+  SESSION = 'Por Consulta',
+  PACKAGE = 'Por Pacote'
+}
+
 export interface Customer {
   id: string;
   name: string;
@@ -81,6 +86,7 @@ export interface Customer {
   notes?: string;
   customPrice?: number;
   customRepassAmount?: number;
+  particularBillingType?: ParticularBillingType;
   birthDate?: string;
   createdAt: string;
   // Metrics

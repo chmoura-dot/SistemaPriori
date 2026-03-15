@@ -8,17 +8,7 @@ import {
   ShieldCheck
 } from 'lucide-react';
 import { api } from '../services/api';
-import { 
-  Customer, 
-  Subscription, 
-  Plan, 
-  SubscriptionStatus,
-  Appointment,
-  Expense,
-  ExpenseCategory,
-  UserRole,
-  AppointmentStatus
-} from '../services/types';
+import { Appointment, Subscription, HealthPlan, Psychologist, Customer, SubscriptionStatus, AppointmentStatus, ParticularBillingType, Plan, Expense, ExpenseCategory } from '../services/types';
 import { cn } from '../lib/utils';
 import { calcRepass } from '../lib/repassRules';
 
@@ -81,8 +71,10 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
       const plan = findPlan(customer?.healthPlan);
       const procedure = plan?.procedures?.find(proc => proc.type === firstApp.type);
       
-      if (procedure?.isOneTimeCharge) {
-        // One-time charge: only count the first one
+      const isPackage = customer?.healthPlan === HealthPlan.PARTICULAR && customer?.particularBillingType === ParticularBillingType.PACKAGE;
+      
+      if (procedure?.isOneTimeCharge || isPackage) {
+        // One-time charge or package: only count the first one
         const amount = firstApp.customPrice ?? customer?.customPrice ?? (procedure?.price || 0);
         return total + amount;
       } else {
@@ -153,8 +145,10 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
       const plan = findPlan(customer?.healthPlan);
       const procedure = plan?.procedures?.find(proc => proc.type === app.type);
 
+      const isPackage = customer?.healthPlan === HealthPlan.PARTICULAR && customer?.particularBillingType === ParticularBillingType.PACKAGE;
+
       let amount = 0;
-      if (procedure?.isOneTimeCharge) {
+      if (procedure?.isOneTimeCharge || isPackage) {
         const firstApp = appointments
           .filter(a => a.customerId === app.customerId && a.type === app.type && (a.status !== AppointmentStatus.CANCELED || isCanceledButBilled(a)))
           .sort((a, b) => a.date.localeCompare(b.date))[0];
