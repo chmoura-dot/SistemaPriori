@@ -253,6 +253,11 @@ export const supabaseService: AppService = {
     return null;
   },
 
+  updatePassword: async (newPassword: string) => {
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) throw new Error(error.message);
+  },
+
   // ── Psychologists ─────────────────────────────────────
   getPsychologists: async () => {
     const { data, error } = await supabase.from('psychologists').select('*').order('name');

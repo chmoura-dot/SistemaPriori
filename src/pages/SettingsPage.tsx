@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Save, Loader2, Link2, MessageSquare, AlertCircle } from 'lucide-react';
+import { Save, Loader2, Link2, MessageSquare, AlertCircle, KeyRound, ShieldCheck } from 'lucide-react';
 import { api } from '../services/api';
 import { Settings } from '../services/types';
 import { Button } from '../components/Button';
@@ -13,6 +13,11 @@ export const SettingsPage = () => {
     zapiUrl: '',
     zapiToken: ''
   });
+  const [passwordData, setPasswordData] = useState({
+    newPassword: '',
+    confirmPassword: ''
+  });
+  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
 
   useEffect(() => {
     loadSettings();
@@ -43,6 +48,32 @@ export const SettingsPage = () => {
       alert('Erro ao salvar as configurações.');
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleChangePassword = async () => {
+    if (!passwordData.newPassword) {
+      alert('Por favor, digite a nova senha.');
+      return;
+    }
+    if (passwordData.newPassword !== passwordData.confirmPassword) {
+      alert('As senhas não coincidem.');
+      return;
+    }
+    if (passwordData.newPassword.length < 6) {
+      alert('A senha deve ter pelo menos 6 caracteres.');
+      return;
+    }
+
+    setIsUpdatingPassword(true);
+    try {
+      await api.updatePassword(passwordData.newPassword);
+      alert('Senha alterada com sucesso!');
+      setPasswordData({ newPassword: '', confirmPassword: '' });
+    } catch (error) {
+      alert('Erro ao alterar a senha. Tente novamente.');
+    } finally {
+      setIsUpdatingPassword(false);
     }
   };
 
@@ -112,7 +143,56 @@ export const SettingsPage = () => {
               className="bg-priori-navy hover:bg-priori-navy/90"
             >
               {isSaving ? <Loader2 size={18} className="animate-spin mr-2" /> : <Save size={18} className="mr-2" />}
-              Salvar Configurações
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* Seção de Segurança / Senha */}
+      <div className="bg-white rounded-2xl border border-zinc-100 p-6 shadow-sm mb-12">
+        <div className="flex items-start gap-4 mb-6 pb-6 border-b border-zinc-100">
+          <div className="p-3 bg-priori-navy/10 rounded-xl text-priori-navy">
+            <KeyRound size={24} />
+          </div>
+          <div>
+            <h2 className="text-lg font-bold text-priori-navy">Segurança da Conta</h2>
+            <p className="text-zinc-600 text-sm mt-1">
+              Atualize sua senha de acesso ao sistema. Escolha uma senha forte para manter seus dados seguros.
+            </p>
+          </div>
+        </div>
+
+        <div className="max-w-md space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-priori-navy mb-1" htmlFor="new_password">Nova Senha</label>
+            <Input
+              id="new_password"
+              type="password"
+              placeholder="Digite a nova senha"
+              value={passwordData.newPassword}
+              onChange={(e) => setPasswordData({ ...passwordData, newPassword: e.target.value })}
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-priori-navy mb-1" htmlFor="confirm_password">Confirmar Nova Senha</label>
+            <Input
+              id="confirm_password"
+              type="password"
+              placeholder="Confirme a nova senha"
+              value={passwordData.confirmPassword}
+              onChange={(e) => setPasswordData({ ...passwordData, confirmPassword: e.target.value })}
+            />
+          </div>
+
+          <div className="pt-2 flex justify-start">
+            <Button 
+              onClick={handleChangePassword} 
+              disabled={isUpdatingPassword}
+              className="bg-priori-navy hover:bg-priori-navy/90"
+            >
+              {isUpdatingPassword ? <Loader2 size={18} className="animate-spin mr-2" /> : <ShieldCheck size={18} className="mr-2" />}
+              Atualizar Senha
             </Button>
           </div>
         </div>

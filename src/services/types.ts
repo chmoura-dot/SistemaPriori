@@ -250,6 +250,7 @@ export interface AppService {
   logout: () => void;
   isAuthenticated: () => boolean;
   getCurrentUser: () => User | null;
+  updatePassword: (newPassword: string) => Promise<void>;
 
   // Psychologists
   getPsychologists: () => Promise<Psychologist[]>;
