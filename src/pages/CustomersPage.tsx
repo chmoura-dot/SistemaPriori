@@ -235,11 +235,16 @@ export const CustomersPage = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
+    const submissionData = {
+      ...formData,
+      birthDate: formData.birthDate || null
+    };
+
     try {
       if (editingCustomer) {
-        await api.updateCustomer(editingCustomer.id, formData);
+        await api.updateCustomer(editingCustomer.id, submissionData);
       } else {
-        await api.createCustomer(formData);
+        await api.createCustomer(submissionData);
       }
       await loadData();
       setIsModalOpen(false);
