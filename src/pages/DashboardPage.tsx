@@ -7,6 +7,7 @@ import {
   ArrowUpRight,
   ShieldCheck
 } from 'lucide-react';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 import { api } from '../services/api';
 import { Appointment, Subscription, HealthPlan, Psychologist, Customer, SubscriptionStatus, AppointmentStatus, ParticularBillingType, Plan, Expense, ExpenseCategory } from '../services/types';
 import { cn } from '../lib/utils';
@@ -176,6 +177,13 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
     total: data.realizado + data.previsto
   }));
 
+  const modalityData = [
+    { name: 'Presencial', value: appsRealizados.filter(app => app.mode === 'Presencial').length },
+    { name: 'On-line', value: appsRealizados.filter(app => app.mode === 'On-line').length },
+  ].filter(d => d.value > 0);
+
+  const MODALITY_COLORS = ['#1a365d', '#d4af37']; // Priori Navy and Priori Gold
+
   return (
     <div className="space-y-8 min-h-[400px]">
       {isLoading ? (
@@ -257,8 +265,59 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
               </div>
             </div>
 
+            {/* Modality Comparison */}
+            <div className="bg-white border border-zinc-100 rounded-2xl p-6 shadow-sm">
+              <h3 className="text-sm font-bold text-zinc-400 uppercase tracking-widest mb-2 text-center">Distribuição por Modalidade</h3>
+              <div className="h-[220px] w-full">
+                {modalityData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={modalityData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={60}
+                        outerRadius={80}
+                        paddingAngle={5}
+                        dataKey="value"
+                        animationBegin={0}
+                        animationDuration={1500}
+                      >
+                        {modalityData.map((_entry, index) => (
+                          <Cell key={`cell-${index}`} fill={MODALITY_COLORS[index % MODALITY_COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip 
+                        contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                        formatter={(value: number) => [`${value} atendimentos`, 'Quantidade']}
+                      />
+                      <Legend verticalAlign="bottom" height={36} iconType="circle" />
+                    </PieChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="h-full flex items-center justify-center text-zinc-400 text-sm italic">
+                    Nenhum atendimento realizado
+                  </div>
+                )}
+              </div>
+              {modalityData.length > 0 && (
+                <div className="mt-4 flex justify-around text-[10px] font-bold uppercase tracking-tight text-zinc-400">
+                  {modalityData.map((d, i) => {
+                    const total = modalityData.reduce((acc, curr) => acc + curr.value, 0);
+                    const percent = Math.round((d.value / total) * 100);
+                    return (
+                      <div key={d.name} className="flex flex-col items-center">
+                        <span style={{ color: MODALITY_COLORS[i] }}>{d.name}</span>
+                        <span className="text-lg text-priori-navy">{percent}%</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
             {/* Expenses Summary */}
-            <div className="bg-white border border-zinc-100 rounded-2xl p-6 shadow-sm lg:col-span-3">
+            <div className="bg-white border border-zinc-100 rounded-2xl p-6 shadow-sm lg:col-span-2">
               <div className="flex items-center justify-between mb-6">
                 <h3 className="text-sm font-bold text-zinc-400 uppercase tracking-widest">Resumo de Despesas por Categoria</h3>
                 <span className="text-xs font-bold text-red-500">Total: R$ {totalExpenses.toLocaleString()}</span>

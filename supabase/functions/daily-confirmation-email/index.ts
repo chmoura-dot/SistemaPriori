@@ -34,6 +34,24 @@ Deno.serve(async (req) => {
     for (const psy of (psychologists || [])) {
       if (!psy.email || psy.email.trim() === '') continue;
 
+      // 3a. Verificar se já não enviamos o e-mail hoje (evitar duplicidade no cron frequente)
+      const { data: existingToken, error: checkError } = await supabase
+        .from('appointment_tokens')
+        .select('id')
+        .eq('psychologist_id', psy.id)
+        .eq('date', todayStr)
+        .limit(1);
+
+      if (checkError) {
+        results.push({ psychologist: psy.name, status: "error_checking_existing", error: checkError.message });
+        continue;
+      }
+
+      if (existingToken && existingToken.length > 0) {
+        results.push({ psychologist: psy.name, status: "already_sent_today" });
+        continue;
+      }
+
       const { data: appointments, error: appError } = await supabase
         .from('appointments')
         .select(`
@@ -57,12 +75,43 @@ Deno.serve(async (req) => {
         continue;
       }
 
+      // 3b. Verificar se já passaram 30 minutos desde a ÚLTIMA consulta agendada
+      if (appointments && appointments.length > 0) {
+        // Encontrar o maior end_time
+        const lastApp = [...appointments].sort((a, b) => b.end_time.localeCompare(a.end_time))[0];
+        const [lastH, lastM] = lastApp.end_time.split(':').map(Number);
+        
+        const lastAppDate = new Date(today);
+        lastAppDate.setHours(lastH, lastM, 0, 0);
+        
+        const nowInBrasilia = new Date(today); // today já está ajustada para Brasília
+        
+        // Diferença em milissegundos
+        const diffMinutes = (nowInBrasilia.getTime() - lastAppDate.getTime()) / (1000 * 60);
+
+        if (diffMinutes < 30) {
+          results.push({ psychologist: psy.name, status: "too_early", wait_minutes: 30 - diffMinutes });
+          continue;
+        }
+      } else {
+        results.push({ psychologist: psy.name, status: "no_appointments_today" });
+        continue;
+      }
+
       // Filtrar APENAS os que ainda não foram confirmados pelo profissional
       const pendingAppointments = appointments?.filter(app => app.confirmed_psychologist === false) || [];
 
       // Se não houver pendências para confirmar, não envia e-mail para não gerar SPAM
+      // No entanto, criamos o token para marcar o dia como processado
       if (pendingAppointments.length === 0) {
-        results.push({ psychologist: psy.name, status: "no_pending_confirmations" });
+        const expiresAt = new Date();
+        expiresAt.setHours(expiresAt.getHours() + 48);
+        await supabase.from('appointment_tokens').insert({
+          psychologist_id: psy.id,
+          date: todayStr,
+          expires_at: expiresAt.toISOString()
+        });
+        results.push({ psychologist: psy.name, status: "no_pending_confirmations_marked_as_done" });
         continue;
       }
 

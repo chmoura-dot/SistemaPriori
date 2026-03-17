@@ -35,6 +35,7 @@ export const MagicConfirmationPage = () => {
   const [isProcessing, setIsProcessing] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [cancellationModal, setCancellationModal] = useState<{ id: string } | null>(null);
+  const [isNag, setIsNag] = useState(false);
 
   const token = new URLSearchParams(window.location.search).get('token');
 
@@ -55,6 +56,7 @@ export const MagicConfirmationPage = () => {
 
       setAppointments(data.appointments || []);
       setDate(data.date);
+      setIsNag(!!data.isNag);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -121,7 +123,7 @@ export const MagicConfirmationPage = () => {
     );
   }
 
-  const displayDate = date.split('-').reverse().join('/');
+  const displayDate = date.includes('-') ? date.split('-').reverse().join('/') : date;
 
   return (
     <div className="min-h-screen bg-priori-bg pb-20">
@@ -142,13 +144,15 @@ export const MagicConfirmationPage = () => {
 
       <div className="max-w-2xl mx-auto px-4 space-y-4">
         <p className="text-sm text-zinc-500 font-medium px-1">
-          Olá, selecione o status de presença de cada paciente atendido hoje:
+          {isNag 
+            ? "Olá, você possui atendimentos pendentes de confirmação de vários dias:"
+            : "Olá, selecione o status de presença de cada paciente atendido hoje:"}
         </p>
 
         {appointments.length === 0 ? (
           <div className="bg-white p-12 rounded-3xl border border-zinc-100 text-center shadow-sm">
             <CheckCircle2 size={48} className="text-emerald-500 mx-auto mb-4 opacity-20" />
-            <p className="text-zinc-400 font-medium">Nenhum agendamento pendente para hoje.</p>
+            <p className="text-zinc-400 font-medium">Nenhum agendamento pendente.</p>
           </div>
         ) : (
           appointments.map((app) => (
@@ -166,6 +170,11 @@ export const MagicConfirmationPage = () => {
                   <div className="flex items-center gap-2 text-priori-navy">
                     <Clock size={16} className="text-zinc-400" />
                     <span className="font-bold">{app.start_time} - {app.end_time}</span>
+                    {isNag && (
+                      <span className="text-xs text-priori-navy/60 bg-priori-navy/5 px-2 py-0.5 rounded-full flex items-center gap-1">
+                        <Calendar size={12} /> {(app as any).date?.split('-').reverse().join('/')}
+                      </span>
+                    )}
                   </div>
                   <h3 className={cn(
                     "text-lg font-bold text-priori-navy",
