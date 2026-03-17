@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 import { api } from '../services/api';
-import { Appointment, Subscription, HealthPlan, Psychologist, Customer, SubscriptionStatus, AppointmentStatus, ParticularBillingType, Plan, Expense, ExpenseCategory } from '../services/types';
+import { Appointment, Subscription, HealthPlan, Psychologist, Customer, CustomerStatus, SubscriptionStatus, AppointmentStatus, ParticularBillingType, Plan, Expense, ExpenseCategory } from '../services/types';
 import { cn } from '../lib/utils';
 import { calcRepass } from '../lib/repassRules';
 
@@ -104,7 +104,7 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
   const netProfit = revenueRealizado - totalExpenses;
 
   const stats = [
-    { label: 'Total de Pacientes', value: customers.length, icon: Users, color: 'text-priori-navy', bg: 'bg-priori-navy/10', path: '/clientes' },
+    { label: 'Pacientes Ativos', value: customers.filter(c => c.status === CustomerStatus.ACTIVE).length, icon: Users, color: 'text-priori-navy', bg: 'bg-priori-navy/10', path: '/clientes' },
     { label: 'Faturamento Realizado', value: `R$ ${revenueRealizado.toLocaleString()}`, icon: TrendingUp, color: 'text-emerald-500', bg: 'bg-emerald-500/10', path: '/financeiro' },
     { label: 'Faturamento Previsto', value: `R$ ${totalGeralPrevisto.toLocaleString()}`, icon: Activity, color: 'text-priori-gold', bg: 'bg-priori-gold/10', path: '/financeiro' },
     { label: 'Resultado Líquido Atual', value: `R$ ${netProfit.toLocaleString()}`, icon: ShieldCheck, color: netProfit >= 0 ? 'text-priori-gold' : 'text-red-500', bg: netProfit >= 0 ? 'bg-priori-gold/10' : 'bg-red-500/10', path: '/despesas' },
