@@ -562,7 +562,7 @@ export const CustomersPage = () => {
             />
           </div>
           
-          {formData.healthPlan === HealthPlan.AMS_PETROBRAS && (
+          {(formData.healthPlan === HealthPlan.AMS_PETROBRAS || formData.healthPlan.toString().toUpperCase().includes('PETROBRAS')) && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 bg-[#004b32]/5 border border-[#004b32]/10 rounded-xl">
               <div className="col-span-full mb-1">
                 <h4 className="text-[10px] font-bold text-[#004b32] uppercase tracking-widest">Informações AMS Petrobras</h4>
