@@ -549,7 +549,7 @@ export const CustomersPage = () => {
             <Input
               label="Nome Completo"
               value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value.toUpperCase() })}
               required
             />
             <Input
