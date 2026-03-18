@@ -777,8 +777,32 @@ export const supabaseService: AppService = {
   },
 
   deleteBillingBatch: async (id) => {
-    const { error } = await supabase.from('billing_batches').delete().eq('id', id);
-    if (error) throw new Error(error.message);
+    // 1. Limpar as referências de faturamento nos agendamentos vinculados a este lote
+    const { error: appError } = await supabase
+      .from('appointments')
+      .update({ 
+        billing_batch_id: null,
+        billing_status: null,
+        denial_reason: null,
+        denial_resolution: null
+      })
+      .eq('billing_batch_id', id);
+
+    if (appError) {
+      console.error('Error clearing appointments for batch:', appError);
+      throw new Error(appError.message);
+    }
+
+    // 2. Excluir o lote
+    const { error: batchError } = await supabase
+      .from('billing_batches')
+      .delete()
+      .eq('id', id);
+
+    if (batchError) {
+      console.error('Error deleting billing batch:', batchError);
+      throw new Error(batchError.message);
+    }
   },
 
   // ── Repasses ──────────────────────────────────────────
