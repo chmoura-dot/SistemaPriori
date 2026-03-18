@@ -1191,12 +1191,17 @@ export const SchedulePage = () => {
                     </div>
                     <div className="space-y-1.5">
                       <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Hora Fim</label>
-                      <input
-                        readOnly
-                        placeholder="--"
-                        className="w-full rounded-lg bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm text-zinc-500 focus:outline-none cursor-not-allowed"
-                        value={formData.startTime ? formData.endTime : ''}
-                      />
+                      <select
+                        className="w-full rounded-lg bg-white border border-zinc-200 px-4 py-2.5 text-sm text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/10 transition-all"
+                        value={formData.endTime}
+                        onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
+                        required
+                      >
+                        <option value="">Selecione...</option>
+                        {allTimeSlots.filter(t => t > formData.startTime).map(t => (
+                          <option key={t} value={t}>{t}</option>
+                        ))}
+                      </select>
                     </div>
                   </div>
 
