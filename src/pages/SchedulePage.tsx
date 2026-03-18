@@ -1041,6 +1041,7 @@ export const SchedulePage = () => {
           setEditingId(null);
         }}
         title={editingId ? "Editar Agendamento" : "Novo Agendamento"}
+        className="max-w-2xl"
         footer={
           <div className="flex gap-3">
             <Button 
@@ -1093,29 +1094,29 @@ export const SchedulePage = () => {
               </div>
 
               {isCustomerDropdownOpen && (
-                <div className="absolute top-full left-0 w-full mt-2 bg-white border border-zinc-100 rounded-xl shadow-2xl z-[100] overflow-hidden animate-in fade-in zoom-in duration-200">
-                  <div className="p-2 border-b border-zinc-100">
+                <div className="absolute top-full left-0 w-full mt-2 bg-white border border-zinc-200 rounded-xl shadow-2xl z-[100] overflow-hidden animate-in fade-in zoom-in duration-200">
+                  <div className="p-3 border-b border-zinc-100 bg-zinc-50/50">
                     <div className="relative">
-                      <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
+                      <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
                       <input
                         autoFocus
-                        className="w-full bg-zinc-50 border border-zinc-100 rounded-lg pl-9 pr-4 py-2 text-xs text-priori-navy focus:outline-none focus:ring-1 focus:ring-priori-navy/50"
-                        placeholder="Buscar paciente..."
+                        className="w-full bg-white border border-zinc-200 rounded-lg pl-10 pr-4 py-2.5 text-sm text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/10"
+                        placeholder="Digite o nome do paciente para buscar..."
                         value={customerSearch}
                         onChange={(e) => setCustomerSearch(e.target.value)}
                         onClick={(e) => e.stopPropagation()}
                       />
                     </div>
                   </div>
-                  <div className="max-h-[200px] overflow-y-auto custom-scrollbar">
+                  <div className="max-h-[350px] overflow-y-auto custom-scrollbar">
                     {filteredCustomers.length > 0 ? (
                       filteredCustomers.map(c => (
                         <button
                           key={c.id}
                           type="button"
                           className={cn(
-                            "w-full text-left px-4 py-2.5 text-sm hover:bg-priori-navy/5 hover:text-priori-navy transition-colors flex items-center justify-between",
-                            formData.customerId === c.id && "bg-priori-navy/5 text-priori-navy"
+                            "w-full text-left px-5 py-3.5 text-sm border-b border-zinc-50 last:border-0 hover:bg-priori-navy/5 hover:text-priori-navy transition-colors flex items-center justify-between group",
+                            formData.customerId === c.id && "bg-priori-navy/5 text-priori-navy font-bold"
                           )}
                           onClick={() => {
                             setFormData({ 
@@ -1130,8 +1131,11 @@ export const SchedulePage = () => {
                             setCustomerSearch('');
                           }}
                         >
-                          <span>{c.name} ({c.healthPlan})</span>
-                          {formData.customerId === c.id && <CheckCircle2 size={14} />}
+                          <div className="flex flex-col">
+                            <span className="text-sm uppercase tracking-tight">{c.name}</span>
+                            <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest mt-0.5 group-hover:text-priori-gold transition-colors">{c.healthPlan}</span>
+                          </div>
+                          {formData.customerId === c.id && <CheckCircle2 size={18} className="text-priori-navy shrink-0" />}
                         </button>
                       ))
                     ) : (
