@@ -1041,7 +1041,7 @@ export const SchedulePage = () => {
           setEditingId(null);
         }}
         title={editingId ? "Editar Agendamento" : "Novo Agendamento"}
-        className="max-w-2xl"
+        className="max-w-2xl h-[85vh]"
         footer={
           <div className="flex gap-3">
             <Button 
@@ -1108,7 +1108,7 @@ export const SchedulePage = () => {
                       />
                     </div>
                   </div>
-                  <div className="max-h-[350px] overflow-y-auto custom-scrollbar">
+                  <div className="max-h-[500px] overflow-y-auto custom-scrollbar">
                     {filteredCustomers.length > 0 ? (
                       filteredCustomers.map(c => (
                         <button
