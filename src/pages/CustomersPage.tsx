@@ -243,6 +243,7 @@ export const CustomersPage = () => {
     setIsSaving(true);
     const submissionData = {
       ...formData,
+      name: formData.name.toUpperCase(),
       birthDate: formData.birthDate || null,
       amsPassword: formData.amsPassword || null,
       amsPasswordExpiry: formData.amsPasswordExpiry || null

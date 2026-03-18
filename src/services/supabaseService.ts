@@ -534,7 +534,7 @@ export const supabaseService: AppService = {
       supabase
         .from('customers')
         .insert({
-          name: c.name,
+          name: c.name.toUpperCase(),
           email: c.email,
           phone: c.phone,
           health_plan: c.healthPlan,
@@ -557,7 +557,7 @@ export const supabaseService: AppService = {
 
   updateCustomer: async (id, c) => {
     const updates: Record<string, any> = {};
-    if (c.name !== undefined) updates.name = c.name;
+    if (c.name !== undefined) updates.name = c.name.toUpperCase();
     if (c.email !== undefined) updates.email = c.email;
     if (c.phone !== undefined) updates.phone = c.phone;
     if (c.healthPlan !== undefined) updates.health_plan = c.healthPlan;
