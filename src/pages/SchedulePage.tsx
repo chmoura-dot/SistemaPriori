@@ -414,8 +414,8 @@ export const SchedulePage = () => {
     const isSaturday = dayOfWeek === 6;
     const limitHour = isSaturday ? 14 : 20;
 
-    return Array.from({ length: 12 * 6 + 1 }, (_, i) => {
-      const totalMinutes = 8 * 60 + i * 10;
+    return Array.from({ length: 12 * 2 + 1 }, (_, i) => {
+      const totalMinutes = 8 * 60 + i * 30;
       const hour = Math.floor(totalMinutes / 60);
       const minute = totalMinutes % 60;
       return `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
@@ -536,7 +536,7 @@ export const SchedulePage = () => {
   const getSlotCount = (start: string, end: string) => {
     const [h1, m1] = start.split(':').map(Number);
     const [h2, m2] = end.split(':').map(Number);
-    return Math.max(1, (h2 * 60 + m2 - (h1 * 60 + m1)) / 10);
+    return Math.max(0.5, (h2 * 60 + m2 - (h1 * 60 + m1)) / 30);
   };
 
   const StatusIcons = ({ appointment }: { appointment: Appointment }) => {
@@ -815,7 +815,9 @@ export const SchedulePage = () => {
                             a.date === date && 
                             a.roomId === room.id && 
                             a.mode === AttendanceMode.PRESENCIAL &&
-                            slot >= a.startTime && slot < a.endTime
+                            // Ajustado para capturar agendamentos que comecem em horários quebrados (ex: 08:10)
+                            // Se o agendamento começa ANTES do final deste slot de 30min e termina DEPOIS do início dele
+                            a.startTime < addMinutes(slot, 30) && a.endTime > slot
                           );
                           const customer = customers.find(c => c.id === appointment?.customerId);
                           const psychologist = psychologists.find(p => p.id === appointment?.psychologistId);
@@ -922,7 +924,7 @@ export const SchedulePage = () => {
                             a.date === day && 
                             (viewMode === 'psychologist' ? a.psychologistId === selectedPsychologistId : a.roomId === selectedRoom) && 
                             (viewMode === 'psychologist' ? true : a.mode === AttendanceMode.PRESENCIAL) &&
-                            slot >= a.startTime && slot < a.endTime
+                            a.startTime < addMinutes(slot, 30) && a.endTime > slot
                           );
                           const customer = customers.find(c => c.id === appointment?.customerId);
                           const psychologist = psychologists.find(p => p.id === appointment?.psychologistId);
@@ -947,13 +949,23 @@ export const SchedulePage = () => {
                                     else if (appointment.reminderSentAt) currentStatus = 'pending_sent';
 
                                     const slotCount = getSlotCount(appointment.startTime, appointment.endTime);
+                                    
+                                    // Cálculo do deslocamento inicial para agendamentos que não começam na "hora cheia" do slot
+                                    const [hS, mS] = appointment.startTime.split(':').map(Number);
+                                    const [hSlot, mSlot] = slot.split(':').map(Number);
+                                    const minutesOffset = (hS * 60 + mS) - (hSlot * 60 + mSlot);
+                                    const topOffset = (minutesOffset / 30) * 100;
+
                                     return (
                                       <div 
                                         className={cn(
-                                          "absolute top-0.5 left-0.5 right-0.5 border rounded-md p-1.5 flex flex-col justify-between transition-all z-20 shadow-sm overflow-hidden border-l-4 hover:shadow-md",
+                                          "absolute left-0.5 right-0.5 border rounded-md p-1.5 flex flex-col justify-between transition-all z-20 shadow-sm overflow-hidden border-l-4 hover:shadow-md",
                                           statusColors[currentStatus]
                                         )}
-                                        style={{ height: `calc(${slotCount * 100}% + ${slotCount - 1}px)` }}
+                                        style={{ 
+                                          height: `calc(${slotCount * 100}% + ${Math.floor(slotCount) - 1}px)`,
+                                          top: `calc(${topOffset}% + 2px)`
+                                        }}
                                       >
                                         <div className="flex justify-between items-start gap-1">
                                           <div className="flex flex-col min-w-0 flex-1">
