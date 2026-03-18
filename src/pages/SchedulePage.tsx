@@ -1077,10 +1077,10 @@ export const SchedulePage = () => {
       >
         <form id="schedule-form" onSubmit={handleSubmit} className="space-y-4">
           {/* 1. MODO */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Modo</label>
+          <div className="space-y-2">
+            <label className="text-sm font-bold text-zinc-500 uppercase tracking-widest">Modo de Atendimento</label>
             <select
-              className="w-full rounded-lg bg-white border border-zinc-200 px-4 py-2.5 text-sm text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/10 transition-all"
+              className="w-full rounded-xl bg-white border border-zinc-200 px-4 py-3 text-base text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/10 transition-all"
               value={formData.mode}
               onChange={(e) => setFormData({ ...formData, mode: e.target.value as AttendanceMode })}
               required
@@ -1092,14 +1092,14 @@ export const SchedulePage = () => {
           </div>
 
           {/* 2. PACIENTE */}
-          <div className="space-y-1.5 relative" ref={dropdownRef}>
-            <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Paciente</label>
+          <div className="space-y-2 relative" ref={dropdownRef}>
+            <label className="text-sm font-bold text-zinc-500 uppercase tracking-widest">Selecionar Paciente</label>
             <div className="relative">
               <div 
-                className="w-full rounded-lg bg-white border border-zinc-200 px-4 py-2.5 text-sm text-priori-navy flex items-center justify-between cursor-pointer focus-within:ring-2 focus-within:ring-priori-navy/10 transition-all"
+                className="w-full rounded-xl bg-white border border-zinc-200 px-4 py-3 text-base text-priori-navy flex items-center justify-between cursor-pointer focus-within:ring-2 focus-within:ring-priori-navy/10 transition-all"
                 onClick={() => setIsCustomerDropdownOpen(!isCustomerDropdownOpen)}
               >
-                <span className={cn(!formData.customerId && "text-zinc-400")}>
+                <span className={cn("font-medium", !formData.customerId && "text-zinc-400 font-normal")}>
                   {customers.find(c => c.id === formData.customerId)?.name || 'Selecione um paciente...'}
                 </span>
                 <ChevronDown size={16} className={cn("text-zinc-400 transition-transform", isCustomerDropdownOpen && "rotate-180")} />
@@ -1112,7 +1112,7 @@ export const SchedulePage = () => {
                       <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
                       <input
                         autoFocus
-                        className="w-full bg-white border border-zinc-200 rounded-lg pl-10 pr-4 py-2.5 text-sm text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/10"
+                        className="w-full bg-white border border-zinc-200 rounded-xl pl-10 pr-4 py-3 text-base text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/10"
                         placeholder="Digite o nome do paciente para buscar..."
                         value={customerSearch}
                         onChange={(e) => setCustomerSearch(e.target.value)}
@@ -1127,7 +1127,7 @@ export const SchedulePage = () => {
                           key={c.id}
                           type="button"
                           className={cn(
-                            "w-full text-left px-5 py-3.5 text-sm border-b border-zinc-50 last:border-0 hover:bg-priori-navy/5 hover:text-priori-navy transition-colors flex items-center justify-between group",
+                            "w-full text-left px-5 py-4 text-base border-b border-zinc-50 last:border-0 hover:bg-priori-navy/5 hover:text-priori-navy transition-colors flex items-center justify-between group",
                             formData.customerId === c.id && "bg-priori-navy/5 text-priori-navy font-bold"
                           )}
                           onClick={() => {
@@ -1144,8 +1144,8 @@ export const SchedulePage = () => {
                           }}
                         >
                           <div className="flex flex-col">
-                            <span className="text-sm uppercase tracking-tight">{c.name}</span>
-                            <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest mt-0.5 group-hover:text-priori-gold transition-colors">{c.healthPlan}</span>
+                            <span className="text-base font-bold uppercase tracking-tight">{c.name}</span>
+                            <span className="text-[11px] text-zinc-400 font-black uppercase tracking-widest mt-0.5 group-hover:text-priori-gold transition-colors">{c.healthPlan}</span>
                           </div>
                           {formData.customerId === c.id && <CheckCircle2 size={18} className="text-priori-navy shrink-0" />}
                         </button>
@@ -1165,10 +1165,10 @@ export const SchedulePage = () => {
           {formData.customerId && (
             <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
               {/* 3. PSICÓLOGO */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Psicólogo</label>
+              <div className="space-y-2">
+                <label className="text-sm font-bold text-zinc-500 uppercase tracking-widest">Psicólogo Responsável</label>
                 <select
-                  className="w-full rounded-lg bg-white border border-zinc-200 px-4 py-2.5 text-sm text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/10 transition-all"
+                  className="w-full rounded-xl bg-white border border-zinc-200 px-4 py-3 text-base text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/10 transition-all"
                   value={formData.psychologistId}
                   onChange={(e) => setFormData({ ...formData, psychologistId: e.target.value, startTime: '', endTime: '' })}
                   required
@@ -1187,10 +1187,10 @@ export const SchedulePage = () => {
                 <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
                   {/* 4. HORÁRIO */}
                   <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Hora Início</label>
+                    <div className="space-y-2">
+                      <label className="text-sm font-bold text-zinc-500 uppercase tracking-widest">Hora Início</label>
                       <select
-                        className="w-full rounded-lg bg-white border border-zinc-200 px-4 py-2.5 text-sm text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/10 transition-all"
+                        className="w-full rounded-xl bg-white border border-zinc-200 px-4 py-3 text-base text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/10 transition-all"
                         value={formData.startTime}
                         onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
                         required
@@ -1205,10 +1205,10 @@ export const SchedulePage = () => {
                         ))}
                       </select>
                     </div>
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Hora Fim</label>
+                    <div className="space-y-2">
+                      <label className="text-sm font-bold text-zinc-500 uppercase tracking-widest">Hora Fim</label>
                       <select
-                        className="w-full rounded-lg bg-white border border-zinc-200 px-4 py-2.5 text-sm text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/10 transition-all"
+                        className="w-full rounded-xl bg-white border border-zinc-200 px-4 py-3 text-base text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/10 transition-all"
                         value={formData.endTime}
                         onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
                         required
@@ -1225,10 +1225,10 @@ export const SchedulePage = () => {
                     <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
                       {/* 5. SALA (Preencial apenas) */}
                       {formData.mode === AttendanceMode.PRESENCIAL && (
-                        <div className="space-y-1.5">
-                          <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Sala</label>
+                        <div className="space-y-2">
+                          <label className="text-sm font-bold text-zinc-500 uppercase tracking-widest">Sala de Atendimento</label>
                           <select
-                            className="w-full rounded-lg bg-white border border-zinc-200 px-4 py-2.5 text-sm text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/10 transition-all"
+                            className="w-full rounded-xl bg-white border border-zinc-200 px-4 py-3 text-base text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/10 transition-all"
                             value={formData.roomId}
                             onChange={(e) => setFormData({ ...formData, roomId: e.target.value })}
                             required
@@ -1263,10 +1263,10 @@ export const SchedulePage = () => {
                                      <Check size={14} /> Atendimento Particular
                                   </p>
                                 </div>
-                                <div className="space-y-1.5">
-                                  <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Tipo de Atendimento</label>
+                                <div className="space-y-2">
+                                  <label className="text-sm font-bold text-zinc-500 uppercase tracking-widest">Tipo de Atendimento</label>
                                   <select
-                                    className="w-full rounded-lg bg-white border border-zinc-200 px-4 py-2.5 text-sm text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/10 transition-all"
+                                    className="w-full rounded-xl bg-white border border-zinc-200 px-4 py-3 text-base text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/10 transition-all"
                                     value={formData.type}
                                     onChange={(e) => setFormData({ ...formData, type: e.target.value as AppointmentType })}
                                     required
@@ -1287,10 +1287,10 @@ export const SchedulePage = () => {
                                      <Globe size={14} /> Convênio: {customer.healthPlan}
                                   </p>
                                 </div>
-                                <div className="space-y-1.5">
-                                  <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Atendimento / Código TUSS</label>
+                                <div className="space-y-2">
+                                  <label className="text-sm font-bold text-zinc-500 uppercase tracking-widest">Procedimento / Código TUSS</label>
                                   <select
-                                    className="w-full rounded-lg bg-white border border-zinc-200 px-4 py-2.5 text-sm text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/10 transition-all"
+                                    className="w-full rounded-xl bg-white border border-zinc-200 px-4 py-3 text-base text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/10 transition-all"
                                     value={formData.procedureCode}
                                     onChange={(e) => {
                                       const proc = plan?.procedures.find(p => p.code === e.target.value);
