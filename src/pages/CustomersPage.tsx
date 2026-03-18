@@ -252,6 +252,7 @@ export const CustomersPage = () => {
     };
 
     try {
+      console.log('Dados sendo enviados:', submissionData);
       if (editingCustomer) {
         await api.updateCustomer(editingCustomer.id, submissionData);
       } else {
@@ -259,8 +260,9 @@ export const CustomersPage = () => {
       }
       await loadData();
       setIsModalOpen(false);
-    } catch (error) {
-      alert('Erro ao salvar paciente');
+    } catch (error: any) {
+      console.error('Erro detalhado ao salvar paciente:', error);
+      alert('Erro ao salvar paciente: ' + (error.message || 'Erro desconhecido'));
     } finally {
       setIsSaving(false);
     }
