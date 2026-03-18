@@ -465,7 +465,7 @@ export const CustomersPage = () => {
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <div className="min-w-[120px]">
+                      <div className="min-w-30">
                         <p className="text-[11px] font-bold text-priori-navy truncate uppercase tracking-tight">{customer.healthPlan}</p>
                         <p className="text-[10px] text-priori-gold font-bold truncate uppercase">{psy?.name || 'Não atribuído'}</p>
                         <span className={cn(
