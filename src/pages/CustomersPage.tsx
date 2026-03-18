@@ -7,6 +7,7 @@ import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { Modal } from '../components/Modal';
 import { cn } from '../lib/utils';
+import { calcRepass } from '../lib/repassRules';
 
 export const CustomersPage = () => {
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -61,6 +62,18 @@ export const CustomersPage = () => {
   useEffect(() => {
     loadData();
   }, []);
+
+  // Calcular repasse automaticamente
+  useEffect(() => {
+    if (formData.healthPlan === HealthPlan.PARTICULAR && formData.customPrice) {
+      const psychologist = psychologists.find(p => p.id === formData.psychologistId);
+      const calculatedRepass = calcRepass(formData.customPrice, psychologist?.name);
+      
+      if (calculatedRepass !== formData.customRepassAmount) {
+        setFormData(prev => ({ ...prev, customRepassAmount: calculatedRepass }));
+      }
+    }
+  }, [formData.customPrice, formData.psychologistId, formData.healthPlan, psychologists]);
 
   const handleOpenModal = (customer?: Customer) => {
     if (customer) {
@@ -649,8 +662,9 @@ export const CustomersPage = () => {
                     type="number"
                     step="0.01"
                     value={formData.customRepassAmount || ''}
-                    onChange={(e) => setFormData({ ...formData, customRepassAmount: e.target.value ? Number(e.target.value) : undefined })}
-                    placeholder="Ex: 100"
+                    readOnly
+                    placeholder="Calculado automaticamente..."
+                    className="bg-zinc-50 cursor-not-allowed opacity-80"
                   />
                   <p className="col-span-full text-[10px] text-priori-gold font-medium uppercase tracking-wider">
                     * {formData.healthPlan === HealthPlan.PARTICULAR ? 'Valores específicos para este paciente particular' : 'Sobrescrita de valor do plano (Admin)'}
