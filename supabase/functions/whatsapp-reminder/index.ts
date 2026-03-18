@@ -1,8 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.7";
 
-const WHATSAPP_WEBHOOK_URL = Deno.env.get("WHATSAPP_WEBHOOK_URL");
-const EVOLUTION_API_KEY = Deno.env.get("EVOLUTION_API_KEY");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 const APP_URL = Deno.env.get("APP_URL") || "https://nucleo-priori.vercel.app";
@@ -10,6 +8,20 @@ const APP_URL = Deno.env.get("APP_URL") || "https://nucleo-priori.vercel.app";
 Deno.serve(async (req) => {
   try {
     const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
+
+    // 0. Buscar configurações da Z-API
+    const { data: settings, error: settingsError } = await supabase
+      .from('settings')
+      .select('zapi_url, zapi_token')
+      .single();
+
+    if (settingsError || !settings?.zapi_url) {
+      console.error("Configurações da Z-API não encontradas ou incompletas.");
+      return new Response(JSON.stringify({ error: "Z-API settings not configured" }), { status: 400 });
+    }
+
+    const ZAPI_URL = settings.zapi_url;
+    const ZAPI_TOKEN = settings.zapi_token;
 
     // 1. Buscar agendamentos que precisam de lembrete (Janela de 12h)
     const now = new Date();
@@ -59,24 +71,21 @@ Deno.serve(async (req) => {
 
         const message = `Olá *${patientName}*, aqui é da Núcleo Priori. Passando para lembrar da sua consulta com *${psychName}* no dia *${formattedDate}* às *${app.start_time}*.\n\nPor favor, confirme sua presença clicando no link abaixo:\n${confirmationLink}`;
 
-        // 2. Enviar via Webhook (n8n / Evolution API)
-        const response = await fetch(WHATSAPP_WEBHOOK_URL!, {
+        // 2. Enviar via Z-API
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json'
+        };
+        
+        if (ZAPI_TOKEN) {
+          headers['Client-Token'] = ZAPI_TOKEN;
+        }
+
+        const response = await fetch(`${ZAPI_URL}/send-text`, {
           method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json',
-            'apikey': EVOLUTION_API_KEY || ''
-          },
+          headers,
           body: JSON.stringify({
-            apiKey: EVOLUTION_API_KEY,
-            instanceName: "NucleoPriori",
-            id: app.id,
-            number: patientPhone,
-            patientName,
-            psychologistName: psychName,
-            date: formattedDate,
-            time: app.start_time,
-            message,
-            link: confirmationLink
+            phone: patientPhone,
+            message: message
           })
         });
 

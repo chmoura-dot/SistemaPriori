@@ -42,7 +42,9 @@ export const CustomersPage = () => {
     customPrice: undefined as number | undefined,
     customRepassAmount: undefined as number | undefined,
     particularBillingType: ParticularBillingType.SESSION,
-    birthDate: ''
+    birthDate: '',
+    amsPassword: '',
+    amsPasswordExpiry: ''
   });
 
   const loadData = async () => {
@@ -73,7 +75,9 @@ export const CustomersPage = () => {
         customPrice: customer.customPrice,
         customRepassAmount: customer.customRepassAmount,
         particularBillingType: customer.particularBillingType || ParticularBillingType.SESSION,
-        birthDate: customer.birthDate || ''
+        birthDate: customer.birthDate || '',
+        amsPassword: customer.amsPassword || '',
+        amsPasswordExpiry: customer.amsPasswordExpiry || ''
       });
     } else {
       setEditingCustomer(null);
@@ -87,7 +91,9 @@ export const CustomersPage = () => {
         customPrice: undefined,
         customRepassAmount: undefined,
         particularBillingType: ParticularBillingType.SESSION,
-        birthDate: ''
+        birthDate: '',
+        amsPassword: '',
+        amsPasswordExpiry: ''
       });
     }
     setIsModalOpen(true);
@@ -237,7 +243,9 @@ export const CustomersPage = () => {
     setIsSaving(true);
     const submissionData = {
       ...formData,
-      birthDate: formData.birthDate || null
+      birthDate: formData.birthDate || null,
+      amsPassword: formData.amsPassword || null,
+      amsPasswordExpiry: formData.amsPasswordExpiry || null
     };
 
     try {
@@ -554,6 +562,26 @@ export const CustomersPage = () => {
             />
           </div>
           
+          {formData.healthPlan === HealthPlan.AMS_PETROBRAS && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 bg-[#004b32]/5 border border-[#004b32]/10 rounded-xl">
+              <div className="col-span-full mb-1">
+                <h4 className="text-[10px] font-bold text-[#004b32] uppercase tracking-widest">Informações AMS Petrobras</h4>
+              </div>
+              <Input
+                label="Senha do Portal"
+                value={formData.amsPassword}
+                onChange={(e) => setFormData({ ...formData, amsPassword: e.target.value })}
+                placeholder="Digite a senha do portal"
+              />
+              <Input
+                label="Vencimento da Senha"
+                type="date"
+                value={formData.amsPasswordExpiry}
+                onChange={(e) => setFormData({ ...formData, amsPasswordExpiry: e.target.value })}
+              />
+            </div>
+          )}
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Plano de Saúde</label>

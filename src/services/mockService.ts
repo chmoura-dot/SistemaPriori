@@ -71,6 +71,7 @@ const seedData = () => {
     { 
       id: 'psy1', 
       name: 'Dra. Ana Beatriz', 
+      email: 'ana@priori.com',
       specialties: ['Neuropsicologia', 'Terapia Cognitivo-Comportamental'], 
       phone: '(11) 99999-1111',
       active: true,
@@ -83,6 +84,7 @@ const seedData = () => {
     { 
       id: 'psy2', 
       name: 'Dr. Ricardo Mello', 
+      email: 'ricardo@priori.com',
       specialties: ['Terapia Cognitivo-Comportamental', 'Psicologia Clínica'], 
       phone: '(11) 99999-2222',
       active: true,
@@ -94,6 +96,7 @@ const seedData = () => {
     { 
       id: 'psy3', 
       name: 'Dra. Juliana Costa', 
+      email: 'juliana@priori.com',
       specialties: ['Psicologia Infantil', 'Orientação Parental'], 
       phone: '(11) 99999-3333',
       active: true,
@@ -106,6 +109,7 @@ const seedData = () => {
     { 
       id: 'psy4', 
       name: 'Dr. Marcos Oliveira', 
+      email: 'marcos@priori.com',
       specialties: ['Terapia de Casal', 'Sexualidade Humana'], 
       phone: '(11) 99999-4444',
       active: true,
@@ -117,6 +121,7 @@ const seedData = () => {
     { 
       id: 'psy5', 
       name: 'Dra. Fernanda Lima', 
+      email: 'fernanda@priori.com',
       specialties: ['Psicologia Clínica', 'Psicanálise'], 
       phone: '(11) 99999-5555',
       active: true,
@@ -130,6 +135,7 @@ const seedData = () => {
     { 
       id: 'psy6', 
       name: 'Dr. Paulo Souza', 
+      email: 'paulo@priori.com',
       specialties: ['Avaliação Neuropsicológica', 'Reabilitação Cognitiva'], 
       phone: '(11) 99999-6666',
       active: true,
@@ -141,6 +147,7 @@ const seedData = () => {
     { 
       id: 'psy7', 
       name: 'Dra. Cláudia Mendes', 
+      email: 'claudia@priori.com',
       specialties: ['Terapia de Aceitação e Compromisso', 'Mindfulness'], 
       phone: '(11) 99999-7777',
       active: true,
@@ -201,7 +208,7 @@ const seedData = () => {
       name: 'Carla Souza', 
       email: 'carla@email.com', 
       phone: '(11) 95555-4444',
-      healthPlan: HealthPlan.PORTO_SEGURO,
+      healthPlan: HealthPlan.PORTO_SAUDE,
       psychologistId: 'psy4',
       status: CustomerStatus.ACTIVE, 
       notes: 'Atendimento de 30 min', 
@@ -932,5 +939,80 @@ export const mockService: AppService = {
       return a;
     });
     saveToStorage(STORAGE_KEYS.APPOINTMENTS, updatedAppointments);
+  },
+
+  updatePassword: async (_newPassword: string) => {
+    await delay(500);
+  },
+
+  getAppointmentsByRange: async (startDate: string, endDate: string) => {
+    await delay(300);
+    const appointments = getFromStorage<Appointment>(STORAGE_KEYS.APPOINTMENTS);
+    return appointments.filter(a => a.date >= startDate && a.date <= endDate);
+  },
+
+  getAppointmentsNeedingRenewal: async () => {
+    await delay(300);
+    const appointments = getFromStorage<Appointment>(STORAGE_KEYS.APPOINTMENTS);
+    return appointments.filter(a => a.needsRenewal);
+  },
+
+  deleteFutureAppointments: async (groupId: string, fromDate: string) => {
+    await delay(500);
+    const appointments = getFromStorage<Appointment>(STORAGE_KEYS.APPOINTMENTS);
+    saveToStorage(STORAGE_KEYS.APPOINTMENTS, appointments.filter(a => 
+      !(a.recurrenceGroupId === groupId && a.date >= fromDate)
+    ));
+  },
+
+  // Repasses
+  getRepasses: async () => {
+    await delay(300);
+    const repasses = localStorage.getItem('priori_repasses');
+    return repasses ? JSON.parse(repasses) : [];
+  },
+  createRepasse: async (data) => {
+    await delay(500);
+    const repasses = await mockService.getRepasses();
+    const newRepasse = {
+      ...data,
+      id: Math.random().toString(36).substr(2, 9),
+      createdAt: new Date().toISOString(),
+    };
+    localStorage.setItem('priori_repasses', JSON.stringify([...repasses, newRepasse]));
+    return newRepasse;
+  },
+  updateRepasse: async (id, data) => {
+    await delay(500);
+    const repasses = await mockService.getRepasses();
+    const index = repasses.findIndex((r: any) => r.id === id);
+    if (index === -1) throw new Error('Repasse not found');
+    const updated = { ...repasses[index], ...data };
+    repasses[index] = updated;
+    localStorage.setItem('priori_repasses', JSON.stringify(repasses));
+    return updated;
+  },
+  deleteRepasse: async (id) => {
+    await delay(500);
+    const repasses = await mockService.getRepasses();
+    localStorage.setItem('priori_repasses', JSON.stringify(repasses.filter((r: any) => r.id !== id)));
+  },
+
+  // Settings
+  getSettings: async () => {
+    await delay(200);
+    const settings = localStorage.getItem('priori_settings');
+    return settings ? JSON.parse(settings) : {
+      id: 'settings1',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+  },
+  updateSettings: async (id, data) => {
+    await delay(500);
+    const settings = await mockService.getSettings();
+    const updated = { ...settings, ...data, updatedAt: new Date().toISOString() };
+    localStorage.setItem('priori_settings', JSON.stringify(updated));
+    return updated;
   },
 };

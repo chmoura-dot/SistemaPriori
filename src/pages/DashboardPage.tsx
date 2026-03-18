@@ -5,7 +5,10 @@ import {
   TrendingUp,
   TrendingDown,
   ArrowUpRight,
-  ShieldCheck
+  ShieldCheck,
+  AlertTriangle,
+  ChevronRight,
+  Lock
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 import { api } from '../services/api';
@@ -184,6 +187,17 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
 
   const MODALITY_COLORS = ['#1a365d', '#d4af37']; // Priori Navy and Priori Gold
 
+  const amsAlerts = customers.filter(c => {
+    if (c.healthPlan !== HealthPlan.AMS_PETROBRAS || !c.amsPasswordExpiry || c.status !== CustomerStatus.ACTIVE) return false;
+    
+    const expiry = new Date(c.amsPasswordExpiry + 'T12:00:00');
+    const today = new Date();
+    const diffTime = expiry.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    return diffDays <= 7;
+  });
+
   return (
     <div className="space-y-8 min-h-[400px]">
       {isLoading ? (
@@ -192,6 +206,63 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
         </div>
       ) : (
         <>
+          {amsAlerts.length > 0 && (
+            <div className="space-y-3">
+              {amsAlerts.map(customer => {
+                const expiry = new Date(customer.amsPasswordExpiry! + 'T12:00:00');
+                const today = new Date();
+                const diffTime = expiry.getTime() - today.getTime();
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                const isExpired = diffDays <= 0;
+
+                return (
+                  <div 
+                    key={customer.id} 
+                    className={cn(
+                      "flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 rounded-2xl border animate-in fade-in slide-in-from-top-4 duration-500",
+                      isExpired 
+                        ? "bg-red-50 border-red-100 text-red-900" 
+                        : "bg-amber-50 border-amber-100 text-amber-900"
+                    )}
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className={cn(
+                        "p-3 rounded-xl",
+                        isExpired ? "bg-red-100 text-red-600" : "bg-amber-100 text-amber-600"
+                      )}>
+                        <Lock size={20} />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-bold text-sm">Vencimento de Senha AMS</h4>
+                          <span className={cn(
+                            "px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest",
+                            isExpired ? "bg-red-600 text-white" : "bg-amber-600 text-white"
+                          )}>
+                            {isExpired ? 'Expirada' : `Vence em ${diffDays} ${diffDays === 1 ? 'dia' : 'dias'}`}
+                          </span>
+                        </div>
+                        <p className="text-xs opacity-80 mt-0.5">
+                          A senha do portal AMS do paciente <span className="font-bold">{customer.name}</span> {isExpired ? 'expirou em' : 'vencerá em'} {new Date(customer.amsPasswordExpiry! + 'T12:00:00').toLocaleDateString('pt-BR')}.
+                        </p>
+                      </div>
+                    </div>
+                    <button 
+                      onClick={() => onNavigate('/clientes')}
+                      className={cn(
+                        "mt-4 sm:mt-0 flex items-center gap-2 text-xs font-bold uppercase tracking-widest transition-all hover:translate-x-1",
+                        isExpired ? "text-red-600" : "text-amber-600"
+                      )}
+                    >
+                      Atualizar no Cadastro
+                      <ChevronRight size={14} />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
           <div>
             <h2 className="text-2xl font-bold text-priori-navy">Visão Geral</h2>
             <p className="text-zinc-500">Acompanhe o desempenho da clínica em tempo real.</p>

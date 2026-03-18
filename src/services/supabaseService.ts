@@ -75,6 +75,8 @@ function toCustomer(row: any): Customer {
     customRepassAmount: row.custom_repass_amount ?? undefined,
     particularBillingType: row.particular_billing_type ?? undefined,
     birthDate: row.birth_date ?? undefined,
+    amsPassword: row.ams_password ?? undefined,
+    amsPasswordExpiry: row.ams_password_expiry ?? undefined,
     createdAt: row.created_at,
   };
 }
@@ -544,6 +546,8 @@ export const supabaseService: AppService = {
           custom_repass_amount: c.customRepassAmount ?? null,
           particular_billing_type: c.particularBillingType ?? null,
           birth_date: c.birthDate ?? null,
+          ams_password: c.amsPassword ?? null,
+          ams_password_expiry: c.amsPasswordExpiry ?? null,
         })
         .select()
         .single()
@@ -565,6 +569,8 @@ export const supabaseService: AppService = {
     if (c.customRepassAmount !== undefined) updates.custom_repass_amount = c.customRepassAmount;
     if (c.particularBillingType !== undefined) updates.particular_billing_type = c.particularBillingType;
     if (c.birthDate !== undefined) updates.birth_date = c.birthDate;
+    if (c.amsPassword !== undefined) updates.ams_password = c.amsPassword;
+    if (c.amsPasswordExpiry !== undefined) updates.ams_password_expiry = c.amsPasswordExpiry;
 
     const row = await throwOnError(
       supabase.from('customers').update(updates).eq('id', id).select().single()

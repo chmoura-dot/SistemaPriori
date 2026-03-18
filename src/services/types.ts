@@ -88,6 +88,8 @@ export interface Customer {
   customRepassAmount?: number;
   particularBillingType?: ParticularBillingType;
   birthDate?: string;
+  amsPassword?: string;
+  amsPasswordExpiry?: string;
   createdAt: string;
   // Metrics
   totalAppointmentsPerformed?: number;
