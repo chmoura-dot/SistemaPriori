@@ -246,7 +246,9 @@ export const CustomersPage = () => {
       name: formData.name.toUpperCase(),
       birthDate: formData.birthDate || null,
       amsPassword: formData.amsPassword || null,
-      amsPasswordExpiry: formData.amsPasswordExpiry || null
+      amsPasswordExpiry: formData.amsPasswordExpiry || null,
+      customPrice: formData.customPrice !== undefined ? Number(formData.customPrice) : null,
+      customRepassAmount: formData.customRepassAmount !== undefined ? Number(formData.customRepassAmount) : null
     };
 
     try {
