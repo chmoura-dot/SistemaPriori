@@ -16,6 +16,7 @@ import { RepassePage } from './pages/RepassePage';
 import { CapacityPage } from './pages/CapacityPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { PendingConfirmationsPage } from './pages/PendingConfirmationsPage';
+import { AmsPasswordsPage } from './pages/AmsPasswordsPage';
 import { RenewalAlert } from './components/RenewalAlert';
 import { api } from './services/api';
 import { cn } from './lib/utils';
@@ -88,6 +89,8 @@ export default function App() {
         return <SettingsPage />;
       case '/pendentes':
         return <PendingConfirmationsPage />;
+      case '/senhas-ams':
+        return <AmsPasswordsPage />;
       default:
         return <DashboardPage onNavigate={navigate} />;
     }

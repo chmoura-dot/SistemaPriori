@@ -15,7 +15,8 @@ import {
   FileText,
   ArrowRightLeft,
   Blocks,
-  ClipboardList
+  ClipboardList,
+  KeySquare
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { api } from '../services/api';
@@ -23,6 +24,7 @@ import { api } from '../services/api';
 const menuItems = [
   { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
   { icon: CalendarIcon, label: 'Agenda', path: '/agenda' },
+  { icon: KeySquare, label: 'Senhas AMS', path: '/senhas-ams' },
   { icon: ClipboardList, label: 'Pendentes', path: '/pendentes' },
   { icon: Users, label: 'Pacientes', path: '/clientes' },
   { icon: Package, label: 'Planos', path: '/planos' },
