@@ -13,10 +13,19 @@ Deno.serve(async (req) => {
     const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
 
     // 1. Calcular a data de hoje para buscar a agenda (Horário de Brasília)
-    const today = new Date();
-    today.setHours(today.getHours() - 3);
-    const todayStr = today.toISOString().split('T')[0];
-    const displayDate = todayStr.split('-').reverse().join('/');
+    // Usamos Intl para garantir o fuso correto de SP independente do servidor
+    const brDate = new Intl.DateTimeFormat('pt-BR', {
+      timeZone: 'America/Sao_Paulo',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(new Date());
+    
+    const [day, month, year] = brDate.split('/');
+    const todayStr = `${year}-${month}-${day}`;
+    const displayDate = brDate;
+
+    console.log(`[DailyAgenda] Processando agenda para: ${todayStr} (Data local BR)`);
 
     // 2. Buscar psicólogos ativos que têm e-mail configurado
     const { data: psychologists, error: psychError } = await supabase

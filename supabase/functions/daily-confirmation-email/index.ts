@@ -5,7 +5,7 @@ import { Resend } from "npm:resend@3.2.0";
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-const SITE_URL = Deno.env.get("SITE_URL") || "https://nucleopriori.com.br";
+const SITE_URL = Deno.env.get("SITE_URL") || "https://sistema.nucleopriori.com.br";
 
 const resend = new Resend(RESEND_API_KEY);
 
@@ -14,10 +14,18 @@ Deno.serve(async (req) => {
     const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
 
     // 1. Horário atual (Brasília) para pegar a data de hoje
-    const today = new Date();
-    today.setHours(today.getHours() - 3);
-    const todayStr = today.toISOString().split('T')[0];
-    const displayDate = todayStr.split('-').reverse().join('/');
+    const brDate = new Intl.DateTimeFormat('pt-BR', {
+      timeZone: 'America/Sao_Paulo',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(new Date());
+    
+    const [day, month, year] = brDate.split('/');
+    const todayStr = `${year}-${month}-${day}`;
+    const displayDate = brDate;
+
+    console.log(`[DailyConfirmation] Processando confirmações para: ${todayStr} (Data local BR)`);
 
     // 2. Buscar psicólogos ativos com e-mail configurado
     const { data: psychologists, error: psychError } = await supabase
@@ -81,10 +89,11 @@ Deno.serve(async (req) => {
         const lastApp = [...appointments].sort((a, b) => b.end_time.localeCompare(a.end_time))[0];
         const [lastH, lastM] = lastApp.end_time.split(':').map(Number);
         
-        const lastAppDate = new Date(today);
-        lastAppDate.setHours(lastH, lastM, 0, 0);
+        // Para calcular a diferença de tempo, precisamos de um objeto Date no fuso de Brasília
+        const nowInBrasilia = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
         
-        const nowInBrasilia = new Date(today); // today já está ajustada para Brasília
+        const lastAppDate = new Date(nowInBrasilia);
+        lastAppDate.setHours(lastH, lastM, 0, 0);
         
         // Diferença em milissegundos
         const diffMinutes = (nowInBrasilia.getTime() - lastAppDate.getTime()) / (1000 * 60);
@@ -142,7 +151,7 @@ Deno.serve(async (req) => {
           <h2 style="color: #1a365d;">Confirmação de Atendimentos: ${displayDate}</h2>
           <p>Olá, <strong>${psy.name}</strong>!</p>
           <p>Você realizou sessões hoje e notamos que <strong>${pendingAppointments.length}</strong> delas ainda não tiveram a presença confirmada no Sistema Priori.</p>
-          <p>Por favor, use o botão abaixo para confirmar as presenças ou eventuais faltas (não é necessário login):.</p>
+          <p>Por favor, use o botão abaixo para confirmar as presenças ou eventuais faltas (não é necessário login):</p>
           
           <div style="margin: 25px 0; text-align: center;">
             <a href="${magicLink}" style="background-color: #9d174d; color: #ffffff; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block; font-size: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">Confirmar Minha Agenda</a>

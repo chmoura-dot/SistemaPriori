@@ -13,11 +13,19 @@ Deno.serve(async (req) => {
     const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
 
     // 1. Calcular a data de hoje para buscar a agenda (Horário de Brasília)
-    const today = new Date();
-    // Ajuste para Horário de Brasília (UTC-3)
-    const brDate = new Date(today.toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
-    const todayStr = brDate.toISOString().split('T')[0];
-    const displayDate = todayStr.split('-').reverse().join('/');
+    // Usamos Intl para garantir o fuso correto de SP independente do servidor
+    const brDateStr = new Intl.DateTimeFormat('pt-BR', {
+      timeZone: 'America/Sao_Paulo',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(new Date());
+    
+    const [day, month, year] = brDateStr.split('/');
+    const todayStr = `${year}-${month}-${day}`;
+    const displayDate = brDateStr;
+
+    console.log(`[ClinicSummary] Processando resumo para: ${todayStr} (Data local BR)`);
 
     // 2. Buscar todos os agendamentos ativos de hoje, incluindo dados de clientes, psicólogos e salas
     const { data: appointments, error: appError } = await supabase

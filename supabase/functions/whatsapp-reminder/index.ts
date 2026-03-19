@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.7";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-const APP_URL = Deno.env.get("APP_URL") || "https://nucleo-priori.vercel.app";
+const APP_URL = Deno.env.get("APP_URL") || "https://sistema.nucleopriori.com.br";
 
 Deno.serve(async (req) => {
   try {
@@ -23,9 +23,12 @@ Deno.serve(async (req) => {
     const ZAPI_URL = settings.zapi_url;
     const ZAPI_TOKEN = settings.zapi_token;
 
-    // 1. Buscar agendamentos que precisam de lembrete (Janela de 12h)
-    const now = new Date();
-    const dateLimit = new Date(now.getTime() + 48 * 60 * 60 * 1000).toISOString().split('T')[0];
+    // 1. Buscar agendamentos de HOJE que precisam de lembrete
+    // Usamos Intl para garantir o fuso correto de SP independente do servidor
+    const brNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
+    const todayStr = brNow.toISOString().split('T')[0];
+
+    console.log(`[WhatsAppReminder] Processando lembretes para o dia: ${todayStr} (Data local BR)`);
 
     const { data: appointments, error } = await supabase
       .from('appointments')
@@ -36,50 +39,45 @@ Deno.serve(async (req) => {
         customer:customers (name, phone),
         psychologist:psychologists (name)
       `)
+      .eq('date', todayStr)
+      .eq('status', 'active')
       .eq('confirmation_status', 'pending')
-      .is('reminder_sent_at', null)
-      .gte('date', now.toISOString().split('T')[0])
-      .lte('date', dateLimit);
+      .is('reminder_sent_at', null);
 
     if (error) throw error;
 
     const results = [];
 
     for (const app of (appointments || [])) {
+      // Como o cron roda às 06:00 BRT, processamos todos os agendamentos do dia de hoje
       const [year, month, day] = app.date.split('-').map(Number);
-      const [hours, minutes] = app.start_time.split(':').map(Number);
-      const appDateTime = new Date(year, month - 1, day, hours, minutes);
       
-      const diffMs = appDateTime.getTime() - now.getTime();
-      const hoursDiff = diffMs / (1000 * 60 * 60);
+      const customer = Array.isArray(app.customer) ? app.customer[0] : app.customer;
+      const psychologist = Array.isArray(app.psychologist) ? app.psychologist[0] : app.psychologist;
 
-      // Janela de 11h a 13h (para garantir captura caso o cron demore um pouco)
-      if (hoursDiff >= 11 && hoursDiff <= 13) {
-        const customer = Array.isArray(app.customer) ? app.customer[0] : app.customer;
-        const psychologist = Array.isArray(app.psychologist) ? app.psychologist[0] : app.psychologist;
+      if (!customer?.phone) {
+        results.push({ id: app.id, status: "skipped", reason: "no_phone" });
+        continue;
+      }
 
-        if (!customer?.phone) {
-          results.push({ id: app.id, status: "skipped", reason: "no_phone" });
-          continue;
-        }
+      const patientName = customer.name || "Paciente";
+      const patientPhone = customer.phone.replace(/\D/g, "");
+      const psychName = psychologist?.name || "Psicólogo";
+      const formattedDate = `${day.toString().padStart(2, '0')}/${month.toString().padStart(2, '0')}`;
+      const confirmationLink = `${APP_URL}/confirmacao/${app.id}`;
 
-        const patientName = customer.name || "Paciente";
-        const patientPhone = customer.phone.replace(/\D/g, "");
-        const psychName = psychologist?.name || "Psicólogo";
-        const formattedDate = `${day.toString().padStart(2, '0')}/${month.toString().padStart(2, '0')}`;
-        const confirmationLink = `${APP_URL}/confirmacao/${app.id}`;
+      const message = `Olá *${patientName}*, aqui é da Núcleo Priori. Passando para lembrar da sua consulta com *${psychName}* hoje, dia *${formattedDate}* às *${app.start_time}*.\n\nPor favor, confirme sua presença clicando no link abaixo:\n${confirmationLink}`;
 
-        const message = `Olá *${patientName}*, aqui é da Núcleo Priori. Passando para lembrar da sua consulta com *${psychName}* no dia *${formattedDate}* às *${app.start_time}*.\n\nPor favor, confirme sua presença clicando no link abaixo:\n${confirmationLink}`;
+      // 2. Enviar via Z-API
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json'
+      };
+      
+      if (ZAPI_TOKEN) {
+        headers['Client-Token'] = ZAPI_TOKEN;
+      }
 
-        // 2. Enviar via Z-API
-        const headers: Record<string, string> = {
-          'Content-Type': 'application/json'
-        };
-        
-        if (ZAPI_TOKEN) {
-          headers['Client-Token'] = ZAPI_TOKEN;
-        }
-
+      try {
         const response = await fetch(`${ZAPI_URL}/send-text`, {
           method: 'POST',
           headers,
@@ -99,6 +97,8 @@ Deno.serve(async (req) => {
         } else {
           results.push({ id: app.id, status: "error", code: response.status });
         }
+      } catch (sendError) {
+        results.push({ id: app.id, status: "fetch_error", error: sendError.message });
       }
     }
 
