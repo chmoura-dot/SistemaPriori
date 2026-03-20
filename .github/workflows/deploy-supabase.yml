@@ -8,6 +8,7 @@ on:
     paths:
       - 'supabase/functions/**'
       - '.github/workflows/deploy-supabase.yml'
+  workflow_dispatch:
 
 jobs:
   deploy:
