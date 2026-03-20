@@ -43,8 +43,7 @@ function generateRepassePDF(
     const plan = plans.find(p => p.name.toUpperCase() === (customer?.healthPlan ?? '').toUpperCase());
     const procedure = plan?.procedures?.find(proc => proc.type === app?.type);
     const gross = app?.customPrice ?? customer?.customPrice ?? procedure?.price ?? 0;
-    const fixedRepass = app?.customRepassAmount ?? customer?.customRepassAmount ?? procedure?.repassAmount ?? 0;
-    const repassVal = calcRepass(gross, psy?.name, fixedRepass);
+    const repassVal = calcRepass(gross, psy);
     return { app, customer, procedure, repassVal };
   });
 
@@ -236,8 +235,7 @@ export const RepassePage = () => {
           const procedure = plan?.procedures?.find(proc => proc.type === app?.type);
           const gross = app?.customPrice ?? customer?.customPrice ?? procedure?.price ?? 0;
           const psy = psychologists.find(p => p.id === psyId);
-          const fixedRepass = app?.customRepassAmount ?? customer?.customRepassAmount ?? procedure?.repassAmount ?? 0;
-          total += calcRepass(gross, psy?.name, fixedRepass);
+          total += calcRepass(gross, psy);
         });
 
         groups.push({ psyId, batch, appIds, total });

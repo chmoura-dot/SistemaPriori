@@ -32,6 +32,8 @@ function toPsychologist(row: any): Psychologist {
     email: row.email ?? '',
     active: row.active,
     availability: row.availability ?? [],
+    repassRate: row.repass_rate,
+    repassFixedAmount: row.repass_fixed_amount,
   };
 }
 
@@ -279,6 +281,8 @@ export const supabaseService: AppService = {
           phone: p.phone,
           active: p.active,
           availability: p.availability,
+          repass_rate: p.repassRate,
+          repass_fixed_amount: p.repassFixedAmount,
         })
         .select()
         .single()
@@ -294,6 +298,8 @@ export const supabaseService: AppService = {
     if (p.phone !== undefined) updates.phone = p.phone;
     if (p.active !== undefined) updates.active = p.active;
     if (p.availability !== undefined) updates.availability = p.availability;
+    if (p.repassRate !== undefined) updates.repass_rate = p.repassRate;
+    if (p.repassFixedAmount !== undefined) updates.repass_fixed_amount = p.repassFixedAmount;
 
     const row = await throwOnError(
       supabase.from('psychologists').update(updates).eq('id', id).select().single()

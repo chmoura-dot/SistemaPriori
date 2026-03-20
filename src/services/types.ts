@@ -61,6 +61,8 @@ export interface Psychologist {
   phone: string;
   active: boolean;
   availability: PsychologistAvailability[];
+  repassRate?: number;
+  repassFixedAmount?: number;
 }
 
 export interface Room {

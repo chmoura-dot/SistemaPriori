@@ -82,8 +82,7 @@ export const FinancialPage = () => {
     if (isOneTime && !firstInGroup) return { amount: 0, repass: 0 };
     const amount = app.customPrice ?? customer?.customPrice ?? procedure?.price ?? 0;
     const psy = psychologists.find(p => p.id === app.psychologistId);
-    const fixedRepass = app.customRepassAmount ?? customer?.customRepassAmount ?? procedure?.repassAmount ?? 0;
-    const repass = calcRepass(amount, psy?.name, fixedRepass);
+    const repass = calcRepass(amount, psy);
     return { amount, repass };
   };
 

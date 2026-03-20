@@ -1,32 +1,31 @@
 /**
- * Regras especiais de repasse por psicólogo.
- *
- * Michelly Monteiro: repasse = valor bruto × 94% (desconto de 6%)
- * Demais psicólogos: repasse = valor bruto × 50%
+ * Regras de repasse dinâmicas baseadas nas configurações do psicólogo no banco de dados.
  */
+import { Psychologist } from '../services/types';
 
-/** Percentual retido da clínica sobre o valor bruto para Michelly */
-const MICHELLY_REPASS_RATE = 0.94; // bruto - 6%
-
-/** Percentual retido da clínica para os demais psicólogos */
-const DEFAULT_REPASS_RATE = 0.50; // 50%
+/** Percentual padrão de repasse (50%) caso não esteja definido no banco */
+const DEFAULT_REPASS_RATE = 0.50;
 
 /**
  * Retorna o valor de repasse correto para um atendimento.
  *
  * @param grossAmount  Valor bruto do atendimento
- * @param psychologistName  Nome do psicólogo responsável
- * @param fixedRepass  (Opcional) Valor de repasse fixo - se fornecido e não houver regra especial, pode ser usado
+ * @param psychologist Objeto do psicólogo com suas regras de repasse
  */
 export function calcRepass(
   grossAmount: number,
-  psychologistName: string | undefined,
-  fixedRepass?: number
+  psychologist: Psychologist | undefined
 ): number {
-  if (psychologistName?.toLowerCase().includes('michelly')) {
-    return grossAmount * MICHELLY_REPASS_RATE;
+  if (!psychologist) {
+    return grossAmount * DEFAULT_REPASS_RATE;
   }
-  
-  // Regra padrão de 50% para todos os outros
-  return grossAmount * DEFAULT_REPASS_RATE;
+
+  // Se houver um valor fixo definido, ele tem prioridade
+  if (psychologist.repassFixedAmount !== undefined && psychologist.repassFixedAmount !== null && psychologist.repassFixedAmount > 0) {
+    return psychologist.repassFixedAmount;
+  }
+
+  // Caso contrário, usa o percentual (rate) definido ou o padrão
+  const rate = psychologist.repassRate ?? DEFAULT_REPASS_RATE;
+  return grossAmount * rate;
 }

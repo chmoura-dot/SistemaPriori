@@ -23,7 +23,9 @@ export const PsychologistsPage = () => {
     specialties: [] as string[],
     phone: '',
     active: true,
-    availability: [] as PsychologistAvailability[]
+    availability: [] as PsychologistAvailability[],
+    repassRate: 0.50,
+    repassFixedAmount: undefined as number | undefined
   });
 
   const [newSpecialty, setNewSpecialty] = useState('');
@@ -48,7 +50,9 @@ export const PsychologistsPage = () => {
         specialties: psy.specialties || [],
         phone: psy.phone || '',
         active: psy.active,
-        availability: psy.availability || []
+        availability: psy.availability || [],
+        repassRate: psy.repassRate ?? 0.50,
+        repassFixedAmount: psy.repassFixedAmount
       });
     } else {
       setEditingPsychologist(null);
@@ -58,7 +62,9 @@ export const PsychologistsPage = () => {
         specialties: [],
         phone: '',
         active: true,
-        availability: []
+        availability: [],
+        repassRate: 0.50,
+        repassFixedAmount: undefined
       });
     }
     setIsModalOpen(true);
@@ -325,6 +331,41 @@ export const PsychologistsPage = () => {
                   <option value="false">Inativo</option>
                 </select>
               </div>
+            </div>
+
+            <div className="p-4 bg-zinc-50 rounded-2xl border border-zinc-100 space-y-4">
+              <p className="text-[10px] font-bold text-priori-navy uppercase tracking-widest">Regras de Repasse</p>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Percentual (%)</label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      step="0.01"
+                      className="w-full bg-white border border-zinc-100 rounded-xl px-4 py-2 text-sm text-priori-navy focus:outline-none"
+                      value={formData.repassRate * 100}
+                      onChange={(e) => setFormData({ ...formData, repassRate: parseFloat(e.target.value) / 100 })}
+                    />
+                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-400 text-xs">%</span>
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Valor Fixo (Opcional)</label>
+                  <div className="relative">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400 text-xs">R$</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      className="w-full bg-white border border-zinc-100 rounded-xl pl-9 pr-4 py-2 text-sm text-priori-navy focus:outline-none"
+                      value={formData.repassFixedAmount || ''}
+                      onChange={(e) => setFormData({ ...formData, repassFixedAmount: e.target.value ? parseFloat(e.target.value) : undefined })}
+                      placeholder="0,00"
+                    />
+                  </div>
+                </div>
+              </div>
+              <p className="text-[9px] text-zinc-400 italic">* Se o valor fixo for preenchido, ele terá prioridade sobre o percentual.</p>
             </div>
 
             <div className="space-y-3">
