@@ -98,6 +98,13 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
 
   const appsRealizados = appointments.filter(app => app.confirmedPsychologist || isCanceledButBilled(app));
   const appsPrevistos = appointments.filter(app => !app.confirmedPsychologist && app.status !== AppointmentStatus.CANCELED);
+  
+  // KPIs de Produtividade
+  const totalAppsScheduled = appointments.length;
+  const totalAppsCanceled = appointments.filter(app => app.status === AppointmentStatus.CANCELED).length;
+  const totalNoShows = appointments.filter(app => app.status === AppointmentStatus.CANCELED && app.confirmationStatus === 'declined').length;
+  const cancelationRate = totalAppsScheduled > 0 ? (totalAppsCanceled / totalAppsScheduled) * 100 : 0;
+  const attendanceRate = totalAppsScheduled > 0 ? (appsRealizados.length / totalAppsScheduled) * 100 : 0;
 
   const revenueRealizado = calculateRevenue(appsRealizados) + subscriptionRevenue;
   const revenuePrevisto = calculateRevenue(appsPrevistos);
@@ -108,9 +115,9 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
 
   const stats = [
     { label: 'Pacientes Ativos', value: customers.filter(c => c.status === CustomerStatus.ACTIVE).length, icon: Users, color: 'text-priori-navy', bg: 'bg-priori-navy/10', path: '/clientes' },
-    { label: 'Faturamento Realizado', value: `R$ ${revenueRealizado.toLocaleString()}`, icon: TrendingUp, color: 'text-emerald-500', bg: 'bg-emerald-500/10', path: '/financeiro' },
-    { label: 'Faturamento Previsto', value: `R$ ${totalGeralPrevisto.toLocaleString()}`, icon: Activity, color: 'text-priori-gold', bg: 'bg-priori-gold/10', path: '/financeiro' },
-    { label: 'Resultado Líquido Atual', value: `R$ ${netProfit.toLocaleString()}`, icon: ShieldCheck, color: netProfit >= 0 ? 'text-priori-gold' : 'text-red-500', bg: netProfit >= 0 ? 'bg-priori-gold/10' : 'bg-red-500/10', path: '/despesas' },
+    { label: 'Faturamento Realizado', value: `R$ ${revenueRealizado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, icon: TrendingUp, color: 'text-emerald-500', bg: 'bg-emerald-500/10', path: '/financeiro' },
+    { label: 'Taxa de Comparecimento', value: `${attendanceRate.toFixed(1)}%`, icon: ShieldCheck, color: 'text-priori-gold', bg: 'bg-priori-gold/10', path: '/agenda' },
+    { label: 'Taxa de Cancelamentos', value: `${cancelationRate.toFixed(1)}%`, icon: AlertTriangle, color: 'text-red-500', bg: 'bg-red-500/10', path: '/agenda' },
   ];
 
   // Summaries
@@ -272,17 +279,20 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
             {stats.map((stat) => (
               <div 
                 key={stat.label} 
-                className="glass-card p-6 rounded-[2.5rem] btn-premium group"
+                className="bg-white border border-zinc-100 p-6 rounded-2xl relative overflow-hidden group shadow-sm cursor-pointer hover:border-priori-gold/30 transition-all"
                 onClick={() => stat.path && onNavigate(stat.path)}
               >
-                <div className="flex items-center justify-between mb-4">
-                  <div className={cn("p-4 rounded-3xl", stat.bg)}>
-                    <stat.icon size={24} className={stat.color} />
-                  </div>
-                  <ArrowUpRight size={18} className="text-zinc-300 group-hover:text-priori-gold transition-colors" />
+                <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                  <stat.icon size={80} className={stat.color} />
                 </div>
-                <p className="text-zinc-400 text-xs font-bold uppercase tracking-widest">{stat.label}</p>
-                <h3 className="text-2xl font-bold text-priori-navy mt-1">{stat.value}</h3>
+                <div className="flex items-center justify-between mb-4">
+                  <div className={cn("p-3 rounded-xl", stat.bg)}>
+                    <stat.icon size={20} className={stat.color} />
+                  </div>
+                  <ArrowUpRight size={16} className="text-zinc-300 group-hover:text-priori-gold transition-colors" />
+                </div>
+                <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1">{stat.label}</p>
+                <h3 className="text-2xl font-bold text-priori-navy">{stat.value}</h3>
               </div>
             ))}
           </div>
