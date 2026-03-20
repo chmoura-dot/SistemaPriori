@@ -57,6 +57,22 @@ export const CustomersPage = () => {
       ]);
       setCustomers(c || []);
       setPsychologists(p || []);
+      
+      // Verificar se há uma conversão pendente da Fila de Espera
+      const pendingConversion = localStorage.getItem('pending_conversion');
+      if (pendingConversion) {
+        try {
+          const data = JSON.parse(pendingConversion);
+          setFormData(prev => ({
+            ...prev,
+            name: data.name || '',
+            phone: data.phone || '',
+            psychologistId: data.psychologistId || p[0]?.id || ''
+          }));
+          setIsModalOpen(true);
+          localStorage.removeItem('pending_conversion');
+        } catch (e) {}
+      }
     } catch (error: any) {
       console.error('Erro ao carregar dados:', error);
       alert('Erro ao carregar a página de pacientes: ' + (error.message || 'Erro desconhecido. Tente recarregar a página.'));
@@ -67,23 +83,7 @@ export const CustomersPage = () => {
 
   useEffect(() => {
     loadData();
-    
-    // Verificar se há uma conversão pendente da Fila de Espera
-    const pendingConversion = localStorage.getItem('pending_conversion');
-    if (pendingConversion) {
-      try {
-        const data = JSON.parse(pendingConversion);
-        setFormData(prev => ({
-          ...prev,
-          name: data.name || '',
-          phone: data.phone || '',
-          psychologistId: data.psychologistId || psychologists[0]?.id || ''
-        }));
-        setIsModalOpen(true);
-        localStorage.removeItem('pending_conversion');
-      } catch (e) {}
-    }
-  }, [psychologists]);
+  }, []);
 
   // Calcular repasse automaticamente
   useEffect(() => {
