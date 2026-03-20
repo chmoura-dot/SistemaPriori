@@ -60,7 +60,8 @@ const HEALTH_PLAN_MAP: Record<string, string> = {
 
 function normalizeHealthPlan(raw?: string): HealthPlan {
   if (!raw) return HealthPlan.PARTICULAR as unknown as HealthPlan;
-  return (HEALTH_PLAN_MAP[raw.toUpperCase()] ?? raw) as unknown as HealthPlan;
+  const str = String(raw);
+  return (HEALTH_PLAN_MAP[str.toUpperCase()] ?? str) as unknown as HealthPlan;
 }
 
 function toCustomer(row: any): Customer {

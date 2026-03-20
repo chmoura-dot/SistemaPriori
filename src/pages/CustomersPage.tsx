@@ -50,13 +50,19 @@ export const CustomersPage = () => {
 
   const loadData = async () => {
     setIsLoading(true);
-    const [c, p] = await Promise.all([
-      api.getCustomers(),
-      api.getPsychologists()
-    ]);
-    setCustomers(c);
-    setPsychologists(p);
-    setIsLoading(false);
+    try {
+      const [c, p] = await Promise.all([
+        api.getCustomers(),
+        api.getPsychologists()
+      ]);
+      setCustomers(c || []);
+      setPsychologists(p || []);
+    } catch (error: any) {
+      console.error('Erro ao carregar dados:', error);
+      alert('Erro ao carregar a página de pacientes: ' + (error.message || 'Erro desconhecido. Tente recarregar a página.'));
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -339,10 +345,10 @@ export const CustomersPage = () => {
   };
 
   const filteredCustomers = customers.filter(c => {
-    const searchLower = (searchTerm || '').toLowerCase();
-    const nameMatch = (c.name || '').toLowerCase().includes(searchLower);
-    const phoneMatch = (c.phone || '').toLowerCase().includes(searchLower);
-    const planMatch = (c.healthPlan || '').toLowerCase().includes(searchLower);
+    const searchLower = String(searchTerm || '').toLowerCase();
+    const nameMatch = String(c.name || '').toLowerCase().includes(searchLower);
+    const phoneMatch = String(c.phone || '').toLowerCase().includes(searchLower);
+    const planMatch = String(c.healthPlan || '').toLowerCase().includes(searchLower);
     const matchesSearch = nameMatch || phoneMatch || planMatch;
     
     const matchesStatus = statusFilter === 'all' || 
