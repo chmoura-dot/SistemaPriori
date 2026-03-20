@@ -61,6 +61,7 @@ export const SchedulePage = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [cancellationModalAppId, setCancellationModalAppId] = useState<string | null>(null);
+  const [updateFuture, setUpdateFuture] = useState(false);
 
   const [formData, setFormData] = useState({
     customerId: '',
@@ -149,10 +150,27 @@ export const SchedulePage = () => {
     setIsSaving(true);
     try {
       if (editingId) {
-        await api.updateAppointment(editingId, {
-          ...formData,
-          roomId: formData.mode === AttendanceMode.ONLINE ? undefined : formData.roomId
-        });
+        const appointmentToEdit = appointments.find(a => a.id === editingId);
+        
+        if (appointmentToEdit?.isRecurring && appointmentToEdit.recurrenceGroupId && updateFuture) {
+          // Excluir este e todos os futuros
+          await api.deleteFutureAppointments(appointmentToEdit.recurrenceGroupId, appointmentToEdit.date);
+          
+          // Recriar a partir da nova data
+          await api.createAppointment({
+            ...formData,
+            date: formData.date,
+            dayOfWeek: new Date(formData.date + 'T12:00:00').getDay(),
+            status: AppointmentStatus.ACTIVE,
+            roomId: formData.mode === AttendanceMode.ONLINE ? undefined : formData.roomId
+          });
+        } else {
+          // Atualiza apenas este agendamento específico
+          await api.updateAppointment(editingId, {
+            ...formData,
+            roomId: formData.mode === AttendanceMode.ONLINE ? undefined : formData.roomId
+          });
+        }
       } else {
         await api.createAppointment({
           ...formData,
@@ -165,6 +183,7 @@ export const SchedulePage = () => {
       await loadData();
       setIsModalOpen(false);
       setEditingId(null);
+      setUpdateFuture(false);
     } catch (error: any) {
       alert(error.message || 'Erro ao salvar agendamento');
     } finally {
@@ -189,6 +208,7 @@ export const SchedulePage = () => {
       recurrenceFrequency: appointment.recurrenceFrequency || RecurrenceFrequency.SEMANAL
     });
     setEditingId(appointment.id);
+    setUpdateFuture(false);
     setIsModalOpen(true);
   };
 
@@ -716,7 +736,7 @@ export const SchedulePage = () => {
                             <button onClick={() => handleReminder(app)} className={cn("p-0.5 transition-colors", app.reminderSentAt ? "text-amber-600" : "text-zinc-400 hover:text-priori-navy")} title="Enviar Lembrete WhatsApp"><Bell size={12} /></button>
                             <button onClick={() => sendWhatsApp(app, 'psychologist')} className="p-0.5 text-zinc-400 hover:text-priori-navy" title="WhatsApp Psicólogo"><MessageCircle size={12} /></button>
                             <button onClick={() => handleEdit(app)} className="p-0.5 text-zinc-400 hover:text-priori-navy" title="Editar"><Edit2 size={12} /></button>
-                             <button onClick={() => handleDelete(app)} className="p-0.5 text-zinc-400 hover:text-red-600" title="Excluir"><Trash2 size={12} /></button>
+                            <button type="button" onClick={(e) => { e.stopPropagation(); handleDelete(app); }} className="p-0.5 text-zinc-400 hover:text-red-600" title="Excluir"><Trash2 size={12} /></button>
                           </div>
                         </div>
                         <p className={cn("text-xs font-black truncate leading-tight", currentStatus === 'canceled' ? "text-zinc-500 line-through" : "text-priori-navy")}>{customer?.name}</p>
@@ -869,7 +889,7 @@ export const SchedulePage = () => {
                                             <button onClick={() => handleReminder(appointment)} className={cn("transition-colors", appointment.reminderSentAt ? "text-amber-600" : "text-zinc-400 hover:text-priori-navy")} title="Enviar Lembrete"><Bell size={10} /></button>
                                             <button onClick={() => handleEdit(appointment)} className="text-zinc-400 hover:text-priori-navy"><Edit2 size={10} /></button>
                                             {currentStatus !== 'canceled' && <button type="button" onClick={(e) => { e.stopPropagation(); setCancellationModalAppId(appointment.id); }} className="text-red-400 hover:text-red-600 font-bold bg-red-50 px-1 rounded transition-colors text-[10px]" title="Cancelar Sessão">✕</button>}
-                                            <button onClick={() => handleDelete(appointment)} className="text-zinc-400 hover:text-red-500"><Trash2 size={10} /></button>
+                                            <button type="button" onClick={(e) => { e.stopPropagation(); handleDelete(appointment); }} className="text-zinc-400 hover:text-red-500"><Trash2 size={10} /></button>
                                           </div>
                                         </div>
                                         {appointment.needsRenewal && (
@@ -986,7 +1006,7 @@ export const SchedulePage = () => {
                                             <button onClick={() => handleReminder(appointment)} className={cn("transition-colors", appointment.reminderSentAt ? "text-amber-600" : "text-zinc-400 hover:text-priori-navy")} title="Enviar Lembrete"><Bell size={10} /></button>
                                             <button onClick={() => handleEdit(appointment)} className="text-zinc-400 hover:text-priori-navy"><Edit2 size={10} /></button>
                                             {currentStatus !== 'canceled' && <button type="button" onClick={(e) => { e.stopPropagation(); setCancellationModalAppId(appointment.id); }} className="text-red-400 hover:text-red-600 font-bold bg-red-50 px-1 rounded transition-colors text-[10px]" title="Cancelar Sessão">✕</button>}
-                                            <button onClick={() => handleDelete(appointment)} className="text-zinc-400 hover:text-red-500"><Trash2 size={10} /></button>
+                                            <button type="button" onClick={(e) => { e.stopPropagation(); handleDelete(appointment); }} className="text-zinc-400 hover:text-red-500"><Trash2 size={10} /></button>
                                           </div>
                                         </div>
                                         {appointment.needsRenewal && (
@@ -1055,7 +1075,24 @@ export const SchedulePage = () => {
         title={editingId ? "Editar Agendamento" : "Novo Agendamento"}
         className="max-w-xl h-[65vh]"
         footer={
-          <div className="flex gap-3">
+          <div className="flex gap-3 w-full">
+            {editingId && (
+              <Button 
+                type="button" 
+                variant="outline" 
+                className="flex-1 border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300" 
+                onClick={async () => {
+                  const appointmentToDelete = appointments.find(a => a.id === editingId);
+                  if (appointmentToDelete) {
+                    await handleDelete(appointmentToDelete);
+                    setIsModalOpen(false);
+                  }
+                }}
+              >
+                <Trash2 size={18} className="mr-2" />
+                Excluir
+              </Button>
+            )}
             <Button 
               type="button" 
               variant="outline" 
@@ -1070,7 +1107,7 @@ export const SchedulePage = () => {
               className="flex-1 bg-priori-navy hover:bg-priori-navy/90 text-white" 
               isLoading={isSaving}
             >
-              {editingId ? 'Salvar Alterações' : 'Agendar'}
+              {editingId ? 'Salvar' : 'Agendar'}
             </Button>
           </div>
         }
@@ -1185,8 +1222,18 @@ export const SchedulePage = () => {
 
               {formData.psychologistId && (
                 <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
-                  {/* 4. HORÁRIO */}
-                  <div className="grid grid-cols-2 gap-4">
+                  {/* 4. DATA E HORÁRIO */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-sm font-bold text-zinc-500 uppercase tracking-widest">Data</label>
+                      <input
+                        type="date"
+                        className="w-full rounded-xl bg-white border border-zinc-200 px-4 py-3 text-base text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/10 transition-all"
+                        value={formData.date}
+                        onChange={(e) => setFormData({ ...formData, date: e.target.value, startTime: '', endTime: '' })}
+                        required
+                      />
+                    </div>
                     <div className="space-y-2">
                       <label className="text-sm font-bold text-zinc-500 uppercase tracking-widest">Hora Início</label>
                       <select
@@ -1320,6 +1367,28 @@ export const SchedulePage = () => {
 
                       {/* RECORRÊNCIA */}
                       <div className="space-y-3 p-4 bg-zinc-50 border border-zinc-100 rounded-xl mt-4">
+                        {editingId && appointments.find(a => a.id === editingId)?.isRecurring && (
+                          <div className="mb-4 pb-4 border-b border-zinc-200/60 animate-in fade-in slide-in-from-top-1 duration-200">
+                            <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 p-3 rounded-lg">
+                              <AlertCircle size={16} className="text-amber-600 shrink-0 mt-0.5" />
+                              <div className="flex-1 space-y-2">
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    className="w-4 h-4 rounded border-amber-300 text-amber-600 focus:ring-amber-500"
+                                    checked={updateFuture}
+                                    onChange={(e) => setUpdateFuture(e.target.checked)}
+                                  />
+                                  <span className="text-sm font-bold text-amber-900">Aplicar a todos os futuros</span>
+                                </label>
+                                <p className="text-[11px] text-amber-700 leading-snug">
+                                  Marque esta opção para aplicar a mudança de data/horário a esta sessão e todas as sessões futuras da recorrência. Se desmarcar, apenas esta sessão mudará.
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                        
                         <div className="flex items-center gap-2">
                           <input
                             type="checkbox"
