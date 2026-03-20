@@ -126,6 +126,22 @@ export const WaitingListPage = () => {
     try {
       await api.updateWaitingListEntry(id, { status });
       await loadData();
+
+      // Encontrar a entrada original para passar no aviso de conversão
+      const entry = entries.find(e => e.id === id);
+
+      // Se marcou como resolvido/agendado, sugere converter em paciente
+      if (status === 'resolved' && entry) {
+        if (confirm(`A pessoa "${entry.customerName}" foi marcada como agendada!\nDeseja cadastrá-la agora como paciente no sistema?`)) {
+          // Salvar dados no localStorage temporariamente para a página de pacientes ler
+          localStorage.setItem('pending_conversion', JSON.stringify({
+            name: entry.customerName,
+            phone: entry.phone || '',
+            psychologistId: entry.psychologistId || ''
+          }));
+          window.location.href = '/clientes'; // Redirecionar para a tela de clientes
+        }
+      }
     } catch (error) {
       alert('Erro ao atualizar status');
     }

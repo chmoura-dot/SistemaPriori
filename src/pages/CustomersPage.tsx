@@ -61,13 +61,29 @@ export const CustomersPage = () => {
 
   useEffect(() => {
     loadData();
-  }, []);
+    
+    // Verificar se há uma conversão pendente da Fila de Espera
+    const pendingConversion = localStorage.getItem('pending_conversion');
+    if (pendingConversion) {
+      try {
+        const data = JSON.parse(pendingConversion);
+        setFormData(prev => ({
+          ...prev,
+          name: data.name || '',
+          phone: data.phone || '',
+          psychologistId: data.psychologistId || psychologists[0]?.id || ''
+        }));
+        setIsModalOpen(true);
+        localStorage.removeItem('pending_conversion');
+      } catch (e) {}
+    }
+  }, [psychologists]);
 
   // Calcular repasse automaticamente
   useEffect(() => {
     if (formData.healthPlan === HealthPlan.PARTICULAR && formData.customPrice) {
       const psychologist = psychologists.find(p => p.id === formData.psychologistId);
-      const calculatedRepass = calcRepass(formData.customPrice, psychologist?.name);
+      const calculatedRepass = calcRepass(formData.customPrice, psychologist);
       
       if (calculatedRepass !== formData.customRepassAmount) {
         setFormData(prev => ({ ...prev, customRepassAmount: calculatedRepass }));
