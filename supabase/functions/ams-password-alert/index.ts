@@ -29,7 +29,7 @@ Deno.serve(async (req) => {
         name,
         health_plan,
         ams_password_expiry,
-        psychologist:psychologists (name, email)
+        psychologist:psychologists (name)
       `)
       .eq('status', 'active')
       .not('ams_password_expiry', 'is', null)
@@ -44,89 +44,71 @@ Deno.serve(async (req) => {
       });
     }
 
-    const results = [];
-
-    // 3. Agrupar por psicólogo para enviar um único e-mail com todos os seus pacientes em alerta
-    const psychologistMap = new Map();
+    // 3. Montar Relatório Consolidado para a Coordenação
+    let patientsHtml = '';
     
-    customers.forEach(cust => {
-      const psy = Array.isArray(cust.psychologist) ? cust.psychologist[0] : cust.psychologist;
-      if (!psy || !psy.email) return;
+    customers.forEach((p, idx) => {
+      const psychologist = Array.isArray(p.psychologist) ? p.psychologist[0] : p.psychologist;
+      const expiryDate = new Date(p.ams_password_expiry + 'T12:00:00');
+      const formattedDate = expiryDate.toLocaleDateString('pt-BR');
+      const isExpired = expiryDate < now;
+      const color = isExpired ? '#ef4444' : '#f59e0b';
+      const statusText = isExpired ? 'VENCIDA' : 'EXPIRANDO';
+      const bgColor = idx % 2 === 0 ? '#ffffff' : '#f9fafb';
 
-      if (!psychologistMap.has(psy.email)) {
-        psychologistMap.set(psy.email, {
-          psyName: psy.name,
-          patients: []
-        });
-      }
-      psychologistMap.get(psy.email).patients.push(cust);
+      patientsHtml += `
+        <tr style="background-color: ${bgColor}; border-bottom: 1px solid #eee;">
+          <td style="padding: 12px 10px;"><strong>${p.name}</strong></td>
+          <td style="padding: 12px 10px; font-size: 12px; color: #666;">${psychologist?.name || '—'}</td>
+          <td style="padding: 12px 10px; color: ${color}; font-weight: bold; text-align: right;">${formattedDate}<br><small>${statusText}</small></td>
+        </tr>
+      `;
     });
 
-    // 4. Enviar alertas para cada psicólogo
-    for (const [email, data] of psychologistMap.entries()) {
-      let patientsHtml = '';
-      
-      data.patients.forEach(p => {
-        const expiryDate = new Date(p.ams_password_expiry + 'T12:00:00');
-        const formattedDate = expiryDate.toLocaleDateString('pt-BR');
-        const isExpired = expiryDate < now;
-        const color = isExpired ? '#ef4444' : '#f59e0b';
-        const statusText = isExpired ? 'VENCIDA' : 'EXPIRANDO';
+    const emailHtml = `
+      <div style="font-family: Arial, sans-serif; color: #333; max-width: 700px; margin: 0 auto; border: 1px solid #eee; border-radius: 12px; overflow: hidden;">
+        <div style="background-color: #004b32; color: white; padding: 25px; text-align: center;">
+          <h1 style="margin: 0; font-size: 20px;">Relatório de Senhas AMS Petrobras</h1>
+          <p style="margin: 5px 0 0 0; opacity: 0.8;">Controle de Expiração - Coordenação Clínica</p>
+        </div>
+        <div style="padding: 30px;">
+          <p>Olá, Coordenador(a)!</p>
+          <p>Identificamos <strong>${customers.length} paciente(s)</strong> com senhas do portal AMS Petrobras que requerem atenção imediata para evitar problemas no faturamento:</p>
+          
+          <table style="width: 100%; border-collapse: collapse; margin: 25px 0; font-size: 14px;">
+            <thead>
+              <tr style="text-align: left; background-color: #f1f5f9; color: #475569;">
+                <th style="padding: 10px; border-bottom: 2px solid #004b32;">Paciente</th>
+                <th style="padding: 10px; border-bottom: 2px solid #004b32;">Psicólogo</th>
+                <th style="padding: 10px; border-bottom: 2px solid #004b32; text-align: right;">Vencimento</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${patientsHtml}
+            </tbody>
+          </table>
 
-        patientsHtml += `
-          <tr style="border-bottom: 1px solid #eee;">
-            <td style="padding: 12px 0;"><strong>${p.name}</strong></td>
-            <td style="padding: 12px 0; color: ${color}; font-weight: bold;">${formattedDate} (${statusText})</td>
-          </tr>
-        `;
-      });
-
-      const emailHtml = `
-        <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #eee; border-radius: 12px; overflow: hidden;">
-          <div style="background-color: #004b32; color: white; padding: 20px; text-align: center;">
-            <h2 style="margin: 0;">Alerta: Senhas AMS Petrobras</h2>
-          </div>
-          <div style="padding: 30px;">
-            <p>Olá, <strong>${data.psyName}</strong>!</p>
-            <p>Os seguintes pacientes sob sua responsabilidade possuem senhas do portal AMS Petrobras que requerem atenção:</p>
-            
-            <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
-              <thead>
-                <tr style="text-align: left; color: #666; font-size: 12px; text-transform: uppercase;">
-                  <th style="padding-bottom: 10px; border-bottom: 2px solid #004b32;">Paciente</th>
-                  <th style="padding-bottom: 10px; border-bottom: 2px solid #004b32;">Vencimento</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${patientsHtml}
-              </tbody>
-            </table>
-
-            <p style="font-size: 14px; color: #666; background-color: #f0fdf4; padding: 15px; border-radius: 8px; border-left: 4px solid #004b32;">
-              <strong>Atenção:</strong> A expiração dessas senhas pode impedir o faturamento dos atendimentos. Por favor, solicite ao paciente a renovação o quanto antes.
-            </p>
-          </div>
-          <div style="background-color: #f8fafc; padding: 20px; text-align: center; font-size: 11px; color: #94a3b8;">
-            <p>Sistema Priori &copy; ${new Date().getFullYear()} - Relatório Automático de Gestão AMS</p>
+          <div style="background-color: #f0fdf4; padding: 20px; border-radius: 8px; border-left: 4px solid #004b32; font-size: 13px; color: #166534;">
+            <strong>Ação Recomendada:</strong><br>
+            Entrar em contato com os respectivos psicólogos ou diretamente com os pacientes para solicitar a renovação da senha.
           </div>
         </div>
-      `;
+        <div style="background-color: #f8fafc; padding: 20px; text-align: center; font-size: 11px; color: #94a3b8; border-top: 1px solid #e2e8f0;">
+          <p><strong>Sistema Priori - Gestão Inteligente</strong></p>
+          <p>Este relatório é gerado automaticamente toda segunda-feira às 07:00.</p>
+        </div>
+      </div>
+    `;
 
-      try {
-        await resend.emails.send({
-          from: "Núcleo Priori <agenda@nucleopriori.com.br>",
-          to: email,
-          cc: "nucleopriorirj@gmail.com", // Coordenação sempre em cópia
-          subject: `⚠️ Alerta de Vencimento: Senhas AMS Petrobras (${data.patients.length} pacientes)`,
-          html: emailHtml,
-        });
-        results.push({ email, status: "sent" });
-      } catch (err) {
-        results.push({ email, status: "error", error: err.message });
-      }
-    }
+    // 4. Enviar e-mail ÚNICO para a coordenação
+    const mailResponse = await resend.emails.send({
+      from: "Núcleo Priori <agenda@nucleopriori.com.br>",
+      to: "nucleopriorirj@gmail.com",
+      subject: `⚠️ Gestão AMS: ${customers.length} senhas expirando ou vencidas`,
+      html: emailHtml,
+    });
 
-    return new Response(JSON.stringify({ success: true, processed: psychologistMap.size, details: results }), {
+    return new Response(JSON.stringify({ success: true, message: "Relatório enviado para a coordenação", id: mailResponse.data?.id }), {
       headers: { 'Content-Type': 'application/json' }
     });
 
