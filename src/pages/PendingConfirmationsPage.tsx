@@ -9,10 +9,13 @@ import {
   Copy,
   ChevronRight,
   ExternalLink,
-  ClipboardList
+  ClipboardList,
+  CheckCircle2,
+  XCircle
 } from 'lucide-react';
 import { api } from '../services/api';
 import { Appointment, Psychologist, Customer, AppointmentStatus } from '../services/types';
+import { Modal } from '../components/Modal';
 import { cn } from '../lib/utils';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -23,6 +26,8 @@ export const PendingConfirmationsPage = () => {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [isProcessing, setIsProcessing] = useState<string | null>(null);
+  const [cancellationModalAppId, setCancellationModalAppId] = useState<string | null>(null);
 
   useEffect(() => {
     const loadData = async () => {
@@ -63,6 +68,35 @@ export const PendingConfirmationsPage = () => {
     
     navigator.clipboard.writeText(message);
     alert('Mensagem de cobrança copiada para a área de transferência!');
+  };
+
+  const handleConfirm = async (id: string) => {
+    setIsProcessing(id);
+    try {
+      await api.updateAppointment(id, { confirmedPsychologist: true });
+      setAppointments(prev => prev.filter(app => app.id !== id));
+    } catch (error) {
+      alert('Erro ao confirmar atendimento');
+    } finally {
+      setIsProcessing(null);
+    }
+  };
+
+  const handleCancelBillingChoice = async (billingMode: 'none' | 'plan' | 'particular') => {
+    if (!cancellationModalAppId) return;
+    setIsProcessing(cancellationModalAppId);
+    try {
+      await api.updateAppointment(cancellationModalAppId, {
+        status: AppointmentStatus.CANCELED,
+        cancellationBilling: billingMode
+      });
+      setAppointments(prev => prev.filter(app => app.id !== cancellationModalAppId));
+    } catch (error) {
+      alert('Erro ao cancelar agendamento');
+    } finally {
+      setCancellationModalAppId(null);
+      setIsProcessing(null);
+    }
   };
 
   // Agrupar por psicólogo
@@ -144,7 +178,7 @@ export const PendingConfirmationsPage = () => {
                 
                 <div className="p-4 bg-white/50 space-y-2">
                   {apps.map(app => (
-                    <div key={app.id} className="flex items-center justify-between bg-white border border-zinc-100 p-3 rounded-xl hover:border-priori-gold/30 transition-all">
+                    <div key={app.id} className="flex flex-col sm:flex-row sm:items-center justify-between bg-white border border-zinc-100 p-3 rounded-xl hover:border-priori-gold/30 transition-all gap-4">
                       <div className="flex items-center gap-4">
                         <div className="flex flex-col items-center justify-center bg-zinc-50 rounded-lg p-2 min-w-[60px]">
                           <span className="text-[10px] uppercase font-bold text-zinc-400">
@@ -159,11 +193,35 @@ export const PendingConfirmationsPage = () => {
                             {getCustomerName(app.customerId)}
                           </p>
                           <p className="text-xs text-zinc-500 flex items-center gap-1 mt-0.5">
-                            <Clock size={12} /> {app.time} • {app.type}
+                            <Clock size={12} /> {app.startTime} - {app.endTime} • {app.type}
                           </p>
                         </div>
                       </div>
-                      <ChevronRight size={16} className="text-zinc-200 group-hover:text-priori-gold transition-colors" />
+                      
+                      <div className="flex gap-2 w-full sm:w-auto">
+                        <button
+                          onClick={() => handleConfirm(app.id)}
+                          disabled={isProcessing === app.id}
+                          className={cn(
+                            "flex-1 sm:flex-none flex items-center justify-center gap-2 bg-emerald-50 text-emerald-600 hover:bg-emerald-500 hover:text-white px-4 py-2 rounded-xl text-xs font-bold transition-all",
+                            isProcessing === app.id && "opacity-50 cursor-not-allowed"
+                          )}
+                        >
+                          <CheckCircle2 size={14} />
+                          Compareceu
+                        </button>
+                        <button
+                          onClick={() => setCancellationModalAppId(app.id)}
+                          disabled={isProcessing === app.id}
+                          className={cn(
+                            "flex-1 sm:flex-none flex items-center justify-center gap-2 bg-red-50 text-red-500 hover:bg-red-500 hover:text-white px-4 py-2 rounded-xl text-xs font-bold transition-all",
+                            isProcessing === app.id && "opacity-50 cursor-not-allowed"
+                          )}
+                        >
+                          <XCircle size={14} />
+                          Faltou
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -172,6 +230,49 @@ export const PendingConfirmationsPage = () => {
           })}
         </div>
       )}
+
+      <Modal 
+        isOpen={!!cancellationModalAppId} 
+        onClose={() => setCancellationModalAppId(null)}
+        title="Cancelar Sessão"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-zinc-600">
+            Como deseja registrar o faturamento desta falta?
+          </p>
+          <div className="grid grid-cols-1 gap-3">
+            <button
+              onClick={() => handleCancelBillingChoice('none')}
+              className="flex items-center justify-center p-3 border border-zinc-200 rounded-xl hover:bg-zinc-50 transition-colors"
+            >
+              <div className="text-center">
+                <span className="block font-bold text-zinc-700 text-sm">Não Cobrar</span>
+                <span className="block text-xs text-zinc-500 mt-1">Sessão cancelada sem custo</span>
+              </div>
+            </button>
+            
+            <button
+              onClick={() => handleCancelBillingChoice('plan')}
+              className="flex items-center justify-center p-3 border border-priori-navy/20 bg-priori-navy/5 rounded-xl hover:bg-priori-navy/10 transition-colors"
+            >
+              <div className="text-center">
+                <span className="block font-bold text-priori-navy text-sm">Cobrar no Convênio</span>
+                <span className="block text-xs text-priori-navy/70 mt-1">Sessão será faturada via convênio normalmente</span>
+              </div>
+            </button>
+            
+            <button
+              onClick={() => handleCancelBillingChoice('particular')}
+              className="flex items-center justify-center p-3 border border-emerald-200 bg-emerald-50 rounded-xl hover:bg-emerald-100 transition-colors"
+            >
+              <div className="text-center">
+                <span className="block font-bold text-emerald-700 text-sm">Cobrar Particular</span>
+                <span className="block text-xs text-emerald-600/70 mt-1">Sessão será faturada do particular</span>
+              </div>
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };
