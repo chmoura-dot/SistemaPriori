@@ -16,7 +16,8 @@ import {
   ArrowRightLeft,
   Blocks,
   ClipboardList,
-  KeySquare
+  KeySquare,
+  ListOrdered
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { api } from '../services/api';
@@ -35,6 +36,7 @@ const menuItems = [
   { icon: BarChart3, label: 'Capacidade', path: '/capacidade' },
   { icon: TrendingDown, label: 'Despesas', path: '/despesas' },
   { icon: Users, label: 'Psicólogos', path: '/psicologos' },
+  { icon: ListOrdered, label: 'Fila de Espera', path: '/fila-espera' },
   { icon: Blocks, label: 'Integrações', path: '/settings' },
 ];
 

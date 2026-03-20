@@ -17,6 +17,7 @@ import {
   UserRole,
   RecurrenceFrequency,
   Settings,
+  WaitingListEntry,
 } from './types';
 
 // ──────────────────────────────────────────────────────────
@@ -459,7 +460,7 @@ export const supabaseService: AppService = {
     if (a.status !== undefined) updates.status = a.status;
     if (a.confirmedPatient !== undefined) updates.confirmed_patient = a.confirmedPatient;
     if (a.confirmedPsychologist !== undefined) updates.confirmed_psychologist = a.confirmedPsychologist;
-    if (a.confirmationStatus !== undefined) updates.confirmation_status = a.confirmationStatus;
+    if (a.confirmationStatus !== undefined) updates.confirmationStatus = a.confirmationStatus;
     if (a.reminderSentAt !== undefined) updates.reminder_sent_at = a.reminderSentAt;
     if (a.patientNotes !== undefined) updates.patient_notes = a.patientNotes;
     if (a.isRecurring !== undefined) updates.is_recurring = a.isRecurring;
@@ -924,5 +925,85 @@ export const supabaseService: AppService = {
       supabase.from('settings').update(updates).eq('id', id).select().single()
     );
     return toSettings(row);
+  },
+
+  // ── Waiting List ─────────────────────────────────────
+  getWaitingList: async () => {
+    const { data, error } = await supabase
+      .from('waiting_list')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (error) throw new Error(error.message);
+    return (data ?? []).map((row: any): WaitingListEntry => ({
+      id: row.id,
+      customerName: row.customer_name,
+      phone: row.phone,
+      preferredDays: row.preferred_days ?? [],
+      preferredHours: row.preferred_hours ?? [],
+      psychologistId: row.psychologist_id,
+      notes: row.notes,
+      status: row.status,
+      createdAt: row.created_at,
+    }));
+  },
+
+  createWaitingListEntry: async (e) => {
+    const row = await throwOnError(
+      supabase
+        .from('waiting_list')
+        .insert({
+          customer_name: e.customerName,
+          phone: e.phone,
+          preferred_days: e.preferredDays,
+          preferred_hours: e.preferredHours,
+          psychologist_id: e.psychologistId,
+          notes: e.notes,
+          status: e.status,
+        })
+        .select()
+        .single()
+    );
+    return {
+      id: row.id,
+      customerName: row.customer_name,
+      phone: row.phone,
+      preferredDays: row.preferred_days ?? [],
+      preferredHours: row.preferred_hours ?? [],
+      psychologistId: row.psychologist_id,
+      notes: row.notes,
+      status: row.status,
+      createdAt: row.created_at,
+    };
+  },
+
+  updateWaitingListEntry: async (id, e) => {
+    const updates: Record<string, any> = {};
+    if (e.customerName !== undefined) updates.customer_name = e.customerName;
+    if (e.phone !== undefined) updates.phone = e.phone;
+    if (e.preferredDays !== undefined) updates.preferred_days = e.preferredDays;
+    if (e.preferredHours !== undefined) updates.preferred_hours = e.preferredHours;
+    if (e.psychologistId !== undefined) updates.psychologist_id = e.psychologistId;
+    if (e.notes !== undefined) updates.notes = e.notes;
+    if (e.status !== undefined) updates.status = e.status;
+
+    const row = await throwOnError(
+      supabase.from('waiting_list').update(updates).eq('id', id).select().single()
+    );
+    return {
+      id: row.id,
+      customerName: row.customer_name,
+      phone: row.phone,
+      preferredDays: row.preferred_days ?? [],
+      preferredHours: row.preferred_hours ?? [],
+      psychologistId: row.psychologist_id,
+      notes: row.notes,
+      status: row.status,
+      createdAt: row.created_at,
+    };
+  },
+
+  deleteWaitingListEntry: async (id) => {
+    const { error } = await supabase.from('waiting_list').delete().eq('id', id);
+    if (error) throw new Error(error.message);
   },
 };

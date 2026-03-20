@@ -3,6 +3,7 @@ import { Sidebar } from './components/Sidebar';
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { CustomersPage } from './pages/CustomersPage';
+import { WaitingListPage } from './pages/WaitingListPage';
 import { PlansPage } from './pages/PlansPage';
 import { PaymentsPage } from './pages/PaymentsPage';
 import { ExpensesPage } from './pages/ExpensesPage';
@@ -85,6 +86,8 @@ export default function App() {
         return <ExpensesPage />;
       case '/psicologos':
         return <PsychologistsPage />;
+      case '/fila-espera':
+        return <WaitingListPage />;
       case '/settings':
         return <SettingsPage />;
       case '/pendentes':

@@ -244,6 +244,18 @@ export interface Settings {
   updatedAt: string;
 }
 
+export interface WaitingListEntry {
+  id: string;
+  customerName: string;
+  phone?: string;
+  preferredDays: number[];
+  preferredHours: string[];
+  psychologistId?: string;
+  notes?: string;
+  status: 'pending' | 'called' | 'resolved' | 'canceled';
+  createdAt: string;
+}
+
 export enum UserRole {
   ADMIN = 'admin',
   SECRETARIA = 'secretaria'
@@ -324,4 +336,10 @@ export interface AppService {
   // Settings
   getSettings: () => Promise<Settings>;
   updateSettings: (id: string, settings: Partial<Settings>) => Promise<Settings>;
+
+  // Waiting List
+  getWaitingList: () => Promise<WaitingListEntry[]>;
+  createWaitingListEntry: (entry: Omit<WaitingListEntry, 'id' | 'createdAt'>) => Promise<WaitingListEntry>;
+  updateWaitingListEntry: (id: string, entry: Partial<WaitingListEntry>) => Promise<WaitingListEntry>;
+  deleteWaitingListEntry: (id: string) => Promise<void>;
 }
