@@ -66,7 +66,7 @@ function normalizeHealthPlan(raw?: string): HealthPlan {
 function toCustomer(row: any): Customer {
   return {
     id: row.id,
-    name: row.name,
+    name: row.name ?? '',
     email: row.email ?? '',
     phone: row.phone ?? '',
     healthPlan: normalizeHealthPlan(row.health_plan),
@@ -523,9 +523,9 @@ export const supabaseService: AppService = {
       const customerApps = (appData || []).filter(a => a.customer_id === customer.id);
 
       // Quantidade de atendimentos realizados (past active)
-      const pastApps = customerApps.filter(a => a.date < today).sort((a, b) => b.date.localeCompare(a.date));
-      const futureApps = customerApps.filter(a => a.date >= today).sort((a, b) => a.date.localeCompare(b.date));
-      const allSorted = [...customerApps].sort((a, b) => a.date.localeCompare(b.date));
+      const pastApps = customerApps.filter(a => a.date && a.date < today).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+      const futureApps = customerApps.filter(a => a.date && a.date >= today).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+      const allSorted = [...customerApps].filter(a => a.date).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
 
       customer.totalAppointmentsPerformed = pastApps.length;
       customer.lastAppointmentDate = pastApps[0]?.date;
