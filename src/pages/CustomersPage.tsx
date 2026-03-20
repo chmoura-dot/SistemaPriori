@@ -95,7 +95,7 @@ export const CustomersPage = () => {
     if (customer) {
       setEditingCustomer(customer);
       setFormData({
-        name: customer.name,
+        name: customer.name || '',
         phone: customer.phone || '',
         healthPlan: customer.healthPlan || HealthPlan.PARTICULAR,
         psychologistId: customer.psychologistId || '',
@@ -180,7 +180,7 @@ export const CustomersPage = () => {
 
             // Normalize HealthPlan
             let healthPlan = HealthPlan.PARTICULAR;
-            const pLower = planoStr.toLowerCase();
+            const pLower = (planoStr || '').toString().toLowerCase();
             if (pLower.includes('petrobras')) healthPlan = HealthPlan.AMS_PETROBRAS;
             else if (pLower.includes('medsenior')) healthPlan = HealthPlan.MEDSENIOR;
             else if (pLower.includes('porto') || pLower.includes('porto saude')) healthPlan = HealthPlan.PORTO_SAUDE;
@@ -272,7 +272,7 @@ export const CustomersPage = () => {
     setIsSaving(true);
     const submissionData = {
       ...formData,
-      name: formData.name.toUpperCase(),
+      name: (formData.name || '').toUpperCase(),
       birthDate: formData.birthDate || null,
       amsPassword: formData.amsPassword || null,
       amsPasswordExpiry: formData.amsPasswordExpiry || null,
@@ -339,9 +339,11 @@ export const CustomersPage = () => {
   };
 
   const filteredCustomers = customers.filter(c => {
-    const matchesSearch = c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         c.phone.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         c.healthPlan.toLowerCase().includes(searchTerm.toLowerCase());
+    const searchLower = (searchTerm || '').toLowerCase();
+    const nameMatch = (c.name || '').toLowerCase().includes(searchLower);
+    const phoneMatch = (c.phone || '').toLowerCase().includes(searchLower);
+    const planMatch = (c.healthPlan || '').toLowerCase().includes(searchLower);
+    const matchesSearch = nameMatch || phoneMatch || planMatch;
     
     const matchesStatus = statusFilter === 'all' || 
                          (statusFilter === 'active' && c.status === CustomerStatus.ACTIVE) ||
@@ -500,7 +502,7 @@ export const CustomersPage = () => {
                     </td>
                     <td className="px-6 py-4">
                       <div className="min-w-30">
-                        <p className="text-[11px] font-bold text-priori-navy truncate uppercase tracking-tight">{customer.healthPlan}</p>
+                        <p className="text-[11px] font-bold text-priori-navy truncate uppercase tracking-tight">{customer.healthPlan || 'Não informado'}</p>
                         <p className="text-[10px] text-priori-gold font-bold truncate uppercase">{psy?.name || 'Não atribuído'}</p>
                         <span className={cn(
                           "inline-block mt-1 px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest",
@@ -596,7 +598,7 @@ export const CustomersPage = () => {
             />
           </div>
           
-          {(formData.healthPlan === HealthPlan.AMS_PETROBRAS || formData.healthPlan.toString().toUpperCase().includes('PETROBRAS')) && (
+          {(formData.healthPlan === HealthPlan.AMS_PETROBRAS || (formData.healthPlan && formData.healthPlan.toString().toUpperCase().includes('PETROBRAS'))) && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 bg-[#004b32]/5 border border-[#004b32]/10 rounded-xl">
               <div className="col-span-full mb-1">
                 <h4 className="text-[10px] font-bold text-[#004b32] uppercase tracking-widest">Informações AMS Petrobras</h4>
