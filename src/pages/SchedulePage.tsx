@@ -750,12 +750,22 @@ export const SchedulePage = () => {
                     const customer = customers.find(c => c.id === app.customerId);
                     const psychologist = psychologists.find(p => p.id === app.psychologistId);
                     
+                    const planColors: Record<string, string> = {
+                      [HealthPlan.PARTICULAR]: "border-l-blue-500",
+                      [HealthPlan.AMS_PETROBRAS]: "border-l-emerald-600",
+                      [HealthPlan.PAE]: "border-l-orange-500",
+                      [HealthPlan.PORTO_SAUDE]: "border-l-sky-400",
+                      [HealthPlan.MEDSENIOR]: "border-l-indigo-500",
+                      [HealthPlan.GAMA]: "border-l-rose-500",
+                      [HealthPlan.SAUDE_CAIXA]: "border-l-cyan-600",
+                    };
+
                     const statusColors = {
                       confirmed: "bg-emerald-50/50 border-emerald-100 border-l-emerald-500",
                       declined: "bg-red-50/50 border-red-100 border-l-red-500",
                       pending_sent: "bg-amber-50/50 border-amber-100 border-l-amber-500",
                       canceled: "bg-zinc-100 border-zinc-200 border-l-zinc-400 opacity-60",
-                      active: "bg-priori-navy/5 border-priori-navy/10 border-l-priori-navy"
+                      active: cn("bg-priori-navy/5 border-priori-navy/10", customer ? (planColors[customer.healthPlan] || "border-l-priori-navy") : "border-l-priori-navy")
                     };
 
                     let currentStatus: keyof typeof statusColors = 'active';
@@ -890,12 +900,22 @@ export const SchedulePage = () => {
                               {appointment ? (
                                 appointment.startTime === slot ? (
                                   (() => {
+                                    const planColors: Record<string, string> = {
+                                      [HealthPlan.PARTICULAR]: "border-l-blue-500",
+                                      [HealthPlan.AMS_PETROBRAS]: "border-l-emerald-600",
+                                      [HealthPlan.PAE]: "border-l-orange-500",
+                                      [HealthPlan.PORTO_SAUDE]: "border-l-sky-400",
+                                      [HealthPlan.MEDSENIOR]: "border-l-indigo-500",
+                                      [HealthPlan.GAMA]: "border-l-rose-500",
+                                      [HealthPlan.SAUDE_CAIXA]: "border-l-cyan-600",
+                                    };
+
                                     const statusColors = {
                                       confirmed: "bg-emerald-50/70 border-emerald-200 border-l-emerald-500",
                                       declined: "bg-red-50/70 border-red-200 border-l-red-500",
                                       pending_sent: "bg-amber-50/70 border-amber-200 border-l-amber-500",
                                       canceled: "bg-zinc-100 border-zinc-200 border-l-zinc-300 opacity-60",
-                                      active: "bg-priori-navy/10 border-priori-navy/20 border-l-priori-navy"
+                                      active: cn("bg-priori-navy/10 border-priori-navy/20", customer ? (planColors[customer.healthPlan] || "border-l-priori-navy") : "border-l-priori-navy")
                                     };
 
                                     let currentStatus: keyof typeof statusColors = 'active';
@@ -991,12 +1011,22 @@ export const SchedulePage = () => {
                               {appointment ? (
                                 appointment.startTime === slot ? (
                                   (() => {
+                                    const planColors: Record<string, string> = {
+                                      [HealthPlan.PARTICULAR]: "border-l-blue-500",
+                                      [HealthPlan.AMS_PETROBRAS]: "border-l-emerald-600",
+                                      [HealthPlan.PAE]: "border-l-orange-500",
+                                      [HealthPlan.PORTO_SAUDE]: "border-l-sky-400",
+                                      [HealthPlan.MEDSENIOR]: "border-l-indigo-500",
+                                      [HealthPlan.GAMA]: "border-l-rose-500",
+                                      [HealthPlan.SAUDE_CAIXA]: "border-l-cyan-600",
+                                    };
+
                                     const statusColors = {
                                       confirmed: "bg-emerald-50/70 border-emerald-200 border-l-emerald-500",
                                       declined: "bg-red-50/70 border-red-200 border-l-red-500",
                                       pending_sent: "bg-amber-50/70 border-amber-200 border-l-amber-500",
                                       canceled: "bg-zinc-100 border-zinc-200 border-l-zinc-300 opacity-60",
-                                      active: "bg-priori-navy/10 border-priori-navy/20 border-l-priori-navy"
+                                      active: cn("bg-priori-navy/10 border-priori-navy/20", customer ? (planColors[customer.healthPlan] || "border-l-priori-navy") : "border-l-priori-navy")
                                     };
 
                                     let currentStatus: keyof typeof statusColors = 'active';
