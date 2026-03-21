@@ -24,9 +24,11 @@ export const AmsPasswordsPage = () => {
     setIsLoading(true);
     try {
       const data = await api.getCustomers();
-      // Filtrar apenas pacientes ativos do plano AMS Petrobras
+      // Filtrar apenas pacientes ativos dos planos AMS Petrobras e PAE
       const amsCustomers = data.filter(c => 
-        (c.healthPlan === HealthPlan.AMS_PETROBRAS || c.healthPlan.toString().toUpperCase().includes('PETROBRAS')) &&
+        (c.healthPlan === HealthPlan.AMS_PETROBRAS || 
+         c.healthPlan === HealthPlan.PAE ||
+         c.healthPlan.toString().toUpperCase().includes('PETROBRAS')) &&
         c.status === CustomerStatus.ACTIVE
       );
       
@@ -100,12 +102,12 @@ export const AmsPasswordsPage = () => {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-priori-navy">Controle de Senhas AMS</h2>
-          <p className="text-zinc-500">Gestão de vencimentos e renovação do portal AMS Petrobras.</p>
+          <h2 className="text-2xl font-bold text-priori-navy">Controle de Senhas AMS / PAE</h2>
+          <p className="text-zinc-500">Gestão de vencimentos e renovação do portal AMS Petrobras e PAE.</p>
         </div>
         <div className="flex bg-white p-4 rounded-2xl border border-zinc-100 shadow-sm items-center gap-6">
           <div className="flex flex-col items-center border-r border-zinc-100 pr-6">
-            <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Total AMS</span>
+            <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Total AMS/PAE</span>
             <span className="text-xl font-bold text-priori-navy">{customers.length}</span>
           </div>
           <div className="flex flex-col items-center">
@@ -155,7 +157,7 @@ export const AmsPasswordsPage = () => {
                 </div>
                 
                 <h3 className="text-base font-bold text-priori-navy uppercase tracking-tight line-clamp-1 mb-1">{customer.name}</h3>
-                <p className="text-xs text-zinc-400 font-bold uppercase tracking-widest mb-4">AMS PETROBRAS</p>
+                <p className="text-xs text-zinc-400 font-bold uppercase tracking-widest mb-4">{customer.healthPlan}</p>
                 
                 <div className="space-y-3">
                   <div className="flex items-center justify-between p-3 bg-zinc-50 rounded-xl border border-zinc-100/50">
@@ -191,8 +193,8 @@ export const AmsPasswordsPage = () => {
           <div className="col-span-full py-20 flex flex-col items-center justify-center text-zinc-400 text-center gap-3">
             <User size={48} className="opacity-20" />
             <div>
-              <p className="text-lg font-bold">Nenhum paciente AMS Petrobras encontrado</p>
-              <p className="text-sm opacity-60">Cadastre um paciente com o plano AMS para vê-lo aqui.</p>
+              <p className="text-lg font-bold">Nenhum paciente AMS ou PAE encontrado</p>
+              <p className="text-sm opacity-60">Cadastre um paciente com o plano AMS ou PAE para vê-lo aqui.</p>
             </div>
           </div>
         )}
@@ -201,7 +203,7 @@ export const AmsPasswordsPage = () => {
       <Modal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        title="Atualizar Senha AMS"
+        title="Atualizar Senha AMS / PAE"
         className="max-w-md"
         footer={
           <div className="flex gap-3">

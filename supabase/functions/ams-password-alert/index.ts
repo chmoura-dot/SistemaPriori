@@ -21,7 +21,7 @@ Deno.serve(async (req) => {
 
     console.log(`[AMS-Alert] Buscando senhas que vencem até: ${thresholdStr}`);
 
-    // 2. Buscar pacientes AMS Petrobras com senha vencendo ou já vencida
+    // 2. Buscar pacientes AMS Petrobras ou PAE com senha vencendo ou já vencida
     const { data: customers, error } = await supabase
       .from('customers')
       .select(`
@@ -32,6 +32,7 @@ Deno.serve(async (req) => {
         psychologist:psychologists (name)
       `)
       .eq('status', 'active')
+      .or(`health_plan.eq."AMS Petrobras",health_plan.eq."PAE"`)
       .not('ams_password_expiry', 'is', null)
       .lte('ams_password_expiry', thresholdStr)
       .order('ams_password_expiry', { ascending: true });
@@ -68,12 +69,12 @@ Deno.serve(async (req) => {
     const emailHtml = `
       <div style="font-family: Arial, sans-serif; color: #333; max-width: 700px; margin: 0 auto; border: 1px solid #eee; border-radius: 12px; overflow: hidden;">
         <div style="background-color: #004b32; color: white; padding: 25px; text-align: center;">
-          <h1 style="margin: 0; font-size: 20px;">Relatório de Senhas AMS Petrobras</h1>
+          <h1 style="margin: 0; font-size: 20px;">Relatório de Senhas AMS / PAE</h1>
           <p style="margin: 5px 0 0 0; opacity: 0.8;">Controle de Expiração - Coordenação Clínica</p>
         </div>
         <div style="padding: 30px;">
           <p>Olá, Coordenador(a)!</p>
-          <p>Identificamos <strong>${customers.length} paciente(s)</strong> com senhas do portal AMS Petrobras que requerem atenção imediata para evitar problemas no faturamento:</p>
+          <p>Identificamos <strong>${customers.length} paciente(s)</strong> com senhas do portal AMS Petrobras / PAE que requerem atenção imediata para evitar problemas no faturamento:</p>
           
           <table style="width: 100%; border-collapse: collapse; margin: 25px 0; font-size: 14px;">
             <thead>
@@ -104,7 +105,7 @@ Deno.serve(async (req) => {
     const mailResponse = await resend.emails.send({
       from: "Núcleo Priori <agenda@nucleopriori.com.br>",
       to: "nucleopriorirj@gmail.com",
-      subject: `⚠️ Gestão AMS: ${customers.length} senhas expirando ou vencidas`,
+      subject: `⚠️ Gestão AMS / PAE: ${customers.length} senhas expirando ou vencidas`,
       html: emailHtml,
     });
 
