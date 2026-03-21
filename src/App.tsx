@@ -21,6 +21,7 @@ import { AmsPasswordsPage } from './pages/AmsPasswordsPage';
 import { RenewalAlert } from './components/RenewalAlert';
 import { api } from './services/api';
 import { cn } from './lib/utils';
+import { UserRole } from './services/types';
 
 export default function App() {
   const [currentPath, setCurrentPath] = useState(window.location.pathname);
@@ -49,6 +50,9 @@ export default function App() {
   }, [isAuthenticated, currentPath]);
 
   const renderPage = () => {
+    const user = api.getCurrentUser();
+    const isAdmin = user?.role === UserRole.ADMIN;
+
     // Rotas Públicas (acessíveis sem login)
     if (currentPath === '/confirmacao') {
       return <MagicConfirmationPage />;
@@ -65,31 +69,31 @@ export default function App() {
     switch (currentPath) {
       case '/':
       case '/dashboard':
-        return <DashboardPage onNavigate={navigate} />;
+        return isAdmin ? <DashboardPage onNavigate={navigate} /> : <SchedulePage />;
       case '/agenda':
         return <SchedulePage />;
       case '/capacidade':
-        return <CapacityPage />;
+        return isAdmin ? <CapacityPage /> : <SchedulePage />;
       case '/clientes':
         return <CustomersPage />;
       case '/planos':
-        return <PlansPage />;
+        return isAdmin ? <PlansPage /> : <SchedulePage />;
       case '/financeiro':
-        return <FinancialPage key="financeiro-page" />;
+        return isAdmin ? <FinancialPage key="financeiro-page" /> : <SchedulePage />;
       case '/pagamentos':
-        return <PaymentsPage />;
+        return isAdmin ? <PaymentsPage /> : <SchedulePage />;
       case '/faturamento':
-        return <BillingPage />;
+        return isAdmin ? <BillingPage /> : <SchedulePage />;
       case '/repasse':
-        return <RepassePage />;
+        return isAdmin ? <RepassePage /> : <SchedulePage />;
       case '/despesas':
-        return <ExpensesPage />;
+        return isAdmin ? <ExpensesPage /> : <SchedulePage />;
       case '/psicologos':
         return <PsychologistsPage />;
       case '/fila-espera':
         return <WaitingListPage />;
       case '/settings':
-        return <SettingsPage />;
+        return isAdmin ? <SettingsPage /> : <SchedulePage />;
       case '/pendentes':
         return <PendingConfirmationsPage />;
       case '/senhas-ams':

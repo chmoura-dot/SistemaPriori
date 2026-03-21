@@ -21,23 +21,24 @@ import {
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { api } from '../services/api';
+import { UserRole } from '../services/types';
 
 const menuItems = [
-  { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
+  { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard', adminOnly: true },
   { icon: CalendarIcon, label: 'Agenda', path: '/agenda' },
   { icon: KeySquare, label: 'Senhas AMS / PAE', path: '/senhas-ams' },
   { icon: ClipboardList, label: 'Pendentes', path: '/pendentes' },
   { icon: Users, label: 'Pacientes', path: '/clientes' },
-  { icon: Package, label: 'Planos', path: '/planos' },
-  { icon: BarChart3, label: 'Financeiro', path: '/financeiro' },
-  { icon: CreditCard, label: 'Pagamentos', path: '/pagamentos' },
-  { icon: FileText, label: 'Faturamento', path: '/faturamento' },
-  { icon: ArrowRightLeft, label: 'Repasse', path: '/repasse' },
-  { icon: BarChart3, label: 'Capacidade', path: '/capacidade' },
-  { icon: TrendingDown, label: 'Despesas', path: '/despesas' },
+  { icon: Package, label: 'Planos', path: '/planos', adminOnly: true },
+  { icon: BarChart3, label: 'Financeiro', path: '/financeiro', adminOnly: true },
+  { icon: CreditCard, label: 'Pagamentos', path: '/pagamentos', adminOnly: true },
+  { icon: FileText, label: 'Faturamento', path: '/faturamento', adminOnly: true },
+  { icon: ArrowRightLeft, label: 'Repasse', path: '/repasse', adminOnly: true },
+  { icon: BarChart3, label: 'Capacidade', path: '/capacidade', adminOnly: true },
+  { icon: TrendingDown, label: 'Despesas', path: '/despesas', adminOnly: true },
   { icon: Users, label: 'Psicólogos', path: '/psicologos' },
   { icon: ListOrdered, label: 'Fila de Espera', path: '/fila-espera' },
-  { icon: Blocks, label: 'Integrações', path: '/settings' },
+  { icon: Blocks, label: 'Integrações', path: '/settings', adminOnly: true },
 ];
 
 interface SidebarProps {
@@ -47,6 +48,7 @@ interface SidebarProps {
 
 export const Sidebar = ({ currentPath, onNavigate }: SidebarProps) => {
   const [isOpen, setIsOpen] = useState(false);
+  const user = api.getCurrentUser();
 
   const handleLogout = () => {
     api.logout();
@@ -95,7 +97,7 @@ export const Sidebar = ({ currentPath, onNavigate }: SidebarProps) => {
         </div>
 
         <nav className="flex-1 px-4 py-4 space-y-1.5 overflow-y-auto custom-scrollbar">
-          {menuItems.map((item, index) => (
+          {menuItems.filter((item: any) => !item.adminOnly || user?.role === UserRole.ADMIN).map((item, index) => (
             <button
               key={`${item.path}-${index}`}
               onClick={() => {

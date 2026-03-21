@@ -692,7 +692,8 @@ export const CustomersPage = () => {
           </div>
 
           {(() => {
-            const canSeeValues = formData.healthPlan === HealthPlan.PARTICULAR;
+            const isAdmin = user?.role === UserRole.ADMIN;
+            const canSeeValues = formData.healthPlan === HealthPlan.PARTICULAR && isAdmin;
             if (canSeeValues) {
               return (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 bg-priori-gold/5 border border-priori-gold/10 rounded-xl">
