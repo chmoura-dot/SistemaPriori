@@ -922,15 +922,9 @@ export const SchedulePage = () => {
                                 )
                               ) : (
                                 hasMinSpace(slot, date, room.id) ? (
-                                  <button 
-                                    onClick={() => {
-                                      setFormData({ ...formData, roomId: room.id, startTime: slot, date, mode: AttendanceMode.PRESENCIAL });
-                                      setIsModalOpen(true);
-                                    }}
-                                    className="h-full w-full rounded-md border border-dashed border-zinc-100 hover:border-priori-navy/20 hover:bg-zinc-50 transition-all flex items-center justify-center text-zinc-200 hover:text-priori-navy/30"
-                                  >
+                                  <div className="h-full w-full rounded-md border border-dashed border-zinc-100 flex items-center justify-center text-zinc-200">
                                     <Plus size={10} />
-                                  </button>
+                                  </div>
                                 ) : (
                                   <div className="h-full w-full bg-zinc-50/30" />
                                 )
@@ -1039,16 +1033,9 @@ export const SchedulePage = () => {
                                 )
                               ) : (
                                 hasMinSpace(slot, day, viewMode === 'psychologist' ? undefined : selectedRoom, viewMode === 'psychologist' ? selectedPsychologistId : undefined) ? (
-                                  <button 
-                                    onClick={() => {
-                                      const roomToSet = viewMode === 'psychologist' ? '' : selectedRoom;
-                                      setFormData({ ...formData, roomId: roomToSet, startTime: slot, date: day, mode: AttendanceMode.PRESENCIAL });
-                                      setIsModalOpen(true);
-                                    }}
-                                    className="h-full w-full rounded-md border border-dashed border-zinc-100 hover:border-priori-navy/20 hover:bg-zinc-50 transition-all flex items-center justify-center text-zinc-200 hover:text-priori-navy/30"
-                                  >
+                                  <div className="h-full w-full rounded-md border border-dashed border-zinc-100 flex items-center justify-center text-zinc-200">
                                     <Plus size={10} />
-                                  </button>
+                                  </div>
                                 ) : (
                                   <div className="h-full w-full bg-zinc-50/30" />
                                 )
