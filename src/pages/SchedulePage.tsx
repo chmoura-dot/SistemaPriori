@@ -685,32 +685,48 @@ export const SchedulePage = () => {
           </div>
 
           {viewMode === 'weekly' && (
-            <div className="bg-white border border-zinc-100 p-3 rounded-2xl flex items-center gap-4 shadow-sm">
-              <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Filtrar por Sala:</label>
-              <select 
-                className="bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-1.5 text-xs text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/10"
-                value={selectedRoom}
-                onChange={(e) => setSelectedRoom(e.target.value)}
-              >
+            <div className="bg-white border border-zinc-100 p-2 rounded-2xl flex items-center gap-3 shadow-sm overflow-x-auto custom-scrollbar">
+              <div className="flex items-center gap-2 border-r border-zinc-100 pr-3 mr-1">
+                <Home size={14} className="text-zinc-400" />
+                <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest whitespace-nowrap">Sala:</span>
+              </div>
+              <div className="flex gap-1.5">
                 {rooms.map(r => (
-                  <option key={r.id} value={r.id}>{r.name}</option>
+                  <button
+                    key={r.id}
+                    onClick={() => setSelectedRoom(r.id)}
+                    className={cn(
+                      "px-4 py-2 text-[11px] font-black uppercase tracking-tight rounded-xl transition-all whitespace-nowrap",
+                      selectedRoom === r.id 
+                        ? "bg-priori-navy text-white shadow-md shadow-priori-navy/10" 
+                        : "bg-zinc-50 text-zinc-400 hover:bg-zinc-100 hover:text-priori-navy"
+                    )}
+                  >
+                    {r.name}
+                  </button>
                 ))}
-              </select>
+              </div>
             </div>
           )}
 
           {viewMode === 'psychologist' && (
             <div className="bg-white border border-zinc-100 p-3 rounded-2xl flex items-center gap-4 shadow-sm">
-              <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Selecionar Psicólogo:</label>
-              <select 
-                className="bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-1.5 text-xs text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/10"
-                value={selectedPsychologistId}
-                onChange={(e) => setSelectedPsychologistId(e.target.value)}
-              >
-                {psychologists.filter(p => p.active).map(p => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </select>
+              <div className="flex items-center gap-2 text-zinc-400">
+                <User size={14} />
+                <label className="text-[10px] font-bold uppercase tracking-widest whitespace-nowrap">Psicólogo:</label>
+              </div>
+              <div className="relative flex-1 max-w-sm">
+                <select 
+                  className="w-full bg-zinc-50 border border-zinc-100 rounded-xl pl-4 pr-10 py-2.5 text-xs font-bold text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/10 appearance-none transition-all cursor-pointer hover:bg-zinc-100/50"
+                  value={selectedPsychologistId}
+                  onChange={(e) => setSelectedPsychologistId(e.target.value)}
+                >
+                  {psychologists.filter(p => p.active).map(p => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+                <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-priori-navy pointer-events-none" />
+              </div>
             </div>
           )}
 
