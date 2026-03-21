@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Users, 
   Activity, 
@@ -10,7 +10,11 @@ import {
   ChevronRight,
   Lock
 } from 'lucide-react';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
+import { 
+  PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, 
+  LineChart, Line, XAxis, YAxis, CartesianGrid, AreaChart, Area, 
+  BarChart, Bar 
+} from 'recharts';
 import { api } from '../services/api';
 import { Appointment, Subscription, HealthPlan, Psychologist, Customer, CustomerStatus, SubscriptionStatus, AppointmentStatus, ParticularBillingType, Plan, Expense, ExpenseCategory } from '../services/types';
 import { cn } from '../lib/utils';
@@ -193,6 +197,114 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
   ].filter(d => d.value > 0);
 
   const MODALITY_COLORS = ['#1a365d', '#d4af37']; // Priori Navy and Priori Gold
+  const CHART_COLORS = ['#1a365d', '#d4af37', '#10b981', '#f59e0b', '#ef4444', '#6366f1', '#8b5cf6'];
+
+  // Growth Data (Customers and Psychologists)
+  const growthData = useMemo(() => {
+    const months: Record<string, { month: string, patients: number, psychologists: number, timestamp: number }> = {};
+    
+    // Helper to get month key
+    const getMonthKey = (dateStr?: string) => {
+      if (!dateStr) return null;
+      const d = new Date(dateStr);
+      return {
+        key: d.toLocaleString('pt-BR', { month: 'short', year: '2-digit' }),
+        sortKey: d.getFullYear() * 100 + d.getMonth()
+      };
+    };
+
+    // Initialize months from data
+    [...customers, ...psychologists].forEach(item => {
+      const info = getMonthKey(item.createdAt);
+      if (info && !months[info.key]) {
+        months[info.key] = { month: info.key, patients: 0, psychologists: 0, timestamp: info.sortKey };
+      }
+    });
+
+    // Count
+    customers.forEach(c => {
+      const info = getMonthKey(c.createdAt);
+      if (info) months[info.key].patients++;
+    });
+    psychologists.forEach(p => {
+      const info = getMonthKey(p.createdAt);
+      if (info) months[info.key].psychologists++;
+    });
+
+    const sorted = Object.values(months).sort((a, b) => a.timestamp - b.timestamp);
+    
+    // Accumulate for growth curve
+    let accPatients = 0;
+    let accPsys = 0;
+    return sorted.map(m => {
+      accPatients += m.patients;
+      accPsys += m.psychologists;
+      return { ...m, patients: accPatients, psychologists: accPsys };
+    });
+  }, [customers, psychologists]);
+
+  // Appointments by Plan Over Time
+  const planGrowthData = useMemo(() => {
+    const data: Record<string, any> = {};
+    const planNames = Array.from(new Set(plans.map(p => p.name)));
+
+    appointments.forEach(app => {
+      const date = new Date(app.date + 'T12:00:00');
+      const monthKey = date.toLocaleString('pt-BR', { month: 'short', year: '2-digit' });
+      const sortKey = date.getFullYear() * 100 + date.getMonth();
+      
+      const customer = customers.find(c => c.id === app.customerId);
+      const planName = customer?.healthPlan || 'Não Identificado';
+
+      if (!data[monthKey]) {
+        data[monthKey] = { month: monthKey, sortKey };
+        planNames.forEach(name => data[monthKey][name] = 0);
+      }
+      if (data[monthKey][planName] !== undefined) {
+        data[monthKey][planName]++;
+      } else {
+        data[monthKey][planName] = 1;
+      }
+    });
+
+    return Object.values(data).sort((a, b) => a.sortKey - b.sortKey);
+  }, [appointments, customers, plans]);
+
+  // Appointments by Type (TUSS) Over Time
+  const typeGrowthData = useMemo(() => {
+    const data: Record<string, any> = {};
+    const types = Array.from(new Set(appointments.map(a => a.type)));
+
+    appointments.forEach(app => {
+      const date = new Date(app.date + 'T12:00:00');
+      const monthKey = date.toLocaleString('pt-BR', { month: 'short', year: '2-digit' });
+      const sortKey = date.getFullYear() * 100 + date.getMonth();
+
+      if (!data[monthKey]) {
+        data[monthKey] = { month: monthKey, sortKey };
+        types.forEach(t => data[monthKey][t] = 0);
+      }
+      data[monthKey][app.type]++;
+    });
+
+    return Object.values(data).sort((a, b) => a.sortKey - b.sortKey);
+  }, [appointments]);
+
+  // Room Usage (Daily Occupancy)
+  const roomUsageData = useMemo(() => {
+    const dayNames = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+    const usage = dayNames.map(day => ({ day, count: 0 }));
+
+    appointments.forEach(app => {
+      const date = new Date(app.date + 'T12:00:00');
+      const dayIdx = date.getDay();
+      if (app.status !== AppointmentStatus.CANCELED) {
+        usage[dayIdx].count++;
+      }
+    });
+
+    return usage.filter((_, i) => i !== 0); // Remove Sunday
+  }, [appointments]);
 
   const amsAlerts = customers.filter(c => {
     if (c.healthPlan !== HealthPlan.AMS_PETROBRAS || !c.amsPasswordExpiry || c.status !== CustomerStatus.ACTIVE) return false;
@@ -414,6 +526,100 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
                     </div>
                   );
                 })}
+              </div>
+            </div>
+          </div>
+
+          {/* New Charts Section */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* 1. Growth Chart */}
+            <div className="bg-white border border-zinc-100 rounded-2xl p-6 shadow-sm">
+              <h3 className="text-sm font-bold text-zinc-400 uppercase tracking-widest mb-6 text-center">Crescimento da Clínica</h3>
+              <div className="h-[300px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={growthData}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                    <XAxis dataKey="month" fontSize={10} fontWeight="bold" tickLine={false} axisLine={false} />
+                    <YAxis fontSize={10} fontWeight="bold" tickLine={false} axisLine={false} />
+                    <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
+                    <Legend verticalAlign="top" height={36} iconType="circle" />
+                    <Line type="monotone" dataKey="patients" name="Pacientes" stroke="#1a365d" strokeWidth={3} dot={{ r: 4, fill: '#1a365d' }} activeDot={{ r: 6 }} animationDuration={1500} />
+                    <Line type="monotone" dataKey="psychologists" name="Psicólogos" stroke="#d4af37" strokeWidth={3} dot={{ r: 4, fill: '#d4af37' }} activeDot={{ r: 6 }} animationDuration={1500} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            {/* 2. Plan Growth Area Chart */}
+            <div className="bg-white border border-zinc-100 rounded-2xl p-6 shadow-sm">
+              <h3 className="text-sm font-bold text-zinc-400 uppercase tracking-widest mb-6 text-center">Evolução por Plano (Volume)</h3>
+              <div className="h-[300px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={planGrowthData}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                    <XAxis dataKey="month" fontSize={10} fontWeight="bold" tickLine={false} axisLine={false} />
+                    <YAxis fontSize={10} fontWeight="bold" tickLine={false} axisLine={false} />
+                    <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
+                    <Legend verticalAlign="top" height={36} iconType="circle" />
+                    {Array.from(new Set(plans.map(p => p.name))).map((name, i) => (
+                      <Area 
+                        key={name} 
+                        type="monotone" 
+                        dataKey={name as string} 
+                        stackId="1" 
+                        stroke={CHART_COLORS[i % CHART_COLORS.length]} 
+                        fill={CHART_COLORS[i % CHART_COLORS.length]} 
+                        fillOpacity={0.6} 
+                        animationDuration={1500}
+                      />
+                    ))}
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            {/* 3. TUSS Growth Bar Chart */}
+            <div className="bg-white border border-zinc-100 rounded-2xl p-6 shadow-sm">
+              <h3 className="text-sm font-bold text-zinc-400 uppercase tracking-widest mb-6 text-center">Distribuição por Tipo (TUSS)</h3>
+              <div className="h-[300px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={typeGrowthData}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                    <XAxis dataKey="month" fontSize={10} fontWeight="bold" tickLine={false} axisLine={false} />
+                    <YAxis fontSize={10} fontWeight="bold" tickLine={false} axisLine={false} />
+                    <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
+                    <Legend verticalAlign="top" height={36} iconType="circle" />
+                    {Array.from(new Set(appointments.map(a => a.type))).map((type, i) => (
+                      <Bar 
+                        key={type} 
+                        dataKey={type as string} 
+                        stackId="a" 
+                        fill={CHART_COLORS[(i + 2) % CHART_COLORS.length]} 
+                        radius={i === 0 ? [0, 0, 4, 4] : [0, 0, 0, 0]}
+                        animationDuration={1500}
+                      />
+                    ))}
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            {/* 4. Room Usage Bar Chart */}
+            <div className="bg-white border border-zinc-100 rounded-2xl p-6 shadow-sm">
+              <h3 className="text-sm font-bold text-zinc-400 uppercase tracking-widest mb-6 text-center">Ocupação das Salas (Por Dia)</h3>
+              <div className="h-[300px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={roomUsageData}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                    <XAxis dataKey="day" fontSize={10} fontWeight="bold" tickLine={false} axisLine={false} />
+                    <YAxis fontSize={10} fontWeight="bold" tickLine={false} axisLine={false} />
+                    <Tooltip 
+                      cursor={{fill: '#f9fafb'}}
+                      contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} 
+                    />
+                    <Bar dataKey="count" name="Atendimentos" fill="#1a365d" radius={[8, 8, 0, 0]} animationDuration={1500} />
+                  </BarChart>
+                </ResponsiveContainer>
               </div>
             </div>
           </div>
