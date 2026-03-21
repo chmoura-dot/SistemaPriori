@@ -114,8 +114,26 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
   const revenuePrevisto = calculateRevenue(appsPrevistos);
   const totalGeralPrevisto = revenueRealizado + revenuePrevisto;
 
+  // Cálculo de Repasse Realizado (Com base em apps confirmados/faturados)
+  const totalRepasseRealizado = useMemo(() => {
+    return appsRealizados.reduce((total, app) => {
+      const customer = customers.find(c => c.id === app.customerId);
+      const psychologist = psychologists.find(p => p.id === app.psychologistId);
+      
+      // Valor da consulta (customizado ou do plano)
+      const plan = findPlan(customer?.healthPlan);
+      const procedure = plan?.procedures?.find(proc => proc.type === app.type);
+      const appPrice = app.customPrice ?? customer?.customPrice ?? procedure?.price ?? 0;
+      
+      // Regra de Repasse (manual no cliente ou regra do psicólogo)
+      const repassAmount = app.customRepassAmount ?? customer?.customRepassAmount ?? calcRepass(appPrice, psychologist);
+      
+      return total + repassAmount;
+    }, 0);
+  }, [appsRealizados, customers, psychologists, plans]);
+
   const totalExpenses = expenses.reduce((acc, exp) => acc + exp.amount, 0);
-  const netProfit = revenueRealizado - totalExpenses;
+  const netProfit = revenueRealizado - totalRepasseRealizado - totalExpenses;
 
   const stats = [
     { label: 'Pacientes Ativos', value: customers.filter(c => c.status === CustomerStatus.ACTIVE).length, icon: Users, color: 'text-priori-navy', bg: 'bg-priori-navy/10', path: '/clientes' },
@@ -282,9 +300,9 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
 
       if (!data[monthKey]) {
         data[monthKey] = { month: monthKey, sortKey };
-        types.forEach(t => data[monthKey][t] = 0);
+        types.forEach(t => data[monthKey][t as string] = 0);
       }
-      data[monthKey][app.type]++;
+      data[monthKey][app.type as string]++;
     });
 
     return Object.values(data).sort((a, b) => a.sortKey - b.sortKey);
@@ -407,6 +425,69 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
                 <h3 className="text-2xl font-bold text-priori-navy">{stat.value}</h3>
               </div>
             ))}
+          </div>
+
+          {/* DRE GERENCIAL */}
+          <div className="bg-white border border-zinc-100 rounded-[2.5rem] p-8 shadow-sm relative overflow-hidden">
+            <div className="absolute top-0 right-0 p-8 opacity-[0.03]">
+              <TrendingUp size={200} className="text-priori-navy" />
+            </div>
+            
+            <div className="relative z-10">
+              <div className="flex items-center gap-3 mb-8">
+                <div className="p-3 bg-priori-navy rounded-2xl text-white shadow-lg shadow-priori-navy/20">
+                  <Activity size={24} />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-priori-navy">Margem Líquida Real (DRE)</h3>
+                  <p className="text-xs text-zinc-400 font-bold uppercase tracking-widest">Resultado Financeiro Consolidado</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+                <div className="space-y-2">
+                  <p className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em]">Faturamento Bruto</p>
+                  <p className="text-2xl font-black text-emerald-600">R$ {revenueRealizado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                  <div className="h-1.5 w-full bg-zinc-100 rounded-full overflow-hidden">
+                    <div className="h-full bg-emerald-500 w-full"></div>
+                  </div>
+                </div>
+
+                <div className="space-y-2 text-red-500">
+                  <p className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em]">Total de Repasses</p>
+                  <p className="text-2xl font-black">- R$ {totalRepasseRealizado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                  <div className="h-1.5 w-full bg-zinc-100 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-red-400" 
+                      style={{ width: `${(totalRepasseRealizado / revenueRealizado) * 100}%` }}
+                    ></div>
+                  </div>
+                  <p className="text-[9px] font-bold uppercase">Representa {((totalRepasseRealizado / revenueRealizado) * 100).toFixed(1)}% da receita</p>
+                </div>
+
+                <div className="space-y-2 text-amber-600">
+                  <p className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em]">Despesas Clínica</p>
+                  <p className="text-2xl font-black">- R$ {totalExpenses.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                  <div className="h-1.5 w-full bg-zinc-100 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-amber-400" 
+                      style={{ width: `${(totalExpenses / revenueRealizado) * 100}%` }}
+                    ></div>
+                  </div>
+                  <p className="text-[9px] font-bold uppercase">Custos fixos e operacionais</p>
+                </div>
+
+                <div className="p-6 bg-priori-navy rounded-3xl text-white shadow-xl shadow-priori-navy/20 flex flex-col justify-center">
+                  <p className="text-[10px] font-black text-white/50 uppercase tracking-[0.2em] mb-1">Lucro Líquido Real</p>
+                  <p className="text-3xl font-black text-priori-gold">R$ {netProfit.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                  <div className="mt-3 flex items-center gap-2">
+                    <div className="px-2 py-0.5 bg-white/10 rounded-full">
+                      <span className="text-[10px] font-bold">MARGEM: {((netProfit / revenueRealizado) * 100).toFixed(1)}%</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
