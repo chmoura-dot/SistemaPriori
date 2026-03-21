@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Plus, Search, MoreVertical, Edit2, Trash2, Mail, Phone, User, UserX, UserCheck, TrendingUp, Check, AlertCircle, FileUp, Download } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { api } from '../services/api';
@@ -47,6 +47,17 @@ export const CustomersPage = () => {
     amsPassword: '',
     amsPasswordExpiry: ''
   });
+
+  // Autocomplete/Duplicate check state
+  const similarCustomers = useMemo(() => {
+    if (editingCustomer || !formData.name || formData.name.length < 3) return [];
+    
+    const search = formData.name.toLowerCase();
+    return customers.filter(c => 
+      c.name.toLowerCase().includes(search) || 
+      search.includes(c.name.toLowerCase())
+    );
+  }, [formData.name, customers, editingCustomer]);
 
   const loadData = async () => {
     setIsLoading(true);
@@ -583,12 +594,41 @@ export const CustomersPage = () => {
       >
         <form id="customer-form" onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-4">
-            <Input
-              label="Nome Completo"
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value.toUpperCase() })}
-              required
-            />
+            <div className="space-y-2 relative">
+              <Input
+                label="Nome Completo"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value.toUpperCase() })}
+                required
+              />
+              
+              {similarCustomers.length > 0 && (
+                <div className="p-3 bg-amber-50 border border-amber-100 rounded-xl space-y-2 animate-in fade-in zoom-in duration-200">
+                  <div className="flex items-center gap-2 text-amber-700">
+                    <AlertCircle size={14} />
+                    <span className="text-[10px] font-bold uppercase tracking-widest">Atenção: Possível Paciente Duplicado</span>
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    {similarCustomers.slice(0, 3).map(c => (
+                      <div key={c.id} className="flex items-center justify-between bg-white/50 p-2 rounded-lg border border-amber-200/50">
+                        <span className="text-xs font-bold text-priori-navy">{c.name}</span>
+                        <span className={cn(
+                          "text-[8px] font-black uppercase px-1.5 py-0.5 rounded border",
+                          c.status === CustomerStatus.ACTIVE 
+                            ? "bg-emerald-50 text-emerald-600 border-emerald-100" 
+                            : "bg-zinc-100 text-zinc-500 border-zinc-200"
+                        )}>
+                          {c.status === CustomerStatus.ACTIVE ? 'Ativo' : 'Inativo'}
+                        </span>
+                      </div>
+                    ))}
+                    {similarCustomers.length > 3 && (
+                      <p className="text-[9px] text-amber-600 text-center font-medium italic">+ {similarCustomers.length - 3} outros nomes similares</p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
             <Input
               label="Telefone"
               value={formData.phone}
