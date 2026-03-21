@@ -77,15 +77,15 @@ export default function App() {
       case '/clientes':
         return <CustomersPage />;
       case '/planos':
-        return isAdmin ? <PlansPage /> : <SchedulePage />;
+        return <PlansPage />;
       case '/financeiro':
-        return isAdmin ? <FinancialPage key="financeiro-page" /> : <SchedulePage />;
+        return <FinancialPage key="financeiro-page" />;
       case '/pagamentos':
-        return isAdmin ? <PaymentsPage /> : <SchedulePage />;
+        return <PaymentsPage />;
       case '/faturamento':
-        return isAdmin ? <BillingPage /> : <SchedulePage />;
+        return <BillingPage />;
       case '/repasse':
-        return isAdmin ? <RepassePage /> : <SchedulePage />;
+        return <RepassePage />;
       case '/despesas':
         return isAdmin ? <ExpensesPage /> : <SchedulePage />;
       case '/psicologos':
