@@ -80,5 +80,21 @@ SELECT cron.schedule('ams-password-alert', '0 10 * * 1', $$
       body:='{}'::jsonb
   ) as request_id;
 $$);
+
+-- 6. Aviso de Pendências de Agenda Atrasadas (Toda quarta-feira às 08:00 BRT / 11:00 UTC)
+DO $$
+BEGIN
+  PERFORM cron.unschedule('stale-confirmation-nag');
+EXCEPTION WHEN OTHERS THEN
+  NULL;
+END $$;
+
+SELECT cron.schedule('stale-confirmation-nag', '0 11 * * 3', $$
+  SELECT net.http_post(
+      url:='https://ntqkrxtesuaeobxpmznr.supabase.co/functions/v1/stale-confirmation-nag',
+      headers:='{"Content-Type": "application/json", "Authorization": "Bearer SUA_SERVICE_ROLE_KEY"}'::jsonb,
+      body:='{}'::jsonb
+  ) as request_id;
+$$);
 >>>>+++ REPLACE
 
