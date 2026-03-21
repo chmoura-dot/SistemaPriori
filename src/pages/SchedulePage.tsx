@@ -671,6 +671,9 @@ export const SchedulePage = () => {
                   <ChevronRight size={18} />
                 </button>
               </div>
+              <div className="min-w-[100px] text-priori-navy text-xs font-bold uppercase tracking-tight">
+                {new Date(date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long' })}
+              </div>
               <Button onClick={() => {
                 setFormData({ ...formData, date, mode: AttendanceMode.PRESENCIAL });
                 setIsModalOpen(true);
@@ -1244,6 +1247,11 @@ export const SchedulePage = () => {
                         onChange={(e) => setFormData({ ...formData, date: e.target.value, startTime: '', endTime: '' })}
                         required
                       />
+                      {formData.date && (
+                        <p className="text-xs text-zinc-500 mt-1">
+                          {new Date(formData.date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })}
+                        </p>
+                      )}
                     </div>
                     <div className="space-y-2">
                       <label className="text-sm font-bold text-zinc-500 uppercase tracking-widest">Hora Início</label>
