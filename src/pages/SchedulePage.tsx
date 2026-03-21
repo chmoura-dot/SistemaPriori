@@ -149,14 +149,39 @@ export const SchedulePage = () => {
     e.preventDefault();
     setIsSaving(true);
     try {
+      // Validar sobreposição de horários antes de salvar/atualizar
+      const conflicts = appointments.filter(a =>
+        a.id !== editingId && // Exclui o próprio agendamento se estiver editando
+        a.date === formData.date &&
+        a.status !== AppointmentStatus.CANCELED &&
+        (
+          (formData.startTime >= a.startTime && formData.startTime < a.endTime) ||
+          (formData.endTime > a.startTime && formData.endTime <= a.endTime) ||
+          (formData.startTime <= a.startTime && formData.endTime >= a.endTime)
+        )
+      );
+
+      const roomConflict = conflicts.some(a =>
+        formData.mode === AttendanceMode.PRESENCIAL && a.mode === AttendanceMode.PRESENCIAL && a.roomId === formData.roomId
+      );
+
+      const psychologistConflict = conflicts.some(a =>
+        a.psychologistId === formData.psychologistId
+      );
+
+      if (roomConflict) {
+        throw new Error('Já existe um agendamento para esta sala neste horário.');
+      }
+
+      if (psychologistConflict) {
+        throw new Error('O psicólogo selecionado já possui um agendamento neste horário.');
+      }
+
       if (editingId) {
         const appointmentToEdit = appointments.find(a => a.id === editingId);
         
         if (appointmentToEdit?.isRecurring && appointmentToEdit.recurrenceGroupId && updateFuture) {
-          // Excluir este e todos os futuros
           await api.deleteFutureAppointments(appointmentToEdit.recurrenceGroupId, appointmentToEdit.date);
-          
-          // Recriar a partir da nova data
           await api.createAppointment({
             ...formData,
             date: formData.date,
@@ -165,7 +190,6 @@ export const SchedulePage = () => {
             roomId: formData.mode === AttendanceMode.ONLINE ? undefined : formData.roomId
           });
         } else {
-          // Atualiza apenas este agendamento específico
           await api.updateAppointment(editingId, {
             ...formData,
             roomId: formData.mode === AttendanceMode.ONLINE ? undefined : formData.roomId
