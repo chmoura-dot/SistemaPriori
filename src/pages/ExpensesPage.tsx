@@ -483,14 +483,22 @@ export const ExpensesPage = () => {
                       <p className="text-sm text-zinc-500">{new Date(expense.date).toLocaleDateString()}</p>
                     </td>
                     <td className="px-6 py-4">
-                      <p className="text-sm font-bold text-red-500">R$ {expense.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-                    </td>
-                    <td className="px-6 py-4">
-                      {expense.isRecurring ? (
-                        <span className="text-[10px] font-bold text-priori-navy uppercase tracking-wider">Sim</span>
-                      ) : (
-                        <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Não</span>
-                      )}
+                      <p className="text-sm font-bold text-priori-navy">
+                        {expense.beneficiary || expense.razaoSocial || expense.nomeFantasia || expense.description}
+                      </p>
+                      {(() => {
+                        const mainText = expense.beneficiary || expense.razaoSocial || expense.nomeFantasia || expense.description;
+                        const subText = expense.productDescription || (expense.beneficiary ? expense.description : '');
+                        
+                        if (subText && subText !== mainText) {
+                          return (
+                            <p className="text-[11px] text-zinc-400 mt-0.5 line-clamp-1">
+                              {subText}
+                            </p>
+                          );
+                        }
+                        return null;
+                      })()}
                     </td>
                     <td className="px-6 py-4 text-right">
                       <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
