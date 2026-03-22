@@ -191,13 +191,6 @@ const NfsePage = () => {
             required
           />
           <Input
-            label="Nome do Tomador"
-            value={invoiceData.payerName}
-            onChange={(e) => setInvoiceData({ ...invoiceData, payerName: e.target.value })}
-            disabled={payerNameLocked}
-            required
-          />
-          <Input
             label="Tomador (CPF/CNPJ)"
             value={invoiceData.payerCNPJ}
             onChange={(e) => {
@@ -209,6 +202,13 @@ const NfsePage = () => {
               }
               setInvoiceData({ ...invoiceData, payerCNPJ: next });
             }}
+            required
+          />
+          <Input
+            label="Nome do Tomador"
+            value={invoiceData.payerName}
+            onChange={(e) => setInvoiceData({ ...invoiceData, payerName: e.target.value })}
+            disabled={payerNameLocked}
             required
           />
 
