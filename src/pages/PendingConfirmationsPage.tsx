@@ -41,7 +41,7 @@ export const PendingConfirmationsPage = () => {
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
         
         return (
-          diffDays >= 3 && // Consideramos "atrasado" após 3 dias (ajustável)
+          diffDays >= 1 && // Consideramos "atrasado" após 24 horas (ajustável)
           a.status === AppointmentStatus.ACTIVE &&
           !a.confirmedPsychologist
         );
@@ -67,7 +67,7 @@ export const PendingConfirmationsPage = () => {
       return;
     }
 
-    const message = `Olá ${psy.name}, aqui é da coordenação do Núcleo Priori. Notamos que você possui ${count} atendimentos pendentes de confirmação no sistema há mais de 3 dias. Por favor, poderia regularizar sua agenda? Isso é fundamental para nosso faturamento. Obrigado!`;
+    const message = `Olá ${psy.name}, aqui é da coordenação do Núcleo Priori. Notamos que você possui ${count} atendimentos pendentes de confirmação no sistema há mais de 24 horas. Por favor, poderia regularizar sua agenda? Isso é fundamental para nosso faturamento. Obrigado!`;
     const url = `https://wa.me/55${psy.phone.replace(/\D/g, '')}?text=${encodeURIComponent(message)}`;
     window.open(url, '_blank');
   };
@@ -96,7 +96,7 @@ export const PendingConfirmationsPage = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold text-priori-navy">Pendências de Confirmação</h2>
-          <p className="text-zinc-500">Atendimentos realizados há mais de 3 dias sem check do psicólogo.</p>
+          <p className="text-zinc-500">Atendimentos realizados há mais de 24 horas sem check do psicólogo.</p>
         </div>
         <div className="flex bg-white p-4 rounded-2xl border border-zinc-100 shadow-sm items-center gap-6">
           <div className="flex flex-col items-center border-r border-zinc-100 pr-6">
@@ -219,7 +219,7 @@ export const PendingConfirmationsPage = () => {
           </div>
           <div>
             <p className="text-lg font-bold text-priori-navy">Agenda 100% em dia!</p>
-            <p className="text-sm opacity-60">Não há nenhum agendamento pendente de confirmação há mais de 3 dias.</p>
+            <p className="text-sm opacity-60">Não há nenhum agendamento pendente de confirmação há mais de 24 horas.</p>
           </div>
         </div>
       )}
