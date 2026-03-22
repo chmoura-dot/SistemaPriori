@@ -139,11 +139,12 @@ export const ExpensesPage = () => {
       const genAI = new GoogleGenerativeAI(apiKey);
       const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
-      const prompt = `Analise o texto extraído de um PDF de boleto ou nota fiscal e extraia exatamente estas 3 informações em formato JSON (não inclua marcações de markdown, apenas o json puro):
+      const prompt = `Analise o texto extraído de um PDF de boleto ou nota fiscal e extraia exatamente estas 4 informações em formato JSON (não inclua marcações de markdown, apenas o json puro):
       {
-        "emissor": "Nome completo da empresa que emitiu/recebe o pagamento",
-        "vencimento": "Data no formato AAAA-MM-DD",
-        "valor": número decimal representando o valor total
+        "cnpj": "CNPJ do emissor formatado (ex: 00.000.000/0000-00)",
+        "emissao": "Data de emissão no formato DD/MM/AAAA",
+        "vencimento": "Data de vencimento no formato AAAA-MM-DD",
+        "valor": número decimal representando o valor total (ex: 150.00)
       }
 
       Texto extraído:
@@ -166,11 +167,11 @@ export const ExpensesPage = () => {
       return {
         date: aiData.vencimento,
         amount: aiData.valor,
-        description: aiData.emissor,
-        beneficiary: aiData.emissor,
+        description: `Emissão: ${aiData.emissao}`,
+        beneficiary: aiData.cnpj,
         razaoSocial: '',
         nomeFantasia: '',
-        productDescription: ''
+        productDescription: `Emissão: ${aiData.emissao}`
       };
     }
 
@@ -471,23 +472,11 @@ export const ExpensesPage = () => {
                 expenses.map((expense) => (
                   <tr key={expense.id} className="hover:bg-zinc-50 transition-colors group">
                     <td className="px-6 py-4">
-                      <p className="text-sm font-medium text-priori-navy">{expense.description}</p>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-zinc-100 text-zinc-500 border border-zinc-200">
-                        <Tag size={10} />
-                        {expense.category}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <p className="text-sm text-zinc-500">{new Date(expense.date).toLocaleDateString()}</p>
-                    </td>
-                    <td className="px-6 py-4">
                       <p className="text-sm font-bold text-priori-navy">
-                        {expense.beneficiary || expense.razaoSocial || expense.nomeFantasia || expense.description}
+                        {expense.beneficiary || expense.description}
                       </p>
                       {(() => {
-                        const mainText = expense.beneficiary || expense.razaoSocial || expense.nomeFantasia || expense.description;
+                        const mainText = expense.beneficiary || expense.description;
                         const subText = expense.productDescription || (expense.beneficiary ? expense.description : '');
                         
                         if (subText && subText !== mainText) {
@@ -499,6 +488,25 @@ export const ExpensesPage = () => {
                         }
                         return null;
                       })()}
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-zinc-100 text-zinc-500 border border-zinc-200">
+                        <Tag size={10} />
+                        {expense.category}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <p className="text-sm text-zinc-500">{new Date(expense.date + 'T12:00:00').toLocaleDateString('pt-BR')}</p>
+                    </td>
+                    <td className="px-6 py-4">
+                      <p className="text-sm font-bold text-red-500">R$ {expense.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                    </td>
+                    <td className="px-6 py-4">
+                      {expense.isRecurring ? (
+                        <span className="text-[10px] font-bold text-priori-navy uppercase tracking-wider">Sim</span>
+                      ) : (
+                        <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Não</span>
+                      )}
                     </td>
                     <td className="px-6 py-4 text-right">
                       <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
