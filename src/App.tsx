@@ -86,9 +86,9 @@ export default function App() {
         return <PaymentsPage />;
       case '/faturamento':
         return <BillingPage />;
-      case '/repasse':
       case '/nfse': // Rota para a página de NFS-e
         return <NfsePage />;
+      case '/repasse': // Rota para a página de Repasse
         return <RepassePage />;
       case '/despesas':
         return isAdmin ? <ExpensesPage /> : <SchedulePage />;

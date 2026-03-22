@@ -7,16 +7,23 @@ import { api } from '../services/api'; // Importar API para interações com o S
 const NfsePage = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [invoiceData, setInvoiceData] = useState({
-    period: '',
-    payer: '',
+    issueDate: '',
+    payerName: '',
+    payerCNPJ: '',
     totalAmount: 0,
     description: '',
   });
 
-  const handleCreateInvoice = async () => {
-    // Lógica para criar a nota fiscal
+  const handleCreateInvoice = async (e: React.FormEvent) => {
+    e.preventDefault();
     try {
-      const response = await api.createInvoice(invoiceData);
+      const response = await api.createInvoice({
+        issueDate: invoiceData.issueDate,
+        payer: invoiceData.payerName,
+        payerCNPJ: invoiceData.payerCNPJ,
+        totalAmount: invoiceData.totalAmount,
+        description: invoiceData.description,
+      });
       console.log('Nota fiscal criada:', response);
       setIsModalOpen(false);
     } catch (error) {
@@ -32,15 +39,22 @@ const NfsePage = () => {
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Criar Nota Fiscal">
         <form onSubmit={handleCreateInvoice}>
           <Input
-            label="Período"
-            value={invoiceData.period}
-            onChange={(e) => setInvoiceData({ ...invoiceData, period: e.target.value })}
+            label="Data de Emissão"
+            type="date"
+            value={invoiceData.issueDate}
+            onChange={(e) => setInvoiceData({ ...invoiceData, issueDate: e.target.value })}
+            required
+          />
+          <Input
+            label="Nome do Tomador"
+            value={invoiceData.payerName}
+            onChange={(e) => setInvoiceData({ ...invoiceData, payerName: e.target.value })}
             required
           />
           <Input
             label="Tomador (CPF/CNPJ)"
-            value={invoiceData.payer}
-            onChange={(e) => setInvoiceData({ ...invoiceData, payer: e.target.value })}
+            value={invoiceData.payerCNPJ}
+            onChange={(e) => setInvoiceData({ ...invoiceData, payerCNPJ: e.target.value })}
             required
           />
           <Input

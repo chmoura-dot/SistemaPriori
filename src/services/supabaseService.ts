@@ -207,7 +207,14 @@ export const supabaseService: AppService = {
   createInvoice: async (data) => {
     const { error } = await supabase
       .from('nfse_invoices')
-      .insert(data);
+      .insert({
+        // O input date do HTML envia YYYY-MM-DD (ideal para coluna DATE)
+        issue_date: data.issueDate, // Data de emissão
+        status: 'rascunho', // Status inicial
+        payer: { nome: data.payer, cpf_cnpj: data.payerCNPJ }, // Montando o objeto payer
+        total_amount: data.totalAmount, // Total
+        description: data.description, // Descrição
+      });
     if (error) throw new Error(error.message);
     return { success: true };
   },
