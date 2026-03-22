@@ -9,9 +9,15 @@ import {
   Tag,
   AlertCircle,
   Copy,
-  RefreshCw
+  RefreshCw,
+  FileText,
+  Loader2
 } from 'lucide-react';
 import { api } from '../services/api';
+import * as pdfjsLib from 'pdfjs-dist';
+
+// Configuração do worker do PDF.js
+pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
 import { Expense, ExpenseCategory } from '../services/types';
 import { Button } from '../components/Button';
 import { Modal } from '../components/Modal';
@@ -33,6 +39,7 @@ export const ExpensesPage = () => {
     isRecurring: false
   });
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isReadingPdf, setIsReadingPdf] = useState(false);
 
   const loadExpenses = async () => {
     setIsLoading(true);
@@ -108,6 +115,77 @@ export const ExpensesPage = () => {
       } catch (error) {
         alert('Erro ao excluir despesa');
       }
+    }
+  };
+
+  const parsePdfContent = (text: string) => {
+    // Busca por padrões comuns de data (DD/MM/AAAA)
+    const dateRegex = /(\d{2})\/(\d{2})\/(\d{4})/;
+    const dateMatch = text.match(dateRegex);
+    let extractedDate = new Date().toISOString().split('T')[0];
+    
+    if (dateMatch) {
+      const [_, day, month, year] = dateMatch;
+      extractedDate = `${year}-${month}-${day}`;
+    }
+
+    // Busca por padrões comuns de valor (R$ 0,00 ou apenas 0,00)
+    // Procuramos o maior valor que pareça ser o total
+    const amountRegex = /(?:R\$\s?|V[alor]{3}\s?|TOTAL\s?)?(\d{1,3}(?:\.\d{3})*,\d{2})/gi;
+    let maxAmount = 0;
+    let match;
+    
+    while ((match = amountRegex.exec(text)) !== null) {
+      const value = parseFloat(match[1].replace(/\./g, '').replace(',', '.'));
+      if (value > maxAmount) maxAmount = value;
+    }
+
+    // Busca por descrição (nome de empresa ou serviço)
+    // Tenta pegar as primeiras palavras que não sejam números/datas
+    const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 5);
+    const description = lines[0]?.substring(0, 50) || 'Nova Despesa (PDF)';
+
+    return {
+      date: extractedDate,
+      amount: maxAmount,
+      description
+    };
+  };
+
+  const handlePdfUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsReadingPdf(true);
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      let fullText = '';
+      
+      for (let i = 1; i <= Math.min(pdf.numPages, 3); i++) {
+        const page = await pdf.getPage(i);
+        const textContent = await page.getTextContent();
+        const pageText = textContent.items.map((item: any) => item.str).join(' ');
+        fullText += pageText + '\n';
+      }
+
+      const extractedData = parsePdfContent(fullText);
+      
+      setFormData({
+        ...formData,
+        ...extractedData,
+        description: `IMPORTADO: ${extractedData.description}`
+      });
+      
+      setEditingExpense(null);
+      setIsModalOpen(true);
+    } catch (error) {
+      console.error('Erro ao ler PDF:', error);
+      alert('Não foi possível ler as informações do PDF. Verifique se o arquivo é válido.');
+    } finally {
+      setIsReadingPdf(false);
+      // Limpa o input para permitir subir o mesmo arquivo novamente se necessário
+      e.target.value = '';
     }
   };
 
@@ -190,6 +268,23 @@ export const ExpensesPage = () => {
             <RefreshCw size={18} className={cn(isProcessing && "animate-spin")} />
             Processar Recorrências
           </Button>
+          <div className="relative">
+            <input
+              type="file"
+              accept=".pdf"
+              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+              onChange={handlePdfUpload}
+              disabled={isReadingPdf}
+            />
+            <Button 
+              variant="outline" 
+              className="flex items-center gap-2 border-priori-gold text-priori-gold hover:bg-priori-gold/5"
+              isLoading={isReadingPdf}
+            >
+              {isReadingPdf ? <Loader2 size={18} className="animate-spin" /> : <FileText size={18} />}
+              Importar PDF
+            </Button>
+          </div>
           <Button onClick={() => {
             setEditingExpense(null);
             setFormData({
