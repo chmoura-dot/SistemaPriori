@@ -432,7 +432,7 @@ export const ExpensesPage = () => {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="border-b border-zinc-100 bg-zinc-50/50">
-                <th className="px-6 py-4 text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Descrição</th>
+                <th className="px-6 py-4 text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Fornecedor / Detalhes</th>
                 <th className="px-6 py-4 text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Categoria</th>
                 <th className="px-6 py-4 text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Data</th>
                 <th className="px-6 py-4 text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Valor</th>
@@ -457,7 +457,14 @@ export const ExpensesPage = () => {
                 expenses.map((expense) => (
                   <tr key={expense.id} className="hover:bg-zinc-50 transition-colors group">
                     <td className="px-6 py-4">
-                      <p className="text-sm font-medium text-priori-navy">{expense.description}</p>
+                      <p className="text-sm font-bold text-priori-navy">
+                        {expense.beneficiary || expense.razaoSocial || expense.nomeFantasia || expense.description}
+                      </p>
+                      {(expense.productDescription || (expense.beneficiary && expense.description)) && (
+                        <p className="text-[11px] text-zinc-400 mt-0.5 line-clamp-1">
+                          {expense.productDescription || expense.description}
+                        </p>
+                      )}
                     </td>
                     <td className="px-6 py-4">
                       <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-zinc-100 text-zinc-500 border border-zinc-200">
