@@ -226,6 +226,10 @@ export enum ExpenseCategory {
 export interface Expense {
   id: string;
   description: string;
+  beneficiary?: string;
+  razaoSocial?: string;
+  nomeFantasia?: string;
+  productDescription?: string;
   amount: number;
   category: ExpenseCategory;
   date: string;

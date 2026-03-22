@@ -33,6 +33,10 @@ export const ExpensesPage = () => {
 
   const [formData, setFormData] = useState({
     description: '',
+    beneficiary: '',
+    razaoSocial: '',
+    nomeFantasia: '',
+    productDescription: '',
     amount: 0,
     category: ExpenseCategory.OTHER,
     date: new Date().toISOString().split('T')[0],
@@ -87,6 +91,10 @@ export const ExpensesPage = () => {
     setEditingExpense(expense);
     setFormData({
       description: expense.description,
+      beneficiary: expense.beneficiary || '',
+      razaoSocial: expense.razaoSocial || '',
+      nomeFantasia: expense.nomeFantasia || '',
+      productDescription: expense.productDescription || '',
       amount: expense.amount,
       category: expense.category,
       date: expense.date,
@@ -99,6 +107,10 @@ export const ExpensesPage = () => {
     setEditingExpense(null);
     setFormData({
       description: `${expense.description} (Cópia)`,
+      beneficiary: expense.beneficiary || '',
+      razaoSocial: expense.razaoSocial || '',
+      nomeFantasia: expense.nomeFantasia || '',
+      productDescription: expense.productDescription || '',
       amount: expense.amount,
       category: expense.category,
       date: new Date().toISOString().split('T')[0],
@@ -197,7 +209,11 @@ export const ExpensesPage = () => {
     return {
       date: extractedDate,
       amount: maxAmount,
-      description: finalDescription
+      description: finalDescription,
+      beneficiary: beneficiaryMatch?.[1]?.trim() || '',
+      razaoSocial: beneficiaryMatch?.[1]?.trim() || '',
+      nomeFantasia: beneficiaryMatch?.[1]?.trim() || '',
+      productDescription: productMatch?.[1]?.trim() || ''
     };
   };
 
@@ -249,7 +265,7 @@ export const ExpensesPage = () => {
             setFormData({
               ...formData,
               ...extractedData,
-              description: `IMPORTADO: ${extractedData.description}`
+              description: extractedData.description
             });
             setEditingExpense(null);
             setIsModalOpen(true);
@@ -259,7 +275,6 @@ export const ExpensesPage = () => {
             await api.createExpense({
               ...formData,
               ...extractedData,
-              description: `IMPORTADO: ${extractedData.description}`,
               category: ExpenseCategory.OTHER // Padrão para importação em lote
             });
             successCount++;
@@ -502,12 +517,42 @@ export const ExpensesPage = () => {
         title={editingExpense ? 'Editar Despesa' : 'Nova Despesa'}
       >
         <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Input
+              label="Descrição Geral"
+              placeholder="Ex: Aluguel, Salário, etc"
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              required
+            />
+            <Input
+              label="Beneficiário / Recebedor"
+              placeholder="Nome de quem recebe"
+              value={formData.beneficiary}
+              onChange={(e) => setFormData({ ...formData, beneficiary: e.target.value })}
+            />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Input
+              label="Razão Social"
+              placeholder="Nome jurídico da empresa"
+              value={formData.razaoSocial}
+              onChange={(e) => setFormData({ ...formData, razaoSocial: e.target.value })}
+            />
+            <Input
+              label="Nome Fantasia"
+              placeholder="Nome comercial da empresa"
+              value={formData.nomeFantasia}
+              onChange={(e) => setFormData({ ...formData, nomeFantasia: e.target.value })}
+            />
+          </div>
+
           <Input
-            label="Descrição"
-            placeholder="Ex: Aluguel, Salário, etc"
-            value={formData.description}
-            onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-            required
+            label="Descrição do Produto / Serviço"
+            placeholder="Ex: Notebook Dell, Internet 500MB, etc"
+            value={formData.productDescription}
+            onChange={(e) => setFormData({ ...formData, productDescription: e.target.value })}
           />
 
           <div className="grid grid-cols-2 gap-4">

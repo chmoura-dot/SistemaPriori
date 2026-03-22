@@ -170,6 +170,10 @@ function toExpense(row: any): Expense {
   return {
     id: row.id,
     description: row.description,
+    beneficiary: row.beneficiary,
+    razaoSocial: row.razao_social,
+    nomeFantasia: row.nome_fantasia,
+    productDescription: row.product_description,
     amount: row.amount,
     category: row.category,
     date: row.date,
@@ -756,6 +760,10 @@ export const supabaseService: AppService = {
         .from('expenses')
         .insert({
           description: e.description,
+          beneficiary: e.beneficiary,
+          razao_social: e.razaoSocial,
+          nome_fantasia: e.nomeFantasia,
+          product_description: e.productDescription,
           amount: e.amount,
           category: e.category,
           date: e.date,
@@ -770,6 +778,10 @@ export const supabaseService: AppService = {
   updateExpense: async (id, e) => {
     const updates: Record<string, any> = {};
     if (e.description !== undefined) updates.description = e.description;
+    if (e.beneficiary !== undefined) updates.beneficiary = e.beneficiary;
+    if (e.razaoSocial !== undefined) updates.razao_social = e.razaoSocial;
+    if (e.nomeFantasia !== undefined) updates.nome_fantasia = e.nomeFantasia;
+    if (e.productDescription !== undefined) updates.product_description = e.productDescription;
     if (e.amount !== undefined) updates.amount = e.amount;
     if (e.category !== undefined) updates.category = e.category;
     if (e.date !== undefined) updates.date = e.date;
