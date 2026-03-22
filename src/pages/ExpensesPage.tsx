@@ -119,14 +119,48 @@ export const ExpensesPage = () => {
   };
 
   const parsePdfContent = (text: string) => {
-    // Busca por padrões comuns de data (DD/MM/AAAA)
-    const dateRegex = /(\d{2})\/(\d{2})\/(\d{4})/;
-    const dateMatch = text.match(dateRegex);
-    let extractedDate = new Date().toISOString().split('T')[0];
+    // Tenta encontrar padrões de data (DD/MM/AAAA, DD-MM-AAAA, DD.MM.AAAA ou DD/MM/AA)
+    const dateRegex = /(\d{2})[/-|\.](\d{2})[/-|\.](\d{2,4})/g;
+    const matches = Array.from(text.matchAll(dateRegex));
     
-    if (dateMatch) {
-      const [_, day, month, year] = dateMatch;
-      extractedDate = `${year}-${month}-${day}`;
+    let extractedDate = new Date().toISOString().split('T')[0];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    if (matches.length > 0) {
+      // Procura primeiro por datas que venham após a palavra "Vencimento" ou "Venc" no texto próximo
+      const vencPos = text.toLowerCase().search(/vencimento|venc|pago até/);
+      
+      let bestDate: Date | null = null;
+      let minDiff = Infinity;
+
+      for (const match of matches) {
+        let [_, day, month, year] = match;
+        if (year.length === 2) year = `20${year}`;
+        const dateObj = new Date(`${year}-${month}-${day}T12:00:00`);
+
+        if (!isNaN(dateObj.getTime())) {
+          // Se houver uma data próxima à palavra "vencimento", prioriza essa
+          if (vencPos !== -1 && Math.abs(match.index! - vencPos) < 100) {
+            bestDate = dateObj;
+            break; 
+          }
+
+          // Caso contrário, tenta pegar a data que seja hoje ou no futuro (mais provável ser o vencimento)
+          // Se todas forem passadas, pega a mais recente.
+          const diff = dateObj.getTime() - today.getTime();
+          if (diff >= 0 && diff < minDiff) {
+            minDiff = diff;
+            bestDate = dateObj;
+          } else if (!bestDate) {
+            bestDate = dateObj;
+          }
+        }
+      }
+
+      if (bestDate) {
+        extractedDate = bestDate.toISOString().split('T')[0];
+      }
     }
 
     // Busca por padrões comuns de valor (R$ 0,00 ou apenas 0,00)
