@@ -187,38 +187,65 @@ export const ExpensesPage = () => {
   };
 
   const handlePdfUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
 
     setIsReadingPdf(true);
+    let successCount = 0;
+    let failCount = 0;
+
     try {
-      const arrayBuffer = await file.arrayBuffer();
-      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-      let fullText = '';
-      
-      for (let i = 1; i <= Math.min(pdf.numPages, 3); i++) {
-        const page = await pdf.getPage(i);
-        const textContent = await page.getTextContent();
-        const pageText = textContent.items.map((item: any) => item.str).join(' ');
-        fullText += pageText + '\n';
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        try {
+          const arrayBuffer = await file.arrayBuffer();
+          const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+          let fullText = '';
+          
+          for (let j = 1; j <= Math.min(pdf.numPages, 3); j++) {
+            const page = await pdf.getPage(j);
+            const textContent = await page.getTextContent();
+            const pageText = textContent.items.map((item: any) => item.str).join(' ');
+            fullText += pageText + '\n';
+          }
+
+          const extractedData = parsePdfContent(fullText);
+          
+          // Se for apenas UM arquivo, abre o modal para revisão
+          if (files.length === 1) {
+            setFormData({
+              ...formData,
+              ...extractedData,
+              description: `IMPORTADO: ${extractedData.description}`
+            });
+            setEditingExpense(null);
+            setIsModalOpen(true);
+            successCount++;
+          } else {
+            // Se forem vários, cria automaticamente para agilizar
+            await api.createExpense({
+              ...formData,
+              ...extractedData,
+              description: `IMPORTADO: ${extractedData.description}`,
+              category: ExpenseCategory.OTHER // Padrão para importação em lote
+            });
+            successCount++;
+          }
+        } catch (error) {
+          console.error(`Erro ao processar arquivo ${file.name}:`, error);
+          failCount++;
+        }
       }
 
-      const extractedData = parsePdfContent(fullText);
-      
-      setFormData({
-        ...formData,
-        ...extractedData,
-        description: `IMPORTADO: ${extractedData.description}`
-      });
-      
-      setEditingExpense(null);
-      setIsModalOpen(true);
+      if (files.length > 1) {
+        await loadExpenses();
+        alert(`${successCount} despesas importadas com sucesso!${failCount > 0 ? ` (${failCount} falhas)` : ''}\nPor favor, revise os dados na tabela.`);
+      }
     } catch (error) {
-      console.error('Erro ao ler PDF:', error);
-      alert('Não foi possível ler as informações do PDF. Verifique se o arquivo é válido.');
+      console.error('Erro geral na importação:', error);
+      alert('Ocorreu um erro ao processar os arquivos.');
     } finally {
       setIsReadingPdf(false);
-      // Limpa o input para permitir subir o mesmo arquivo novamente se necessário
       e.target.value = '';
     }
   };
@@ -306,6 +333,7 @@ export const ExpensesPage = () => {
             <input
               type="file"
               accept=".pdf"
+              multiple
               className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
               onChange={handlePdfUpload}
               disabled={isReadingPdf}
