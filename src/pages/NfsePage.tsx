@@ -3,6 +3,8 @@ import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { Modal } from '../components/Modal';
 import { api } from '../services/api';
+import { supabase } from '../lib/supabase';
+import { useDebouncedValue } from '../lib/useDebouncedValue';
 
 type NfseInvoice = {
   id: string;
@@ -17,6 +19,8 @@ type NfseInvoice = {
 const NfsePage = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isLookingUpCnpj, setIsLookingUpCnpj] = useState(false);
+  const [payerNameLocked, setPayerNameLocked] = useState(false);
 
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -30,6 +34,45 @@ const NfsePage = () => {
     totalAmount: 0,
     description: '',
   });
+
+  const payerCnpjDigits = (invoiceData.payerCNPJ ?? '').replace(/\D/g, '');
+  const debouncedCnpjDigits = useDebouncedValue(payerCnpjDigits, 500);
+
+  const lookupCnpj = async (cnpjDigits: string) => {
+    setIsLookingUpCnpj(true);
+    setErrorMessage(null);
+    try {
+      const { data, error } = await supabase.functions.invoke('cnpj-lookup', {
+        body: { cnpj: cnpjDigits },
+      });
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      const razaoSocial = data?.razaoSocial as string | null | undefined;
+      if (!razaoSocial) {
+        throw new Error('CNPJ encontrado, mas sem Razão Social retornada.');
+      }
+
+      setInvoiceData((prev) => ({
+        ...prev,
+        payerName: razaoSocial,
+      }));
+      setPayerNameLocked(true);
+    } catch (err: any) {
+      setPayerNameLocked(false);
+      setErrorMessage(err?.message ?? 'Erro ao consultar CNPJ.');
+    } finally {
+      setIsLookingUpCnpj(false);
+    }
+  };
+
+  useEffect(() => {
+    // Só consulta quando tiver 14 dígitos
+    if (debouncedCnpjDigits.length !== 14) return;
+    lookupCnpj(debouncedCnpjDigits);
+  }, [debouncedCnpjDigits]);
 
   const fetchInvoices = async () => {
     setErrorMessage(null);
@@ -68,6 +111,7 @@ const NfsePage = () => {
         totalAmount: 0,
         description: '',
       });
+      setPayerNameLocked(false);
       await fetchInvoices();
     } catch (err: any) {
       setErrorMessage(err?.message ?? 'Erro ao criar nota fiscal.');
@@ -150,14 +194,37 @@ const NfsePage = () => {
             label="Nome do Tomador"
             value={invoiceData.payerName}
             onChange={(e) => setInvoiceData({ ...invoiceData, payerName: e.target.value })}
+            disabled={payerNameLocked}
             required
           />
           <Input
             label="Tomador (CPF/CNPJ)"
             value={invoiceData.payerCNPJ}
-            onChange={(e) => setInvoiceData({ ...invoiceData, payerCNPJ: e.target.value })}
+            onChange={(e) => {
+              const next = e.target.value;
+              const nextDigits = next.replace(/\D/g, '');
+              // Se usuário está alterando o CNPJ, destrava o nome até nova consulta
+              if (nextDigits !== payerCnpjDigits) {
+                setPayerNameLocked(false);
+              }
+              setInvoiceData({ ...invoiceData, payerCNPJ: next });
+            }}
             required
           />
+
+          {isLookingUpCnpj && (
+            <p className="text-xs text-zinc-500">Consultando CNPJ…</p>
+          )}
+
+          {payerNameLocked && (
+            <button
+              type="button"
+              className="text-xs text-priori-navy underline"
+              onClick={() => setPayerNameLocked(false)}
+            >
+              Desbloquear nome para edição manual
+            </button>
+          )}
           <Input
             label="Valor Total"
             type="number"
