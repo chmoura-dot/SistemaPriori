@@ -1,11 +1,28 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { Modal } from '../components/Modal';
-import { api } from '../services/api'; // Importar API para interações com o Supabase
+import { api } from '../services/api';
+
+type NfseInvoice = {
+  id: string;
+  createdAt?: string;
+  issueDate: string;
+  status: string;
+  payer: { nome: string; cpf_cnpj: string };
+  totalAmount: number;
+  description?: string | null;
+};
 
 const NfsePage = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const [invoices, setInvoices] = useState<NfseInvoice[]>([]);
+
   const [invoiceData, setInvoiceData] = useState({
     issueDate: '',
     payerName: '',
@@ -14,30 +31,114 @@ const NfsePage = () => {
     description: '',
   });
 
+  const fetchInvoices = async () => {
+    setErrorMessage(null);
+    try {
+      const data = await api.getInvoices({ limit: 20 });
+      setInvoices(data);
+    } catch (err: any) {
+      setErrorMessage(err?.message ?? 'Erro ao buscar notas fiscais.');
+    }
+  };
+
+  useEffect(() => {
+    fetchInvoices();
+  }, []);
+
   const handleCreateInvoice = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSuccessMessage(null);
+    setErrorMessage(null);
+    setIsLoading(true);
     try {
-      const response = await api.createInvoice({
+      await api.createInvoice({
         issueDate: invoiceData.issueDate,
         payer: invoiceData.payerName,
         payerCNPJ: invoiceData.payerCNPJ,
         totalAmount: invoiceData.totalAmount,
         description: invoiceData.description,
       });
-      console.log('Nota fiscal criada:', response);
+
+      setSuccessMessage('Nota fiscal criada com sucesso (rascunho).');
       setIsModalOpen(false);
-    } catch (error) {
-      console.error('Erro ao criar nota fiscal:', error);
+      setInvoiceData({
+        issueDate: '',
+        payerName: '',
+        payerCNPJ: '',
+        totalAmount: 0,
+        description: '',
+      });
+      await fetchInvoices();
+    } catch (err: any) {
+      setErrorMessage(err?.message ?? 'Erro ao criar nota fiscal.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
   return (
-    <div>
-      <h1 className="text-2xl font-bold">Emissão de Notas Fiscais</h1>
-      <Button onClick={() => setIsModalOpen(true)}>Criar Nota Fiscal</Button>
+    <div className="space-y-4">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold">Emissão de Notas Fiscais</h1>
+          <p className="text-sm text-zinc-500">Crie notas (rascunho) e acompanhe as últimas emissões.</p>
+        </div>
+
+        <div className="flex gap-2">
+          <Button onClick={fetchInvoices} disabled={isLoading}>
+            Atualizar
+          </Button>
+          <Button onClick={() => setIsModalOpen(true)}>
+            Criar Nota Fiscal
+          </Button>
+        </div>
+      </div>
+
+      {successMessage && (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
+          {successMessage}
+        </div>
+      )}
+
+      {errorMessage && (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+          {errorMessage}
+        </div>
+      )}
+
+      <div className="rounded-xl border border-zinc-200 bg-white">
+        <div className="flex items-center justify-between border-b border-zinc-200 p-4">
+          <h2 className="text-sm font-semibold text-zinc-700 uppercase tracking-wider">Últimas notas</h2>
+          <span className="text-xs text-zinc-500">Exibindo {invoices.length} registros</span>
+        </div>
+        <div className="p-4">
+          {invoices.length === 0 ? (
+            <p className="text-sm text-zinc-500">Nenhuma nota encontrada.</p>
+          ) : (
+            <div className="space-y-2">
+              {invoices.map((inv) => (
+                <div key={inv.id} className="flex flex-col gap-1 rounded-lg border border-zinc-200 p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="font-medium text-priori-navy">
+                      {inv.payer?.nome ?? 'Tomador não informado'}
+                    </div>
+                    <div className="text-xs text-zinc-500">
+                      Emissão: {inv.issueDate} • Status: {inv.status}
+                    </div>
+                  </div>
+                  <div className="text-sm text-zinc-700">
+                    CPF/CNPJ: {inv.payer?.cpf_cnpj ?? '-'} • Valor: R$ {Number(inv.totalAmount ?? 0).toFixed(2)}
+                  </div>
+                  {inv.description ? <div className="text-xs text-zinc-500">{inv.description}</div> : null}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
 
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Criar Nota Fiscal">
-        <form onSubmit={handleCreateInvoice}>
+        <form onSubmit={handleCreateInvoice} className="space-y-3">
           <Input
             label="Data de Emissão"
             type="date"
@@ -70,7 +171,12 @@ const NfsePage = () => {
             onChange={(e) => setInvoiceData({ ...invoiceData, description: e.target.value })}
             required
           />
-          <Button type="submit">Emitir Nota Fiscal</Button>
+
+          <div className="pt-2">
+            <Button type="submit" disabled={isLoading}>
+              {isLoading ? 'Emitindo...' : 'Emitir Nota Fiscal'}
+            </Button>
+          </div>
         </form>
       </Modal>
     </div>

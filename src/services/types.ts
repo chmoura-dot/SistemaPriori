@@ -268,7 +268,25 @@ export interface User {
 
 export interface AppService {
   // ... outros métodos
-  createInvoice: (data: any) => Promise<{ success: boolean }>; // Adicionando a definição do método createInvoice
+  createInvoice: (data: {
+    issueDate: string;
+    payer: string;
+    payerCNPJ: string;
+    totalAmount: number;
+    description?: string;
+  }) => Promise<{ success: boolean }>;
+
+  getInvoices: (params?: { limit?: number }) => Promise<
+    Array<{
+      id: string;
+      issueDate: string;
+      status: string;
+      payer: { nome: string; cpf_cnpj: string };
+      totalAmount: number;
+      description?: string | null;
+      createdAt?: string;
+    }>
+  >;
   // Auth
   login: (email: string, password: string) => Promise<User | null>;
   logout: () => void;

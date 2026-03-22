@@ -204,6 +204,27 @@ const toSettings = (row: any): Settings => ({
 export const supabaseService: AppService = {
   // ... outros métodos
 
+  getInvoices: async (params) => {
+    const limit = params?.limit ?? 20;
+    const { data, error } = await supabase
+      .from('nfse_invoices')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    if (error) throw new Error(error.message);
+
+    return (data ?? []).map((row: any) => ({
+      id: String(row.id),
+      issueDate: row.issue_date,
+      status: row.status,
+      payer: row.payer,
+      totalAmount: Number(row.total_amount ?? 0),
+      description: row.description ?? null,
+      createdAt: row.created_at,
+    }));
+  },
+
   createInvoice: async (data) => {
     const { error } = await supabase
       .from('nfse_invoices')

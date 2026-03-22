@@ -17,6 +17,7 @@ import {
   AttendanceMode,
   BillingBatch,
   BillingBatchStatus,
+  WaitingListEntry,
   User,
   UserRole
 } from './types';
@@ -33,6 +34,7 @@ const STORAGE_KEYS = {
   APPOINTMENTS: 'priori_appointments',
   EXPENSES: 'priori_expenses',
   BILLING_BATCHES: 'priori_billing_batches',
+  WAITING_LIST: 'priori_waiting_list',
 };
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -528,6 +530,16 @@ const saveToStorage = <T>(key: string, data: T[]) => {
 seedData();
 
 export const mockService: AppService = {
+  getInvoices: async (_params) => {
+    await delay(200);
+    return [];
+  },
+
+  createInvoice: async (_data) => {
+    await delay(300);
+    return { success: true };
+  },
+
   login: async (email, password) => {
     await delay(500);
     
@@ -1014,5 +1026,43 @@ export const mockService: AppService = {
     const updated = { ...settings, ...data, updatedAt: new Date().toISOString() };
     localStorage.setItem('priori_settings', JSON.stringify(updated));
     return updated;
+  },
+
+  // Waiting List
+  getWaitingList: async () => {
+    await delay(250);
+    return getFromStorage<WaitingListEntry>(STORAGE_KEYS.WAITING_LIST);
+  },
+
+  createWaitingListEntry: async (entry) => {
+    await delay(400);
+    const list = getFromStorage<WaitingListEntry>(STORAGE_KEYS.WAITING_LIST);
+    const newEntry: WaitingListEntry = {
+      ...entry,
+      id: Math.random().toString(36).substr(2, 9),
+      createdAt: new Date().toISOString(),
+    };
+    saveToStorage(STORAGE_KEYS.WAITING_LIST, [...list, newEntry]);
+    return newEntry;
+  },
+
+  updateWaitingListEntry: async (id, entry) => {
+    await delay(400);
+    const list = getFromStorage<WaitingListEntry>(STORAGE_KEYS.WAITING_LIST);
+    const idx = list.findIndex((e) => e.id === id);
+    if (idx === -1) throw new Error('Waiting list entry not found');
+    const updated = { ...list[idx], ...entry };
+    list[idx] = updated;
+    saveToStorage(STORAGE_KEYS.WAITING_LIST, list);
+    return updated;
+  },
+
+  deleteWaitingListEntry: async (id) => {
+    await delay(400);
+    const list = getFromStorage<WaitingListEntry>(STORAGE_KEYS.WAITING_LIST);
+    saveToStorage(
+      STORAGE_KEYS.WAITING_LIST,
+      list.filter((e) => e.id !== id)
+    );
   },
 };
