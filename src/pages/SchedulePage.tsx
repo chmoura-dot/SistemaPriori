@@ -42,7 +42,14 @@ import { cn } from '../lib/utils';
 import { supabase } from '../lib/supabase';
 
 export const SchedulePage = () => {
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    const dateParam = params.get('date');
+    if (dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
+      return dateParam;
+    }
+    return new Date().toISOString().split('T')[0];
+  });
   
   const changeDate = (days: number) => {
     const d = new Date(date + 'T12:00:00');

@@ -196,7 +196,10 @@ export const PendingConfirmationsPage = () => {
                           </td>
                           <td className="px-6 py-4 text-right">
                             <button 
-                              onClick={() => window.location.href = `/agenda?date=${app.date}`}
+                              onClick={() => {
+                                window.history.pushState({}, '', `/agenda?date=${app.date}`);
+                                window.dispatchEvent(new PopStateEvent('popstate'));
+                              }}
                               className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-priori-navy hover:text-priori-gold transition-colors"
                             >
                               Ver na Agenda
