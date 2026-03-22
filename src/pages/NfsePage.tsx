@@ -1,86 +1,52 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Button } from '../components/Button';
-import { Input } from '../components/Input';
 import { Modal } from '../components/Modal';
 import { api } from '../services/api';
-import { supabase } from '../lib/supabase';
-import { useDebouncedValue } from '../lib/useDebouncedValue';
+import { Upload, FileText, X, Check, AlertCircle, Loader2 } from 'lucide-react';
 
 type NfseInvoice = {
   id: string;
-  createdAt?: string;
+  invoiceNumber: string;
   issueDate: string;
   status: string;
   payer: { nome: string; cpf_cnpj: string };
   totalAmount: number;
   description?: string | null;
+  createdAt?: string;
+};
+
+type PendingInvoice = {
+  invoiceNumber: string;
+  issueDate: string;
+  payerName: string;
+  payerCNPJ: string;
+  totalAmount: number;
+  description: string;
+  fileName: string;
+  status: 'pending' | 'success' | 'error';
+  message?: string;
 };
 
 const NfsePage = () => {
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isLookingUpCnpj, setIsLookingUpCnpj] = useState(false);
-  const [payerNameLocked, setPayerNameLocked] = useState(false);
-
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
   const [invoices, setInvoices] = useState<NfseInvoice[]>([]);
-
-  const [invoiceData, setInvoiceData] = useState({
-    issueDate: '',
-    payerName: '',
-    payerCNPJ: '',
-    totalAmount: 0,
-    description: '',
-  });
-
-  const payerCnpjDigits = (invoiceData.payerCNPJ ?? '').replace(/\D/g, '');
-  const debouncedCnpjDigits = useDebouncedValue(payerCnpjDigits, 500);
-
-  const lookupCnpj = async (cnpjDigits: string) => {
-    setIsLookingUpCnpj(true);
-    setErrorMessage(null);
-    try {
-      const { data, error } = await supabase.functions.invoke('cnpj-lookup', {
-        body: { cnpj: cnpjDigits },
-      });
-
-      if (error) {
-        throw new Error(error.message);
-      }
-
-      const razaoSocial = data?.razaoSocial as string | null | undefined;
-      if (!razaoSocial) {
-        throw new Error('CNPJ encontrado, mas sem Razão Social retornada.');
-      }
-
-      setInvoiceData((prev) => ({
-        ...prev,
-        payerName: razaoSocial,
-      }));
-      setPayerNameLocked(true);
-    } catch (err: any) {
-      setPayerNameLocked(false);
-      setErrorMessage(err?.message ?? 'Erro ao consultar CNPJ.');
-    } finally {
-      setIsLookingUpCnpj(false);
-    }
-  };
-
-  useEffect(() => {
-    // Só consulta quando tiver 14 dígitos
-    if (debouncedCnpjDigits.length !== 14) return;
-    lookupCnpj(debouncedCnpjDigits);
-  }, [debouncedCnpjDigits]);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [pendingInvoices, setPendingInvoices] = useState<PendingInvoice[]>([]);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const fetchInvoices = async () => {
-    setErrorMessage(null);
+    setIsLoading(true);
     try {
-      const data = await api.getInvoices({ limit: 20 });
+      const data = await api.getInvoices({ limit: 50 });
       setInvoices(data);
     } catch (err: any) {
-      setErrorMessage(err?.message ?? 'Erro ao buscar notas fiscais.');
+      setErrorMessage('Erro ao carregar notas fiscais.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -88,163 +54,301 @@ const NfsePage = () => {
     fetchInvoices();
   }, []);
 
-  const handleCreateInvoice = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSuccessMessage(null);
-    setErrorMessage(null);
-    setIsLoading(true);
-    try {
-      await api.createInvoice({
-        issueDate: invoiceData.issueDate,
-        payer: invoiceData.payerName,
-        payerCNPJ: invoiceData.payerCNPJ,
-        totalAmount: invoiceData.totalAmount,
-        description: invoiceData.description,
-      });
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.target?.files;
+    if (!files || files.length === 0) return;
+    processFiles(Array.from(files));
+  };
 
-      setSuccessMessage('Nota fiscal criada com sucesso (rascunho).');
-      setIsModalOpen(false);
-      setInvoiceData({
-        issueDate: '',
-        payerName: '',
-        payerCNPJ: '',
-        totalAmount: 0,
-        description: '',
-      });
-      setPayerNameLocked(false);
-      await fetchInvoices();
+  const processFiles = async (files: File[]) => {
+    const newPending: PendingInvoice[] = [];
+    setErrorMessage(null);
+
+    for (const file of files) {
+      if (!file.name.toLowerCase().endsWith('.xml')) {
+        continue;
+      }
+
+      try {
+        const text = await file.text();
+        const parser = new DOMParser();
+        const xmlDoc = parser.parseFromString(text, "text/xml");
+
+        // Helper para pegar valor de tag ignorando namespace se necessário
+        const getTagValue = (tagName: string) => {
+          const el = xmlDoc.getElementsByTagName(tagName)[0];
+          return el?.textContent?.trim() || '';
+        };
+
+        // Padrão ABRASF (tags comuns)
+        const invoiceNumber = getTagValue('Numero');
+        const issueDateRaw = getTagValue('DataEmissao'); // Ex: 2024-03-22T10:00:00
+        const issueDate = issueDateRaw ? issueDateRaw.split('T')[0] : '';
+        
+        // Dados do Tomador
+        const payerName = getTagValue('RazaoSocial');
+        const payerCNPJ = getTagValue('Cnpj') || getTagValue('Cpf');
+        
+        // Valores
+        const totalAmount = parseFloat(getTagValue('ValorServicos') || '0');
+        const description = getTagValue('Discriminacao');
+
+        if (!invoiceNumber || !payerCNPJ) {
+          throw new Error('Formato de XML não reconhecido ou campos obrigatórios ausentes.');
+        }
+
+        newPending.push({
+          invoiceNumber,
+          issueDate,
+          payerName,
+          payerCNPJ,
+          totalAmount,
+          description,
+          fileName: file.name,
+          status: 'pending'
+        });
+      } catch (err: any) {
+        console.error(`Erro ao ler arquivo ${file.name}:`, err);
+        newPending.push({
+          invoiceNumber: '?',
+          issueDate: '',
+          payerName: '',
+          payerCNPJ: '',
+          totalAmount: 0,
+          description: '',
+          fileName: file.name,
+          status: 'error',
+          message: err.message || 'Erro ao processar XML'
+        });
+      }
+    }
+
+    setPendingInvoices(prev => [...prev, ...newPending]);
+    if (newPending.length > 0) setIsModalOpen(true);
+    
+    // Limpa o input para permitir selecionar o mesmo arquivo novamente se necessário
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleSaveImport = async () => {
+    const toImport = pendingInvoices.filter(inv => inv.status === 'pending');
+    if (toImport.length === 0) return;
+
+    setIsImporting(true);
+    setErrorMessage(null);
+
+    try {
+      const result = await api.importInvoices(toImport.map(inv => ({
+        invoiceNumber: inv.invoiceNumber,
+        issueDate: inv.issueDate,
+        payerName: inv.payerName,
+        payerCNPJ: inv.payerCNPJ,
+        totalAmount: inv.totalAmount,
+        description: inv.description
+      })));
+
+      if (result.success) {
+        setSuccessMessage(`${result.importedCount} notas importadas com sucesso!`);
+        setPendingInvoices([]);
+        setIsModalOpen(false);
+        fetchInvoices();
+      }
     } catch (err: any) {
-      setErrorMessage(err?.message ?? 'Erro ao criar nota fiscal.');
+      setErrorMessage(err.message || 'Erro ao salvar notas fiscais. Verifique se há notas duplicadas.');
     } finally {
-      setIsLoading(false);
+      setIsImporting(false);
     }
   };
 
-  return (
-    <div className="space-y-4">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold">Emissão de Notas Fiscais</h1>
-          <p className="text-sm text-zinc-500">Crie notas (rascunho) e acompanhe as últimas emissões.</p>
-        </div>
+  const removePending = (index: number) => {
+    setPendingInvoices(prev => prev.filter((_, i) => i !== index));
+  };
 
-        <div className="flex gap-2">
-          <Button onClick={fetchInvoices} disabled={isLoading}>
-            Atualizar
-          </Button>
-          <Button onClick={() => setIsModalOpen(true)}>
-            Criar Nota Fiscal
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-priori-navy">Notas Fiscais (NFS-e)</h1>
+          <p className="text-sm text-zinc-500">Importe seus arquivos XML da prefeitura para sincronizar o financeiro.</p>
+        </div>
+        
+        <div className="flex items-center gap-2">
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileSelect}
+            accept=".xml"
+            multiple
+            className="hidden"
+          />
+          <Button 
+            onClick={() => fileInputRef.current?.click()}
+            className="flex items-center gap-2 bg-priori-gold hover:bg-priori-gold/90 text-priori-navy border-none"
+          >
+            <Upload size={18} />
+            Importar XML
           </Button>
         </div>
       </div>
 
       {successMessage && (
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
+        <div className="flex items-center gap-2 rounded-lg bg-emerald-50 p-4 text-sm text-emerald-800 border border-emerald-200">
+          <Check size={18} />
           {successMessage}
+          <button onClick={() => setSuccessMessage(null)} className="ml-auto">
+            <X size={16} />
+          </button>
         </div>
       )}
 
       {errorMessage && (
-        <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+        <div className="flex items-center gap-2 rounded-lg bg-red-50 p-4 text-sm text-red-800 border border-red-200">
+          <AlertCircle size={18} />
           {errorMessage}
+          <button onClick={() => setErrorMessage(null)} className="ml-auto">
+            <X size={16} />
+          </button>
         </div>
       )}
 
-      <div className="rounded-xl border border-zinc-200 bg-white">
-        <div className="flex items-center justify-between border-b border-zinc-200 p-4">
-          <h2 className="text-sm font-semibold text-zinc-700 uppercase tracking-wider">Últimas notas</h2>
-          <span className="text-xs text-zinc-500">Exibindo {invoices.length} registros</span>
+      {/* Tabela de Notas */}
+      <div className="rounded-xl border border-zinc-200 bg-white overflow-hidden shadow-sm">
+        <div className="bg-zinc-50 border-b border-zinc-200 px-6 py-4">
+          <h2 className="text-sm font-semibold text-zinc-700 uppercase tracking-wider">Histórico de Notas Importadas</h2>
         </div>
-        <div className="p-4">
-          {invoices.length === 0 ? (
-            <p className="text-sm text-zinc-500">Nenhuma nota encontrada.</p>
-          ) : (
-            <div className="space-y-2">
-              {invoices.map((inv) => (
-                <div key={inv.id} className="flex flex-col gap-1 rounded-lg border border-zinc-200 p-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="font-medium text-priori-navy">
-                      {inv.payer?.nome ?? 'Tomador não informado'}
-                    </div>
-                    <div className="text-xs text-zinc-500">
-                      Emissão: {inv.issueDate} • Status: {inv.status}
-                    </div>
-                  </div>
-                  <div className="text-sm text-zinc-700">
-                    CPF/CNPJ: {inv.payer?.cpf_cnpj ?? '-'} • Valor: R$ {Number(inv.totalAmount ?? 0).toFixed(2)}
-                  </div>
-                  {inv.description ? <div className="text-xs text-zinc-500">{inv.description}</div> : null}
-                </div>
-              ))}
+        
+        <div className="overflow-x-auto">
+          {isLoading ? (
+            <div className="p-12 flex flex-col items-center justify-center text-zinc-400 gap-3">
+              <Loader2 className="animate-spin" size={32} />
+              <p>Carregando notas...</p>
             </div>
+          ) : invoices.length === 0 ? (
+            <div className="p-12 flex flex-col items-center justify-center text-zinc-400 gap-4">
+              <FileText size={48} strokeWidth={1} />
+              <div className="text-center">
+                <p className="font-medium text-zinc-600">Nenhuma nota encontrada</p>
+                <p className="text-sm">Clique em "Importar XML" para começar.</p>
+              </div>
+            </div>
+          ) : (
+            <table className="w-full text-left text-sm border-collapse">
+              <thead>
+                <tr className="bg-zinc-50/50">
+                  <th className="px-6 py-3 font-semibold text-zinc-600 border-b border-zinc-200 text-xs uppercase tracking-wider">Nº Nota</th>
+                  <th className="px-6 py-3 font-semibold text-zinc-600 border-b border-zinc-200 text-xs uppercase tracking-wider">Emissão</th>
+                  <th className="px-6 py-3 font-semibold text-zinc-600 border-b border-zinc-200 text-xs uppercase tracking-wider">Tomador</th>
+                  <th className="px-6 py-3 font-semibold text-zinc-600 border-b border-zinc-200 text-xs uppercase tracking-wider">Valor</th>
+                  <th className="px-6 py-3 font-semibold text-zinc-600 border-b border-zinc-200 text-xs uppercase tracking-wider">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100">
+                {invoices.map((inv) => (
+                  <tr key={inv.id} className="hover:bg-zinc-50/50 transition-colors">
+                    <td className="px-6 py-4 font-mono font-medium text-zinc-700">{inv.invoiceNumber}</td>
+                    <td className="px-6 py-4 text-zinc-600">{inv.issueDate}</td>
+                    <td className="px-6 py-4">
+                      <div className="font-medium text-zinc-800">{inv.payer?.nome}</div>
+                      <div className="text-xs text-zinc-500 font-mono">{inv.payer?.cpf_cnpj}</div>
+                    </td>
+                    <td className="px-6 py-4 font-semibold text-priori-navy">
+                      R$ {Number(inv.totalAmount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
+                        {inv.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           )}
         </div>
       </div>
 
-      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Criar Nota Fiscal">
-        <form onSubmit={handleCreateInvoice} className="space-y-3">
-          <Input
-            label="Data de Emissão"
-            type="date"
-            value={invoiceData.issueDate}
-            onChange={(e) => setInvoiceData({ ...invoiceData, issueDate: e.target.value })}
-            required
-          />
-          <Input
-            label="Tomador (CPF/CNPJ)"
-            value={invoiceData.payerCNPJ}
-            onChange={(e) => {
-              const next = e.target.value;
-              const nextDigits = next.replace(/\D/g, '');
-              // Se usuário está alterando o CNPJ, destrava o nome até nova consulta
-              if (nextDigits !== payerCnpjDigits) {
-                setPayerNameLocked(false);
-              }
-              setInvoiceData({ ...invoiceData, payerCNPJ: next });
-            }}
-            required
-          />
-          <Input
-            label="Nome do Tomador"
-            value={invoiceData.payerName}
-            onChange={(e) => setInvoiceData({ ...invoiceData, payerName: e.target.value })}
-            disabled={payerNameLocked}
-            required
-          />
+      {/* Modal de Pré-visualização */}
+      <Modal 
+        isOpen={isModalOpen} 
+        onClose={() => !isImporting && setIsModalOpen(false)} 
+        title="Pré-visualização da Importação"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-zinc-500">
+            Confira as notas encontradas nos arquivos selecionados antes de confirmar a importação.
+          </p>
 
-          {isLookingUpCnpj && (
-            <p className="text-xs text-zinc-500">Consultando CNPJ…</p>
-          )}
+          <div className="max-h-[400px] overflow-y-auto rounded-lg border border-zinc-200">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead className="sticky top-0 bg-white shadow-sm">
+                <tr>
+                  <th className="px-4 py-2 border-b font-semibold text-zinc-600 uppercase">Arquivo</th>
+                  <th className="px-4 py-2 border-b font-semibold text-zinc-600 uppercase">Nº</th>
+                  <th className="px-4 py-2 border-b font-semibold text-zinc-600 uppercase">Tomador</th>
+                  <th className="px-4 py-2 border-b font-semibold text-zinc-600 uppercase text-right">Valor</th>
+                  <th className="px-4 py-2 border-b w-10"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100">
+                {pendingInvoices.map((inv, idx) => (
+                  <tr key={idx} className={inv.status === 'error' ? 'bg-red-50' : ''}>
+                    <td className="px-4 py-3 text-zinc-500 italic max-w-[150px] truncate" title={inv.fileName}>
+                      {inv.fileName}
+                    </td>
+                    <td className="px-4 py-3 font-mono">{inv.invoiceNumber}</td>
+                    <td className="px-4 py-3">
+                      {inv.status === 'error' ? (
+                        <span className="text-red-600 font-medium">{inv.message}</span>
+                      ) : (
+                        <div>
+                          <div className="font-medium text-zinc-800">{inv.payerName}</div>
+                          <div className="text-zinc-500">{inv.payerCNPJ}</div>
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-right font-semibold">
+                      {inv.status !== 'error' && `R$ ${inv.totalAmount.toFixed(2)}`}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      {!isImporting && (
+                        <button 
+                          onClick={() => removePending(idx)}
+                          className="text-zinc-400 hover:text-red-500 transition-colors"
+                        >
+                          <X size={16} />
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
-          {payerNameLocked && (
-            <button
-              type="button"
-              className="text-xs text-priori-navy underline"
-              onClick={() => setPayerNameLocked(false)}
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-zinc-100">
+            <Button 
+              variant="outline" 
+              onClick={() => setIsModalOpen(false)}
+              disabled={isImporting}
             >
-              Desbloquear nome para edição manual
-            </button>
-          )}
-          <Input
-            label="Valor Total"
-            type="number"
-            value={invoiceData.totalAmount}
-            onChange={(e) => setInvoiceData({ ...invoiceData, totalAmount: Number(e.target.value) })}
-            required
-          />
-          <Input
-            label="Descrição"
-            value={invoiceData.description}
-            onChange={(e) => setInvoiceData({ ...invoiceData, description: e.target.value })}
-            required
-          />
-
-          <div className="pt-2">
-            <Button type="submit" disabled={isLoading}>
-              {isLoading ? 'Emitindo...' : 'Emitir Nota Fiscal'}
+              Cancelar
+            </Button>
+            <Button 
+              onClick={handleSaveImport}
+              disabled={isImporting || pendingInvoices.filter(i => i.status === 'pending').length === 0}
+              className="min-w-[140px]"
+            >
+              {isImporting ? (
+                <span className="flex items-center gap-2">
+                  <Loader2 className="animate-spin" size={16} />
+                  Importando...
+                </span>
+              ) : (
+                'Confirmar Importação'
+              )}
             </Button>
           </div>
-        </form>
+        </div>
       </Modal>
     </div>
   );

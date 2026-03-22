@@ -535,9 +535,9 @@ export const mockService: AppService = {
     return [];
   },
 
-  createInvoice: async (_data) => {
-    await delay(300);
-    return { success: true };
+  importInvoices: async (_invoices) => {
+    await delay(500);
+    return { success: true, importedCount: _invoices.length };
   },
 
   login: async (email, password) => {

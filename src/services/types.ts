@@ -268,17 +268,19 @@ export interface User {
 
 export interface AppService {
   // ... outros métodos
-  createInvoice: (data: {
+  importInvoices: (invoices: Array<{
+    invoiceNumber: string;
     issueDate: string;
-    payer: string;
+    payerName: string;
     payerCNPJ: string;
     totalAmount: number;
     description?: string;
-  }) => Promise<{ success: boolean }>;
+  }>) => Promise<{ success: boolean; importedCount: number }>;
 
   getInvoices: (params?: { limit?: number }) => Promise<
     Array<{
       id: string;
+      invoiceNumber: string;
       issueDate: string;
       status: string;
       payer: { nome: string; cpf_cnpj: string };

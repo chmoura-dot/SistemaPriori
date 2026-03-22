@@ -216,6 +216,7 @@ export const supabaseService: AppService = {
 
     return (data ?? []).map((row: any) => ({
       id: String(row.id),
+      invoiceNumber: row.invoice_number,
       issueDate: row.issue_date,
       status: row.status,
       payer: row.payer,
@@ -225,19 +226,22 @@ export const supabaseService: AppService = {
     }));
   },
 
-  createInvoice: async (data) => {
+  importInvoices: async (invoices) => {
+    const rows = invoices.map(inv => ({
+      invoice_number: inv.invoiceNumber,
+      issue_date: inv.issueDate,
+      status: 'emitida',
+      payer: { nome: inv.payerName, cpf_cnpj: inv.payerCNPJ },
+      total_amount: inv.totalAmount,
+      description: inv.description || '',
+    }));
+
     const { error } = await supabase
       .from('nfse_invoices')
-      .insert({
-        // O input date do HTML envia YYYY-MM-DD (ideal para coluna DATE)
-        issue_date: data.issueDate, // Data de emissão
-        status: 'rascunho', // Status inicial
-        payer: { nome: data.payer, cpf_cnpj: data.payerCNPJ }, // Montando o objeto payer
-        total_amount: data.totalAmount, // Total
-        description: data.description, // Descrição
-      });
+      .upsert(rows, { onConflict: 'invoice_number' });
+
     if (error) throw new Error(error.message);
-    return { success: true };
+    return { success: true, importedCount: rows.length };
   },
   // ── Auth ──────────────────────────────────────────────
   login: async (email: string, password: string) => {
