@@ -29,7 +29,7 @@ import {
   Pie
 } from 'recharts';
 import { api } from '../services/api';
-import { Appointment, Customer, Plan, Psychologist, AppointmentStatus, HealthPlan, ParticularBillingType } from '../services/types';
+import { Appointment, Customer, Plan, Psychologist, AppointmentStatus, HealthPlan, AppointmentType } from '../services/types';
 import { cn } from '../lib/utils';
 import { calcRepass } from '../lib/repassRules';
 
@@ -77,8 +77,7 @@ export const FinancialPage = () => {
     const customer = customers.find(c => c.id === app.customerId);
     const plan = findPlan(customer?.healthPlan);
     const procedure = plan?.procedures?.find(proc => proc.type === app.type);
-    const isPackage = customer?.healthPlan === HealthPlan.PARTICULAR && customer?.particularBillingType === ParticularBillingType.PACKAGE;
-    const isOneTime = procedure?.isOneTimeCharge || isPackage;
+    const isOneTime = procedure?.isOneTimeCharge || (customer?.healthPlan === HealthPlan.PARTICULAR && app.type === AppointmentType.NEUROPSICOLOGICA);
     if (isOneTime && !firstInGroup) return { amount: 0, repass: 0 };
     const amount = app.customPrice ?? customer?.customPrice ?? procedure?.price ?? 0;
     const psy = psychologists.find(p => p.id === app.psychologistId);

@@ -16,7 +16,7 @@ import {
   BarChart, Bar 
 } from 'recharts';
 import { api } from '../services/api';
-import { Appointment, Subscription, HealthPlan, Psychologist, Customer, CustomerStatus, SubscriptionStatus, AppointmentStatus, ParticularBillingType, Plan, Expense, ExpenseCategory } from '../services/types';
+import { Appointment, Subscription, HealthPlan, Psychologist, Customer, CustomerStatus, SubscriptionStatus, AppointmentStatus, AppointmentType, Plan, Expense, ExpenseCategory } from '../services/types';
 import { cn } from '../lib/utils';
 import { calcRepass } from '../lib/repassRules';
 
@@ -79,9 +79,9 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
       const plan = findPlan(customer?.healthPlan);
       const procedure = plan?.procedures?.find(proc => proc.type === firstApp.type);
       
-      const isPackage = customer?.healthPlan === HealthPlan.PARTICULAR && customer?.particularBillingType === ParticularBillingType.PACKAGE;
+      const isOneTime = procedure?.isOneTimeCharge || (customer?.healthPlan === HealthPlan.PARTICULAR && firstApp.type === AppointmentType.NEUROPSICOLOGICA);
       
-      if (procedure?.isOneTimeCharge || isPackage) {
+      if (isOneTime) {
         // One-time charge or package: only count the first one
         const amount = firstApp.customPrice ?? customer?.customPrice ?? (procedure?.price || 0);
         return total + amount;
@@ -178,10 +178,10 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
       const plan = findPlan(customer?.healthPlan);
       const procedure = plan?.procedures?.find(proc => proc.type === app.type);
 
-      const isPackage = customer?.healthPlan === HealthPlan.PARTICULAR && customer?.particularBillingType === ParticularBillingType.PACKAGE;
+      const isOneTime = procedure?.isOneTimeCharge || (customer?.healthPlan === HealthPlan.PARTICULAR && app.type === AppointmentType.NEUROPSICOLOGICA);
 
       let amount = 0;
-      if (procedure?.isOneTimeCharge || isPackage) {
+      if (isOneTime) {
         const firstApp = appointments
           .filter(a => a.customerId === app.customerId && a.type === app.type && (a.status !== AppointmentStatus.CANCELED || isCanceledButBilled(a)))
           .sort((a, b) => a.date.localeCompare(b.date))[0];
@@ -263,7 +263,7 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
 
   // Appointments by Plan Over Time
   const planGrowthData = useMemo(() => {
-    const data: Record<string, any> = {};
+    const data: Record<string, Record<string, any>> = {};
     const planNames = Array.from(new Set(plans.map(p => p.name)));
 
     appointments.forEach(app => {
@@ -272,17 +272,15 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
       const sortKey = date.getFullYear() * 100 + date.getMonth();
       
       const customer = customers.find(c => c.id === app.customerId);
-      const planName = customer?.healthPlan || 'Não Identificado';
+      const planName = (customer?.healthPlan as string) || 'Não Identificado';
 
       if (!data[monthKey]) {
         data[monthKey] = { month: monthKey, sortKey };
         planNames.forEach(name => {
-if (!data[monthKey]) {
-  data[monthKey] = {};
-}
-data[monthKey][name] = 0; // Certifique-se de que 'data[monthKey]' é um objeto
-});
+          data[monthKey][name] = 0;
+        });
       }
+      
       if (data[monthKey][planName] !== undefined) {
         data[monthKey][planName]++;
       } else {

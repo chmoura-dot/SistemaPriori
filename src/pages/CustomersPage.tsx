@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Plus, Search, MoreVertical, Edit2, Trash2, Mail, Phone, User, UserX, UserCheck, TrendingUp, Check, AlertCircle, FileUp, Download } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { api } from '../services/api';
-import { Customer, CustomerStatus, HealthPlan, Psychologist, UserRole, InactivationReason, ParticularBillingType } from '../services/types';
+import { Customer, CustomerStatus, HealthPlan, Psychologist, UserRole, InactivationReason } from '../services/types';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { Modal } from '../components/Modal';
@@ -42,7 +42,6 @@ export const CustomersPage = () => {
     notes: '',
     customPrice: undefined as number | undefined,
     customRepassAmount: undefined as number | undefined,
-    particularBillingType: ParticularBillingType.SESSION,
     birthDate: '',
     amsPassword: '',
     amsPasswordExpiry: ''
@@ -120,7 +119,6 @@ export const CustomersPage = () => {
         notes: customer.notes || '',
         customPrice: customer.customPrice,
         customRepassAmount: customer.customRepassAmount,
-        particularBillingType: customer.particularBillingType || ParticularBillingType.SESSION,
         birthDate: customer.birthDate || '',
         amsPassword: customer.amsPassword || '',
         amsPasswordExpiry: customer.amsPasswordExpiry || ''
@@ -136,7 +134,6 @@ export const CustomersPage = () => {
         notes: '',
         customPrice: undefined,
         customRepassAmount: undefined,
-        particularBillingType: ParticularBillingType.SESSION,
         birthDate: '',
         amsPassword: '',
         amsPasswordExpiry: ''
@@ -696,25 +693,8 @@ export const CustomersPage = () => {
             if (canSeeValues) {
               return (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 bg-priori-gold/5 border border-priori-gold/10 rounded-xl">
-                  <div className="col-span-full space-y-1.5 mb-2">
-                    <label className="text-xs font-medium text-priori-gold uppercase tracking-wider">Tipo de Cobrança</label>
-                    <div className="flex gap-4">
-                      {Object.values(ParticularBillingType).map((type) => (
-                        <label key={type} className="flex items-center gap-2 cursor-pointer group">
-                          <input
-                            type="radio"
-                            name="billingType"
-                            className="w-4 h-4 text-priori-gold focus:ring-priori-gold border-zinc-300"
-                            checked={formData.particularBillingType === type}
-                            onChange={() => setFormData({ ...formData, particularBillingType: type })}
-                          />
-                          <span className="text-sm text-priori-navy font-medium group-hover:text-priori-gold transition-colors">{type}</span>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
                   <Input
-                    label={formData.particularBillingType === ParticularBillingType.PACKAGE ? "Valor do Pacote (R$)" : "Valor da Consulta (R$)"}
+                    label="Valor da Consulta (R$)"
                     type="number"
                     step="0.01"
                     value={formData.customPrice || ''}
