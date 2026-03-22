@@ -164,56 +164,41 @@ export const ExpensesPage = () => {
       if (bestDate) extractedDate = bestDate.toISOString().split('T')[0];
     }
 
-    // 2. VALOR
-    const amountRegex = /(?:R\$\s?|TOTAL\s?|VALOR\s?|PAGAR\s?)(\d{1,3}(?:\.\d{3})*,\d{2})/gi;
+    // 2. VALOR (Tornado opcional o prefixo para maior robustez)
+    const amountRegex = /(?:R\$\s?|TOTAL\s?|VALOR\s?|PAGAR\s?|VALOR DO DOCUMENTO\s?)?(\d{1,3}(?:\.\d{3})*,\d{2})/gi;
     let maxAmount = 0;
     let amountMatch;
     while ((amountMatch = amountRegex.exec(text)) !== null) {
       const value = parseFloat(amountMatch[1].replace(/\./g, '').replace(',', '.'));
-      if (value > maxAmount) maxAmount = value;
+      if (value > maxAmount && value < 1000000) maxAmount = value; // Evita pegar números gigantes de código de barras
     }
 
-    // 3. BENEFICIÁRIO / RAZÃO SOCIAL / PRODUTO
+    // 3. DADOS DO EMISSOR / DESCRIÇÃO
     const cleanText = text.replace(/\s+/g, ' ');
     
-    // Tenta capturar Beneficiário/Razão Social/Fantasia
-    const beneficiaryRegex = /(?:Beneficiário|Nome|Razão Social|Prestador|Cedente|Nome do Beneficiário|Recebedor)[:\s]+([^|\d]{5,50})/i;
+    // Tenta capturar Beneficiário/Razão Social/Fantasia/Emissor
+    const beneficiaryRegex = /(?:Beneficiário|Nome|Razão Social|Prestador|Cedente|Emissor|Recebedor)[:\s]+([^|0-9]{5,60})/i;
     const beneficiaryMatch = cleanText.match(beneficiaryRegex);
     
-    // Tenta capturar Descrição do Produto/Serviço
-    const productRegex = /(?:Produto|Serviço|Descrição|Ref[:\.\s]|Referente a)[:\s]+([^|\d]{5,50})/i;
-    const productMatch = cleanText.match(productRegex);
-
-    let infoParts: string[] = [];
-    
+    let issuerName = '';
     if (beneficiaryMatch && beneficiaryMatch[1]) {
-      infoParts.push(`Prestador: ${beneficiaryMatch[1].trim()}`);
-    }
-    
-    if (productMatch && productMatch[1]) {
-      infoParts.push(`Ref: ${productMatch[1].trim()}`);
-    }
-
-    // Se não encontrou campos específicos, tenta usar a primeira linha "texto-somente"
-    if (infoParts.length === 0) {
-      const fallbackLines = text.split('\n')
+      issuerName = beneficiaryMatch[1].trim();
+    } else {
+      // Fallback: pega a primeira linha de texto relevante que não contenha números ou barras de data
+      const lines = text.split('\n')
         .map(l => l.trim())
-        .filter(l => l.length > 8 && !/^\d+$/.test(l) && !l.includes('/') && !l.includes('R$'));
-      if (fallbackLines[0]) {
-        infoParts.push(fallbackLines[0].substring(0, 60));
-      }
+        .filter(l => l.length > 10 && !/\d{2}\/\d{2}/.test(l) && !/[0-9]{5,}/.test(l));
+      issuerName = lines[0]?.substring(0, 60) || 'Nova Despesa (PDF)';
     }
-
-    const finalDescription = infoParts.join(' | ') || 'Nova Despesa (PDF)';
 
     return {
       date: extractedDate,
       amount: maxAmount,
-      description: finalDescription,
-      beneficiary: beneficiaryMatch?.[1]?.trim() || '',
-      razaoSocial: beneficiaryMatch?.[1]?.trim() || '',
-      nomeFantasia: beneficiaryMatch?.[1]?.trim() || '',
-      productDescription: productMatch?.[1]?.trim() || ''
+      description: issuerName,
+      beneficiary: issuerName,
+      razaoSocial: '',
+      nomeFantasia: '',
+      productDescription: ''
     };
   };
 
@@ -457,14 +442,7 @@ export const ExpensesPage = () => {
                 expenses.map((expense) => (
                   <tr key={expense.id} className="hover:bg-zinc-50 transition-colors group">
                     <td className="px-6 py-4">
-                      <p className="text-sm font-bold text-priori-navy">
-                        {expense.beneficiary || expense.razaoSocial || expense.nomeFantasia || expense.description}
-                      </p>
-                      {(expense.productDescription || (expense.beneficiary && expense.description)) && (
-                        <p className="text-[11px] text-zinc-400 mt-0.5 line-clamp-1">
-                          {expense.productDescription || expense.description}
-                        </p>
-                      )}
+                      <p className="text-sm font-medium text-priori-navy">{expense.description}</p>
                     </td>
                     <td className="px-6 py-4">
                       <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-zinc-100 text-zinc-500 border border-zinc-200">
@@ -524,42 +502,12 @@ export const ExpensesPage = () => {
         title={editingExpense ? 'Editar Despesa' : 'Nova Despesa'}
       >
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Input
-              label="Descrição Geral"
-              placeholder="Ex: Aluguel, Salário, etc"
-              value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              required
-            />
-            <Input
-              label="Beneficiário / Recebedor"
-              placeholder="Nome de quem recebe"
-              value={formData.beneficiary}
-              onChange={(e) => setFormData({ ...formData, beneficiary: e.target.value })}
-            />
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Input
-              label="Razão Social"
-              placeholder="Nome jurídico da empresa"
-              value={formData.razaoSocial}
-              onChange={(e) => setFormData({ ...formData, razaoSocial: e.target.value })}
-            />
-            <Input
-              label="Nome Fantasia"
-              placeholder="Nome comercial da empresa"
-              value={formData.nomeFantasia}
-              onChange={(e) => setFormData({ ...formData, nomeFantasia: e.target.value })}
-            />
-          </div>
-
           <Input
-            label="Descrição do Produto / Serviço"
-            placeholder="Ex: Notebook Dell, Internet 500MB, etc"
-            value={formData.productDescription}
-            onChange={(e) => setFormData({ ...formData, productDescription: e.target.value })}
+            label="Descrição / Emissor"
+            placeholder="Ex: Nome da Empresa ou tipo de despesa"
+            value={formData.description}
+            onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+            required
           />
 
           <div className="grid grid-cols-2 gap-4">
