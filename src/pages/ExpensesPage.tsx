@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { api } from '../services/api';
 import * as pdfjsLib from 'pdfjs-dist';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
 // Configuração do worker do PDF.js
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
@@ -130,8 +131,50 @@ export const ExpensesPage = () => {
     }
   };
 
-  const parsePdfContent = (text: string) => {
-    // 1. DATA DE VENCIMENTO
+  const extractWithAI = async (text: string) => {
+    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+    if (!apiKey) return null;
+
+    try {
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+      const prompt = `Analise o texto extraído de um PDF de boleto ou nota fiscal e extraia exatamente estas 3 informações em formato JSON (não inclua marcações de markdown, apenas o json puro):
+      {
+        "emissor": "Nome completo da empresa que emitiu/recebe o pagamento",
+        "vencimento": "Data no formato AAAA-MM-DD",
+        "valor": número decimal representando o valor total
+      }
+
+      Texto extraído:
+      ${text}`;
+
+      const result = await model.generateContent(prompt);
+      const response = result.response;
+      const jsonText = response.text().replace(/```json/g, '').replace(/```/g, '').trim();
+      return JSON.parse(jsonText);
+    } catch (error) {
+      console.error('Erro na extração com IA:', error);
+      return null;
+    }
+  };
+
+  const parsePdfContent = async (text: string) => {
+    // Tenta primeiro com IA
+    const aiData = await extractWithAI(text);
+    if (aiData) {
+      return {
+        date: aiData.vencimento,
+        amount: aiData.valor,
+        description: aiData.emissor,
+        beneficiary: aiData.emissor,
+        razaoSocial: '',
+        nomeFantasia: '',
+        productDescription: ''
+      };
+    }
+
+    // FALLBACK: Lógica Regex original (Plano B)
     const dateRegex = /(\d{2})[/-|\.](\d{2})[/-|\.](\d{2,4})/g;
     const dateMatches = Array.from(text.matchAll(dateRegex));
     let extractedDate = new Date().toISOString().split('T')[0];
@@ -164,32 +207,18 @@ export const ExpensesPage = () => {
       if (bestDate) extractedDate = bestDate.toISOString().split('T')[0];
     }
 
-    // 2. VALOR (Tornado opcional o prefixo para maior robustez)
     const amountRegex = /(?:R\$\s?|TOTAL\s?|VALOR\s?|PAGAR\s?|VALOR DO DOCUMENTO\s?)?(\d{1,3}(?:\.\d{3})*,\d{2})/gi;
     let maxAmount = 0;
     let amountMatch;
     while ((amountMatch = amountRegex.exec(text)) !== null) {
       const value = parseFloat(amountMatch[1].replace(/\./g, '').replace(',', '.'));
-      if (value > maxAmount && value < 1000000) maxAmount = value; // Evita pegar números gigantes de código de barras
+      if (value > maxAmount && value < 1000000) maxAmount = value;
     }
 
-    // 3. DADOS DO EMISSOR / DESCRIÇÃO
     const cleanText = text.replace(/\s+/g, ' ');
-    
-    // Tenta capturar Beneficiário/Razão Social/Fantasia/Emissor
     const beneficiaryRegex = /(?:Beneficiário|Nome|Razão Social|Prestador|Cedente|Emissor|Recebedor)[:\s]+([^|0-9]{5,60})/i;
     const beneficiaryMatch = cleanText.match(beneficiaryRegex);
-    
-    let issuerName = '';
-    if (beneficiaryMatch && beneficiaryMatch[1]) {
-      issuerName = beneficiaryMatch[1].trim();
-    } else {
-      // Fallback: pega a primeira linha de texto relevante que não contenha números ou barras de data
-      const lines = text.split('\n')
-        .map(l => l.trim())
-        .filter(l => l.length > 10 && !/\d{2}\/\d{2}/.test(l) && !/[0-9]{5,}/.test(l));
-      issuerName = lines[0]?.substring(0, 60) || 'Nova Despesa (PDF)';
-    }
+    let issuerName = beneficiaryMatch?.[1]?.trim() || 'Nova Despesa (PDF)';
 
     return {
       date: extractedDate,
@@ -229,7 +258,7 @@ export const ExpensesPage = () => {
             fullText += pageText + '\n';
           }
 
-          const extractedData = parsePdfContent(fullText);
+          const extractedData = await parsePdfContent(fullText);
           
           // Checa se já existe uma despesa com o mesmo valor e data
           const isDuplicate = currentExpenses.some(exp => 
