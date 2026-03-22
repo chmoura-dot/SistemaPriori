@@ -13,9 +13,11 @@ import { PsychologistsPage } from './pages/PsychologistsPage';
 import { ConfirmationPage } from './pages/ConfirmationPage';
 import { MagicConfirmationPage } from './pages/MagicConfirmationPage';
 import { BillingPage } from './pages/BillingPage';
+import NfsePage from './pages/NfsePage'; // Corrigindo a importação
 import { RepassePage } from './pages/RepassePage';
 import { CapacityPage } from './pages/CapacityPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { AccountSecurityPage } from './pages/AccountSecurityPage';
 import { PendingConfirmationsPage } from './pages/PendingConfirmationsPage';
 import { AmsPasswordsPage } from './pages/AmsPasswordsPage';
 import { RenewalAlert } from './components/RenewalAlert';
@@ -85,6 +87,8 @@ export default function App() {
       case '/faturamento':
         return <BillingPage />;
       case '/repasse':
+      case '/nfse': // Rota para a página de NFS-e
+        return <NfsePage />;
         return <RepassePage />;
       case '/despesas':
         return isAdmin ? <ExpensesPage /> : <SchedulePage />;
@@ -93,7 +97,9 @@ export default function App() {
       case '/fila-espera':
         return <WaitingListPage />;
       case '/settings':
-        return isAdmin ? <SettingsPage /> : <SchedulePage />;
+        return isAdmin ? <SettingsPage /> : <AccountSecurityPage />;
+      case '/minha-conta':
+        return <AccountSecurityPage />;
       case '/pendentes':
         return <PendingConfirmationsPage />;
       case '/senhas-ams':

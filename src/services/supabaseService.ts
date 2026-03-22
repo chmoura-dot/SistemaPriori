@@ -202,6 +202,15 @@ const toSettings = (row: any): Settings => ({
 });
 
 export const supabaseService: AppService = {
+  // ... outros métodos
+
+  createInvoice: async (data) => {
+    const { error } = await supabase
+      .from('nfse_invoices')
+      .insert(data);
+    if (error) throw new Error(error.message);
+    return { success: true };
+  },
   // ── Auth ──────────────────────────────────────────────
   login: async (email: string, password: string) => {
     // 1. Authenticate with Supabase Auth

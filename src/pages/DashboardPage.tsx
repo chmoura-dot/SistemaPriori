@@ -276,7 +276,12 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
 
       if (!data[monthKey]) {
         data[monthKey] = { month: monthKey, sortKey };
-        planNames.forEach(name => data[monthKey][name] = 0);
+        planNames.forEach(name => {
+if (!data[monthKey]) {
+  data[monthKey] = {};
+}
+data[monthKey][name] = 0; // Certifique-se de que 'data[monthKey]' é um objeto
+});
       }
       if (data[monthKey][planName] !== undefined) {
         data[monthKey][planName]++;

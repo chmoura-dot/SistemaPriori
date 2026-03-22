@@ -267,6 +267,8 @@ export interface User {
 }
 
 export interface AppService {
+  // ... outros métodos
+  createInvoice: (data: any) => Promise<{ success: boolean }>; // Adicionando a definição do método createInvoice
   // Auth
   login: (email: string, password: string) => Promise<User | null>;
   logout: () => void;

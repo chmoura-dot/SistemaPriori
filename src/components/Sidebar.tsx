@@ -24,6 +24,7 @@ import { api } from '../services/api';
 import { UserRole } from '../services/types';
 
 const menuItems = [
+  { icon: FileText, label: 'NFS-e', path: '/nfse' }, // Adicionando item para NFS-e
   { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard', adminOnly: true },
   { icon: CalendarIcon, label: 'Agenda', path: '/agenda' },
   { icon: KeySquare, label: 'Senhas AMS / PAE', path: '/senhas-ams' },

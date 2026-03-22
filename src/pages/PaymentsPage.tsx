@@ -65,7 +65,7 @@ export const PaymentsPage = () => {
         const amount = (isOneTime && !isFirst) ? 0 : (app.customPrice ?? customer?.customPrice ?? procedure?.price ?? 0);
         const psy = psychologists.find(p => p.id === app.psychologistId);
         const fixedRepass = (isOneTime && !isFirst) ? 0 : (app.customRepassAmount ?? customer?.customRepassAmount ?? procedure?.repassAmount ?? 0);
-        const repassAmount = (isOneTime && !isFirst) ? 0 : calcRepass(amount, psy?.name, fixedRepass);
+        const repassAmount = (isOneTime && !isFirst) ? 0 : calcRepass(amount, psy?.name);
 
         items.push({
           id: app.id,
