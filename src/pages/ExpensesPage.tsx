@@ -193,8 +193,12 @@ export const ExpensesPage = () => {
     setIsReadingPdf(true);
     let successCount = 0;
     let failCount = 0;
+    let duplicateCount = 0;
 
     try {
+      // Carrega as despesas atuais para checar duplicidade
+      const currentExpenses = await api.getExpenses();
+
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
         try {
@@ -211,6 +215,20 @@ export const ExpensesPage = () => {
 
           const extractedData = parsePdfContent(fullText);
           
+          // Checa se já existe uma despesa com o mesmo valor e data
+          const isDuplicate = currentExpenses.some(exp => 
+            exp.amount === extractedData.amount && 
+            exp.date === extractedData.date
+          );
+
+          if (isDuplicate) {
+            duplicateCount++;
+            if (files.length === 1) {
+              alert('Esta despesa (mesmo valor e data) já consta no sistema e foi ignorada para evitar duplicidade.');
+            }
+            continue;
+          }
+
           // Se for apenas UM arquivo, abre o modal para revisão
           if (files.length === 1) {
             setFormData({
@@ -239,7 +257,10 @@ export const ExpensesPage = () => {
 
       if (files.length > 1) {
         await loadExpenses();
-        alert(`${successCount} despesas importadas com sucesso!${failCount > 0 ? ` (${failCount} falhas)` : ''}\nPor favor, revise os dados na tabela.`);
+        let message = `${successCount} despesas importadas com sucesso!`;
+        if (duplicateCount > 0) message += `\n${duplicateCount} despesas foram ignoradas por já estarem cadastradas.`;
+        if (failCount > 0) message += `\n${failCount} falhas no processamento.`;
+        alert(message + '\nPor favor, revise os dados na tabela.');
       }
     } catch (error) {
       console.error('Erro geral na importação:', error);
