@@ -119,35 +119,27 @@ export const ExpensesPage = () => {
   };
 
   const parsePdfContent = (text: string) => {
-    // Tenta encontrar padrões de data (DD/MM/AAAA, DD-MM-AAAA, DD.MM.AAAA ou DD/MM/AA)
+    // 1. DATA DE VENCIMENTO
     const dateRegex = /(\d{2})[/-|\.](\d{2})[/-|\.](\d{2,4})/g;
-    const matches = Array.from(text.matchAll(dateRegex));
-    
+    const dateMatches = Array.from(text.matchAll(dateRegex));
     let extractedDate = new Date().toISOString().split('T')[0];
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    if (matches.length > 0) {
-      // Procura primeiro por datas que venham após a palavra "Vencimento" ou "Venc" no texto próximo
-      const vencPos = text.toLowerCase().search(/vencimento|venc|pago até/);
-      
+    if (dateMatches.length > 0) {
+      const vencPos = text.toLowerCase().search(/vencimento|venc|pago até|pagamento/);
       let bestDate: Date | null = null;
       let minDiff = Infinity;
 
-      for (const match of matches) {
+      for (const match of dateMatches) {
         let [_, day, month, year] = match;
         if (year.length === 2) year = `20${year}`;
         const dateObj = new Date(`${year}-${month}-${day}T12:00:00`);
-
         if (!isNaN(dateObj.getTime())) {
-          // Se houver uma data próxima à palavra "vencimento", prioriza essa
           if (vencPos !== -1 && Math.abs(match.index! - vencPos) < 100) {
             bestDate = dateObj;
             break; 
           }
-
-          // Caso contrário, tenta pegar a data que seja hoje ou no futuro (mais provável ser o vencimento)
-          // Se todas forem passadas, pega a mais recente.
           const diff = dateObj.getTime() - today.getTime();
           if (diff >= 0 && diff < minDiff) {
             minDiff = diff;
@@ -157,32 +149,55 @@ export const ExpensesPage = () => {
           }
         }
       }
-
-      if (bestDate) {
-        extractedDate = bestDate.toISOString().split('T')[0];
-      }
+      if (bestDate) extractedDate = bestDate.toISOString().split('T')[0];
     }
 
-    // Busca por padrões comuns de valor (R$ 0,00 ou apenas 0,00)
-    // Procuramos o maior valor que pareça ser o total
-    const amountRegex = /(?:R\$\s?|V[alor]{3}\s?|TOTAL\s?)?(\d{1,3}(?:\.\d{3})*,\d{2})/gi;
+    // 2. VALOR
+    const amountRegex = /(?:R\$\s?|TOTAL\s?|VALOR\s?|PAGAR\s?)(\d{1,3}(?:\.\d{3})*,\d{2})/gi;
     let maxAmount = 0;
-    let match;
-    
-    while ((match = amountRegex.exec(text)) !== null) {
-      const value = parseFloat(match[1].replace(/\./g, '').replace(',', '.'));
+    let amountMatch;
+    while ((amountMatch = amountRegex.exec(text)) !== null) {
+      const value = parseFloat(amountMatch[1].replace(/\./g, '').replace(',', '.'));
       if (value > maxAmount) maxAmount = value;
     }
 
-    // Busca por descrição (nome de empresa ou serviço)
-    // Tenta pegar as primeiras palavras que não sejam números/datas
-    const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 5);
-    const description = lines[0]?.substring(0, 50) || 'Nova Despesa (PDF)';
+    // 3. BENEFICIÁRIO / RAZÃO SOCIAL / PRODUTO
+    const cleanText = text.replace(/\s+/g, ' ');
+    
+    // Tenta capturar Beneficiário/Razão Social/Fantasia
+    const beneficiaryRegex = /(?:Beneficiário|Nome|Razão Social|Prestador|Cedente|Nome do Beneficiário|Recebedor)[:\s]+([^|\d]{5,50})/i;
+    const beneficiaryMatch = cleanText.match(beneficiaryRegex);
+    
+    // Tenta capturar Descrição do Produto/Serviço
+    const productRegex = /(?:Produto|Serviço|Descrição|Ref[:\.\s]|Referente a)[:\s]+([^|\d]{5,50})/i;
+    const productMatch = cleanText.match(productRegex);
+
+    let infoParts: string[] = [];
+    
+    if (beneficiaryMatch && beneficiaryMatch[1]) {
+      infoParts.push(`Prestador: ${beneficiaryMatch[1].trim()}`);
+    }
+    
+    if (productMatch && productMatch[1]) {
+      infoParts.push(`Ref: ${productMatch[1].trim()}`);
+    }
+
+    // Se não encontrou campos específicos, tenta usar a primeira linha "texto-somente"
+    if (infoParts.length === 0) {
+      const fallbackLines = text.split('\n')
+        .map(l => l.trim())
+        .filter(l => l.length > 8 && !/^\d+$/.test(l) && !l.includes('/') && !l.includes('R$'));
+      if (fallbackLines[0]) {
+        infoParts.push(fallbackLines[0].substring(0, 60));
+      }
+    }
+
+    const finalDescription = infoParts.join(' | ') || 'Nova Despesa (PDF)';
 
     return {
       date: extractedDate,
       amount: maxAmount,
-      description
+      description: finalDescription
     };
   };
 
