@@ -504,9 +504,36 @@ export const ExpensesPage = () => {
                 onChange={(e) => setFormData({ ...formData, category: e.target.value as ExpenseCategory })}
                 required
               >
-                {Object.values(ExpenseCategory).map(cat => (
-                  <option key={cat} value={cat}>{cat}</option>
-                ))}
+                <optgroup label="Infraestrutura e Fixos">
+                  <option value={ExpenseCategory.RENT}>{ExpenseCategory.RENT}</option>
+                  <option value={ExpenseCategory.UTILITIES}>{ExpenseCategory.UTILITIES}</option>
+                  <option value={ExpenseCategory.MAINTENANCE}>{ExpenseCategory.MAINTENANCE}</option>
+                </optgroup>
+                
+                <optgroup label="Despesas com Pessoal">
+                  <option value={ExpenseCategory.SALARY}>{ExpenseCategory.SALARY}</option>
+                  <option value={ExpenseCategory.PRO_LABORE}>{ExpenseCategory.PRO_LABORE}</option>
+                </optgroup>
+
+                <optgroup label="Operacional da Clínica">
+                  <option value={ExpenseCategory.PSYCH_MATERIALS}>{ExpenseCategory.PSYCH_MATERIALS}</option>
+                  <option value={ExpenseCategory.SUPPLIES}>{ExpenseCategory.SUPPLIES}</option>
+                </optgroup>
+
+                <optgroup label="Tecnologia e Vendas">
+                  <option value={ExpenseCategory.MARKETING}>{ExpenseCategory.MARKETING}</option>
+                  <option value={ExpenseCategory.SOFTWARE}>{ExpenseCategory.SOFTWARE}</option>
+                </optgroup>
+
+                <optgroup label="Financeiro e Administrativo">
+                  <option value={ExpenseCategory.TAX}>{ExpenseCategory.TAX}</option>
+                  <option value={ExpenseCategory.BANK_FEES}>{ExpenseCategory.BANK_FEES}</option>
+                  <option value={ExpenseCategory.LOAN}>{ExpenseCategory.LOAN}</option>
+                </optgroup>
+
+                <optgroup label="Gerais">
+                  <option value={ExpenseCategory.OTHER}>{ExpenseCategory.OTHER}</option>
+                </optgroup>
               </select>
             </div>
             <Input

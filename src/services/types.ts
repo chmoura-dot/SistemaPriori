@@ -197,14 +197,30 @@ export interface Payment {
 }
 
 export enum ExpenseCategory {
-  SALARY = 'Salários',
-  LOAN = 'Empréstimos',
-  TAX = 'Impostos',
-  RENT = 'Aluguel',
-  UTILITIES = 'Contas (Água/Luz/Internet)',
-  MARKETING = 'Marketing',
-  SUPPLIES = 'Suprimentos',
-  OTHER = 'Outros'
+  // Infraestrutura e Fixos
+  RENT = 'Aluguel e Condomínio',
+  UTILITIES = 'Água / Luz / Internet / Telefone',
+  MAINTENANCE = 'Manutenção e Limpeza',
+  
+  // Despesas com Pessoal
+  SALARY = 'Folha de Pagamento / Salários',
+  PRO_LABORE = 'Pró-labore (Retirada de Sócios)',
+  
+  // Operacional da Clínica
+  PSYCH_MATERIALS = 'Materiais e Testes Psicológicos',
+  SUPPLIES = 'Suprimentos e Copa',
+  
+  // Tecnologia e Vendas
+  MARKETING = 'Marketing e Publicidade',
+  SOFTWARE = 'Softwares e Sistemas',
+  
+  // Financeiro e Administrativo
+  TAX = 'Impostos e Contabilidade',
+  BANK_FEES = 'Taxas Bancárias / Maquininhas',
+  LOAN = 'Empréstimos e Financiamentos',
+  
+  // Gerais
+  OTHER = 'Outras Despesas'
 }
 
 export interface Expense {
