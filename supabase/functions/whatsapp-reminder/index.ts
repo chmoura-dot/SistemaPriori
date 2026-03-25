@@ -23,10 +23,17 @@ Deno.serve(async (req) => {
     const ZAPI_URL = settings.zapi_url;
     const ZAPI_TOKEN = settings.zapi_token;
 
-    // 1. Buscar agendamentos de HOJE que precisam de lembrete
+    // 1. Calcular a data de hoje para buscar agendamentos (Horário de Brasília)
     // Usamos Intl para garantir o fuso correto de SP independente do servidor
-    const brNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
-    const todayStr = brNow.toISOString().split('T')[0];
+    const brDate = new Intl.DateTimeFormat('pt-BR', {
+      timeZone: 'America/Sao_Paulo',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(new Date());
+    
+    const [dayStr, monthStr, yearStr] = brDate.split('/');
+    const todayStr = `${yearStr}-${monthStr}-${dayStr}`;
 
     console.log(`[WhatsAppReminder] Processando lembretes para o dia: ${todayStr} (Data local BR)`);
 
@@ -61,7 +68,13 @@ Deno.serve(async (req) => {
       }
 
       const patientName = customer.name || "Paciente";
-      const patientPhone = customer.phone.replace(/\D/g, "");
+      
+      // Limpa e garante o formato internacional (55 no início para Brasil)
+      let patientPhone = customer.phone.replace(/\D/g, "");
+      if (patientPhone.length > 0 && !patientPhone.startsWith("55")) {
+        patientPhone = "55" + patientPhone;
+      }
+
       const psychName = psychologist?.name || "Psicólogo";
       const formattedDate = `${day.toString().padStart(2, '0')}/${month.toString().padStart(2, '0')}`;
       const confirmationLink = `${APP_URL}/confirmacao/${app.id}`;
@@ -73,7 +86,12 @@ Deno.serve(async (req) => {
         'Content-Type': 'application/json'
       };
       
-      if (ZAPI_TOKEN) {
+      // Só enviamos o Client-Token se ele for diferente do ID da instância (erro comum de configuração)
+      // O ID da instância está presente na ZAPI_URL
+      const instanceIdMatch = ZAPI_URL.match(/instances\/([^\/]+)/);
+      const instanceId = instanceIdMatch ? instanceIdMatch[1] : null;
+
+      if (ZAPI_TOKEN && ZAPI_TOKEN !== instanceId) {
         headers['Client-Token'] = ZAPI_TOKEN;
       }
 
@@ -95,7 +113,17 @@ Deno.serve(async (req) => {
           
           results.push({ id: app.id, status: "sent" });
         } else {
-          results.push({ id: app.id, status: "error", code: response.status });
+          const errorText = await response.text();
+          console.error(`[WhatsAppReminder] Erro na Z-API (ID: ${app.id}): Status ${response.status} - ${errorText}`);
+          
+          // Tentar parsear o erro se for JSON
+          let errorDetail = errorText;
+          try {
+            const parsed = JSON.parse(errorText);
+            errorDetail = parsed.message || errorText;
+          } catch (e) {}
+          
+          results.push({ id: app.id, status: "error", code: response.status, message: errorDetail });
         }
       } catch (sendError) {
         results.push({ id: app.id, status: "fetch_error", error: sendError.message });

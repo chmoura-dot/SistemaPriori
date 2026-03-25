@@ -19,13 +19,44 @@ Deno.serve(async (req) => {
     const url = new URL(req.url);
     
     // ==========================================
-    // GET: Recarrega as consultas do token
+    // GET: Recarrega as consultas do token OU pelo ID (para paciente)
     // ==========================================
     if (req.method === 'GET') {
       const token = url.searchParams.get('token');
-      if (!token) throw new Error('Token is required');
+      const appointmentId = url.searchParams.get('appointmentId');
 
-      // Validar token
+      if (appointmentId) {
+        // Busca agendamento específico para o paciente (sem login)
+        const { data: appData, error: appError } = await supabase
+          .from('appointments')
+          .select(`
+            id,
+            date,
+            start_time,
+            end_time,
+            mode,
+            type,
+            status,
+            confirmation_status,
+            customer:customers (id, name, health_plan, phone),
+            psychologist:psychologists (id, name, phone),
+            room:rooms (id, name)
+          `)
+          .eq('id', appointmentId)
+          .single();
+
+        if (appError || !appData) {
+          throw new Error('Agendamento não encontrado.');
+        }
+
+        return new Response(JSON.stringify({ success: true, appointment: appData }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+
+      if (!token) throw new Error('Token ou Appointment ID é obrigatório.');
+
+      // Validar token (Lógica existente para psicólogos)
       const { data: tokenData, error: tokenError } = await supabase
         .from('appointment_tokens')
         .select('*')
@@ -72,11 +103,37 @@ Deno.serve(async (req) => {
     // ==========================================
     if (req.method === 'POST') {
       const body = await req.json();
-      const { token, appointmentId, action, billing } = body; 
+      const { token, appointmentId, action, billing, patientResponse, notes } = body; 
       // action: "confirm" | "cancel" | "pendency"
+      // patientResponse: "confirmed" | "declined"
 
-      if (!token || !appointmentId || !action) {
-        throw new Error('Parâmetros obrigatórios ausentes.');
+      if (!appointmentId) {
+        throw new Error('Appointment ID é obrigatório.');
+      }
+
+      // CASO A: Resposta do Paciente (WhatsApp)
+      if (patientResponse) {
+        const { data: updatedApp, error: updateError } = await supabase
+          .from('appointments')
+          .update({
+            confirmation_status: patientResponse,
+            patient_notes: notes || null,
+            confirmed_patient: patientResponse === 'confirmed'
+          })
+          .eq('id', appointmentId)
+          .select()
+          .single();
+
+        if (updateError) throw new Error(updateError.message);
+
+        return new Response(JSON.stringify({ success: true, updated: updatedApp }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+
+      // CASO B: Resposta do Psicólogo (via Token de E-mail)
+      if (!token || !action) {
+        throw new Error('Token e Ação são obrigatórios para confirmação de profissional.');
       }
 
       // Validar token
@@ -120,7 +177,7 @@ Deno.serve(async (req) => {
           confirmed_psychologist: false,
           status: 'active'
         };
-      } // action === 'pendency' é caso desfaçam a confirmação
+      }
 
       const { data: updatedApp, error: updateError } = await supabase
         .from('appointments')

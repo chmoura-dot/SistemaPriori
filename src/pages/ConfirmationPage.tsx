@@ -20,28 +20,33 @@ export const ConfirmationPage = () => {
     const loadData = async () => {
       if (!id) return;
       try {
-        const appointments = await supabaseService.getAppointments();
-        const app = appointments.find(a => a.id === id);
-        
-        if (!app) {
+        // Chamada para a Edge Function que permite acesso sem login via ID
+        const response = await fetch(`https://ntqkrxtesuaeobxpmznr.supabase.co/functions/v1/confirm-appointment?appointmentId=${id}`);
+        const data = await response.json();
+
+        if (!response.ok || !data.appointment) {
           setStatus('error');
           setIsLoading(false);
           return;
         }
 
-        if (app.confirmationStatus !== 'pending') {
+        const app = data.appointment;
+
+        if (app.confirmation_status !== 'pending') {
           setStatus('already_processed');
         }
 
-        setAppointment(app);
+        // Mapear snake_case da função para camelCase do componente
+        setAppointment({
+          ...app,
+          confirmationStatus: app.confirmation_status,
+          psychologistId: app.psychologist?.id,
+          customerId: app.customer?.id,
+          startTime: app.start_time
+        });
 
-        const [customers, psychologists] = await Promise.all([
-          supabaseService.getCustomers(),
-          supabaseService.getPsychologists()
-        ]);
-
-        setCustomer(customers.find(c => c.id === app.customerId) || null);
-        setPsychologist(psychologists.find(p => p.id === app.psychologistId) || null);
+        setCustomer(app.customer);
+        setPsychologist(app.psychologist);
       } catch (error) {
         console.error('Erro ao carregar dados:', error);
         setStatus('error');
@@ -57,11 +62,18 @@ export const ConfirmationPage = () => {
     if (!id || !appointment || !psychologist) return;
     setIsSubmitting(true);
     try {
-      await supabaseService.updateAppointment(id, {
-        confirmationStatus: response,
-        patientNotes: response === 'declined' ? notes : undefined,
-        confirmedPatient: response === 'confirmed'
+      // Enviar resposta via Edge Function (evita problemas de RLS)
+      const res = await fetch('https://ntqkrxtesuaeobxpmznr.supabase.co/functions/v1/confirm-appointment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          appointmentId: id,
+          patientResponse: response,
+          notes: notes || undefined
+        })
       });
+
+      if (!res.ok) throw new Error('Falha ao salvar resposta');
 
       if (response === 'declined') {
         const message = `Olá ${psychologist.name}, o paciente ${customer?.name} informou que não poderá comparecer à consulta de ${new Date(appointment.date + 'T12:00:00').toLocaleDateString()} às ${appointment.startTime}. Motivo: ${notes || 'Não informado'}.`;
