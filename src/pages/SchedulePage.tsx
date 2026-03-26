@@ -531,11 +531,12 @@ export const SchedulePage = () => {
     
     if (!isWithinAvailability) return false;
     
-    // Exclude self when editing
+    // Exclude self when editing and ignore canceled appointments
     const hasConflict = appointments.some(a => 
       a.psychologistId === psyId && 
       a.date === dateStr &&
       a.id !== editingId &&
+      a.status !== AppointmentStatus.CANCELED &&
       ((startTime >= a.startTime && startTime < a.endTime) ||
        (endTime > a.startTime && endTime <= a.endTime) ||
        (startTime <= a.startTime && endTime >= a.endTime))
@@ -1331,9 +1332,13 @@ export const SchedulePage = () => {
                       >
                         <option value="">Selecione...</option>
                         {allTimeSlots.filter(t => {
-                          // Allow any slot where the professional is available for at least 10 minutes (minimum selectable duration)
-                          // The actual end time will be set by getAppointmentDuration but can be changed by the user later
-                          const minEndTime = addMinutes(t, 10);
+                          // For the start time selection, we allow any time that falls within 
+                          // the professional's availability, even if the default duration 
+                          // would exceed the shift end. This allows the user to manually 
+                          // shorten the session afterwards.
+                          // We check if at least 10 minutes are available.
+                          const minDuration = 10;
+                          const minEndTime = addMinutes(t, minDuration);
                           return isPsychologistAvailable(formData.psychologistId, formData.date, t, minEndTime, formData.mode);
                         }).map(t => (
                           <option key={t} value={t}>{t}</option>
