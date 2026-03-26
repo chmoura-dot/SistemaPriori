@@ -86,6 +86,8 @@ export const SchedulePage = () => {
     recurrenceFrequency: RecurrenceFrequency.SEMANAL
   });
 
+  const [isManualEndTime, setIsManualEndTime] = useState(false);
+
   const [viewMode, setViewMode] = useState<'daily' | 'weekly' | 'psychologist'>('daily');
   const [selectedRoom, setSelectedRoom] = useState<string>('');
   const [selectedPsychologistId, setSelectedPsychologistId] = useState<string>('');
@@ -240,6 +242,7 @@ export const SchedulePage = () => {
     });
     setEditingId(appointment.id);
     setUpdateFuture(false);
+    setIsManualEndTime(true); // Preserve saved times on edit
     setIsModalOpen(true);
   };
 
@@ -406,20 +409,31 @@ export const SchedulePage = () => {
     return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
   };
 
-  // Track previous customer ID to know when it changes
+  // Track previous state to know when it changes
   const [prevCustomerId, setPrevCustomerId] = useState<string | undefined>(undefined);
+  const [prevStartTime, setPrevStartTime] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     if (formData.customerId && formData.startTime) {
       const customer = customers.find(c => c.id === formData.customerId);
-      const duration = getAppointmentDuration(formData.customerId);
-      const endTime = addMinutes(formData.startTime, duration);
       
       const customerChanged = formData.customerId !== prevCustomerId;
+      const startTimeChanged = formData.startTime !== prevStartTime;
+
       if (customerChanged) setPrevCustomerId(formData.customerId);
+      if (startTimeChanged) setPrevStartTime(formData.startTime);
+
+      // Auto-update endTime ONLY if customer or startTime changed AND user hasn't touched endTime
+      // OR if we're creating a new appointment
+      const shouldAutoUpdateEndTime = (customerChanged || startTimeChanged) && (!isManualEndTime || !editingId);
 
       setFormData(prev => {
-        const updates: any = { endTime };
+        const updates: any = {};
+        
+        if (shouldAutoUpdateEndTime) {
+          const duration = getAppointmentDuration(formData.customerId);
+          updates.endTime = addMinutes(formData.startTime, duration);
+        }
         
         // Pre-fill custom price/repass if customer is Particular and has them defined
         // We update if the customer changed OR if the values are currently undefined
@@ -439,7 +453,7 @@ export const SchedulePage = () => {
         return { ...prev, ...updates };
       });
     }
-  }, [formData.customerId, formData.startTime, customers, prevCustomerId]);
+  }, [formData.customerId, formData.startTime, customers, prevCustomerId, prevStartTime, isManualEndTime, editingId]);
 
   // Clear psychologist selection when they become unavailable due to date/time change
   useEffect(() => {
@@ -683,6 +697,7 @@ export const SchedulePage = () => {
               </div>
               <Button onClick={() => {
                 setFormData({ ...formData, date, mode: AttendanceMode.PRESENCIAL });
+                setIsManualEndTime(false);
                 setIsModalOpen(true);
               }} className="bg-priori-navy hover:bg-priori-navy/90 text-white">
                 <Plus size={20} className="mr-2" />
@@ -1316,20 +1331,42 @@ export const SchedulePage = () => {
                       >
                         <option value="">Selecione...</option>
                         {allTimeSlots.filter(t => {
-                          const duration = getAppointmentDuration(formData.customerId);
-                          const endTimeMatch = addMinutes(t, duration);
-                          return isPsychologistAvailable(formData.psychologistId, formData.date, t, endTimeMatch, formData.mode);
+                          // Allow any slot where the professional is available for at least 10 minutes (minimum selectable duration)
+                          // The actual end time will be set by getAppointmentDuration but can be changed by the user later
+                          const minEndTime = addMinutes(t, 10);
+                          return isPsychologistAvailable(formData.psychologistId, formData.date, t, minEndTime, formData.mode);
                         }).map(t => (
                           <option key={t} value={t}>{t}</option>
                         ))}
                       </select>
                     </div>
                     <div className="space-y-2">
-                      <label className="text-sm font-bold text-zinc-500 uppercase tracking-widest">Hora Fim</label>
+                      <div className="flex justify-between items-center">
+                        <label className="text-sm font-bold text-zinc-500 uppercase tracking-widest">Hora Fim</label>
+                        {isManualEndTime && (
+                          <button 
+                            type="button" 
+                            onClick={() => {
+                              const duration = getAppointmentDuration(formData.customerId);
+                              setFormData({ ...formData, endTime: addMinutes(formData.startTime, duration) });
+                              setIsManualEndTime(false);
+                            }}
+                            className="text-[10px] font-bold text-amber-600 hover:text-amber-700 uppercase tracking-tight flex items-center gap-1"
+                          >
+                            <Clock size={10} /> Restaurar Padrão
+                          </button>
+                        )}
+                      </div>
                       <select
-                        className="w-full rounded-xl bg-white border border-zinc-200 px-4 py-3 text-base text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/10 transition-all"
+                        className={cn(
+                          "w-full rounded-xl bg-white border px-4 py-3 text-base text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/10 transition-all",
+                          isManualEndTime ? "border-amber-200 ring-2 ring-amber-500/5" : "border-zinc-200"
+                        )}
                         value={formData.endTime}
-                        onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
+                        onChange={(e) => {
+                          setFormData({ ...formData, endTime: e.target.value });
+                          setIsManualEndTime(true);
+                        }}
                         required
                       >
                         <option value="">Selecione...</option>
@@ -1337,6 +1374,9 @@ export const SchedulePage = () => {
                           <option key={t} value={t}>{t}</option>
                         ))}
                       </select>
+                      {isManualEndTime && (
+                        <p className="text-[10px] text-amber-600 font-medium mt-1">Duração personalizada (manual)</p>
+                      )}
                     </div>
                   </div>
 
