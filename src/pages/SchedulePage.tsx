@@ -381,27 +381,6 @@ export const SchedulePage = () => {
     }
   };
 
-
-  const getAppointmentDuration = (customerId: string) => {
-    const customer = customers.find(c => c.id === customerId);
-    if (!customer) return 40;
-    
-    const plan = customer.healthPlan;
-    
-    // 50 min: AMS Petrobras, PAE, Saude Caixa, Particular
-    if (plan === HealthPlan.AMS_PETROBRAS || plan === HealthPlan.PAE || plan === HealthPlan.SAUDE_CAIXA || plan === HealthPlan.PARTICULAR) {
-      return 50;
-    }
-    
-    // 30 min: Porto Saude, Medsenior, Saude Blue, Gama Saude
-    if (plan === HealthPlan.PORTO_SAUDE || plan === HealthPlan.MEDSENIOR || plan === HealthPlan.SAUDE_BLUE || plan === HealthPlan.GAMA) {
-      return 30;
-    }
-    
-    // 40 min: Real Grandeza, Fundação Saúde etc.
-    return 40;
-  };
-
   const addMinutes = (time: string, minutes: number) => {
     const [h, m] = time.split(':').map(Number);
     const date = new Date();
@@ -423,16 +402,14 @@ export const SchedulePage = () => {
       if (customerChanged) setPrevCustomerId(formData.customerId);
       if (startTimeChanged) setPrevStartTime(formData.startTime);
 
-      // Auto-update endTime ONLY if customer or startTime changed AND user hasn't touched endTime
-      // OR if we're creating a new appointment
-      const shouldAutoUpdateEndTime = (customerChanged || startTimeChanged) && (!isManualEndTime || !editingId);
+      // Ao mudar o início, sugerimos 30 minutos de duração por padrão
+      const shouldAutoUpdateEndTime = startTimeChanged && !editingId;
 
       setFormData(prev => {
         const updates: any = {};
         
         if (shouldAutoUpdateEndTime) {
-          const duration = getAppointmentDuration(formData.customerId);
-          updates.endTime = addMinutes(formData.startTime, duration);
+          updates.endTime = addMinutes(formData.startTime, 30);
         }
         
         // Pre-fill custom price/repass if customer is Particular and has them defined
@@ -453,7 +430,7 @@ export const SchedulePage = () => {
         return { ...prev, ...updates };
       });
     }
-  }, [formData.customerId, formData.startTime, customers, prevCustomerId, prevStartTime, isManualEndTime, editingId]);
+  }, [formData.customerId, formData.startTime, customers, prevCustomerId, prevStartTime, editingId]);
 
   // Clear psychologist selection when they become unavailable due to date/time change
   useEffect(() => {
@@ -546,7 +523,8 @@ export const SchedulePage = () => {
   };
 
   const hasMinSpace = (slot: string, dateStr: string, roomId?: string, psyId?: string) => {
-    const minDuration = 30;
+    // Usamos um espaço mínimo de 10 min para permitir que a secretaria veja disponibilidade em frestas pequenas
+    const minDuration = 10;
     const minEndTime = addMinutes(slot, minDuration);
     
     // Check limits for PRESENCIAL
@@ -911,17 +889,22 @@ export const SchedulePage = () => {
                             a.date === date && 
                             a.roomId === room.id && 
                             a.mode === AttendanceMode.PRESENCIAL &&
-                            // Ajustado para capturar agendamentos que comecem em horários quebrados (ex: 08:10)
-                            // Se o agendamento começa ANTES do final deste slot de 30min e termina DEPOIS do início dele
                             a.startTime < addMinutes(slot, 30) && a.endTime > slot
                           );
+                          
+                          // Verificamos se este slot é o PRIMEIRO slot que este agendamento ocupa
+                          // Para agendamentos que começam entre slots (ex: 08:10), eles serão "reivindicados" pelo slot das 08:00
+                          const isFirstSlot = appointment && (
+                            (appointment.startTime >= slot && appointment.startTime < addMinutes(slot, 30))
+                          );
+
                           const customer = customers.find(c => c.id === appointment?.customerId);
                           const psychologist = psychologists.find(p => p.id === appointment?.psychologistId);
 
                           return (
                             <div key={`${slot}-${room.id}`} className="p-0.5 border-r border-zinc-100 last:border-r-0 min-h-[32px] relative group">
                               {appointment ? (
-                                appointment.startTime === slot ? (
+                                isFirstSlot ? (
                                   (() => {
                                     const planColors: Record<string, string> = {
                                       [HealthPlan.PARTICULAR]: "border-l-blue-500",
@@ -948,13 +931,23 @@ export const SchedulePage = () => {
                                     else if (appointment.reminderSentAt) currentStatus = 'pending_sent';
 
                                     const slotCount = getSlotCount(appointment.startTime, appointment.endTime);
+                                    
+                                    // Cálculo do deslocamento inicial para agendamentos que não começam no início exato do slot
+                                    const [hS, mS] = appointment.startTime.split(':').map(Number);
+                                    const [hSlot, mSlot] = slot.split(':').map(Number);
+                                    const minutesOffset = (hS * 60 + mS) - (hSlot * 60 + mSlot);
+                                    const topOffset = (minutesOffset / 30) * 100;
+
                                     return (
                                       <div 
                                         className={cn(
-                                          "absolute top-0.5 left-0.5 right-0.5 border rounded-md p-1.5 flex flex-col justify-between transition-all z-20 shadow-sm overflow-hidden border-l-4 hover:shadow-md",
+                                          "absolute left-0.5 right-0.5 border rounded-md p-1.5 flex flex-col justify-between transition-all z-20 shadow-sm overflow-hidden border-l-4 hover:shadow-md",
                                           statusColors[currentStatus]
                                         )}
-                                        style={{ height: `calc(${slotCount * 100}% + ${slotCount - 1}px)` }}
+                                        style={{ 
+                                          height: `calc(${slotCount * 100}% + ${Math.floor(slotCount) - 1}px)`,
+                                          top: `calc(${topOffset}% + 2px)`
+                                        }}
                                       >
                                         <div className="flex justify-between items-start gap-1">
                                           <div className="flex flex-col min-w-0 flex-1">
@@ -1026,13 +1019,19 @@ export const SchedulePage = () => {
                             (viewMode === 'psychologist' ? true : a.mode === AttendanceMode.PRESENCIAL) &&
                             a.startTime < addMinutes(slot, 30) && a.endTime > slot
                           );
+
+                          // Verificamos se este slot é o PRIMEIRO slot que este agendamento ocupa
+                          const isFirstSlot = appointment && (
+                            (appointment.startTime >= slot && appointment.startTime < addMinutes(slot, 30))
+                          );
+
                           const customer = customers.find(c => c.id === appointment?.customerId);
                           const psychologist = psychologists.find(p => p.id === appointment?.psychologistId);
 
                           return (
                             <div key={`${slot}-${day}`} className="p-0.5 border-r border-zinc-100 last:border-r-0 min-h-[32px] relative group">
                               {appointment ? (
-                                appointment.startTime === slot ? (
+                                isFirstSlot ? (
                                   (() => {
                                     const planColors: Record<string, string> = {
                                       [HealthPlan.PARTICULAR]: "border-l-blue-500",
@@ -1060,7 +1059,7 @@ export const SchedulePage = () => {
 
                                     const slotCount = getSlotCount(appointment.startTime, appointment.endTime);
                                     
-                                    // Cálculo do deslocamento inicial para agendamentos que não começam na "hora cheia" do slot
+                                    // Cálculo do deslocamento inicial para agendamentos que não começam no início exato do slot
                                     const [hS, mS] = appointment.startTime.split(':').map(Number);
                                     const [hSlot, mSlot] = slot.split(':').map(Number);
                                     const minutesOffset = (hS * 60 + mS) - (hSlot * 60 + mSlot);
@@ -1346,32 +1345,11 @@ export const SchedulePage = () => {
                       </select>
                     </div>
                     <div className="space-y-2">
-                      <div className="flex justify-between items-center">
-                        <label className="text-sm font-bold text-zinc-500 uppercase tracking-widest">Hora Fim</label>
-                        {isManualEndTime && (
-                          <button 
-                            type="button" 
-                            onClick={() => {
-                              const duration = getAppointmentDuration(formData.customerId);
-                              setFormData({ ...formData, endTime: addMinutes(formData.startTime, duration) });
-                              setIsManualEndTime(false);
-                            }}
-                            className="text-[10px] font-bold text-amber-600 hover:text-amber-700 uppercase tracking-tight flex items-center gap-1"
-                          >
-                            <Clock size={10} /> Restaurar Padrão
-                          </button>
-                        )}
-                      </div>
+                      <label className="text-sm font-bold text-zinc-500 uppercase tracking-widest">Hora Fim</label>
                       <select
-                        className={cn(
-                          "w-full rounded-xl bg-white border px-4 py-3 text-base text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/10 transition-all",
-                          isManualEndTime ? "border-amber-200 ring-2 ring-amber-500/5" : "border-zinc-200"
-                        )}
+                        className="w-full rounded-xl bg-white border border-zinc-200 px-4 py-3 text-base text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/10 transition-all"
                         value={formData.endTime}
-                        onChange={(e) => {
-                          setFormData({ ...formData, endTime: e.target.value });
-                          setIsManualEndTime(true);
-                        }}
+                        onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
                         required
                       >
                         <option value="">Selecione...</option>
@@ -1379,9 +1357,6 @@ export const SchedulePage = () => {
                           <option key={t} value={t}>{t}</option>
                         ))}
                       </select>
-                      {isManualEndTime && (
-                        <p className="text-[10px] text-amber-600 font-medium mt-1">Duração personalizada (manual)</p>
-                      )}
                     </div>
                   </div>
 
