@@ -5,7 +5,8 @@ import { Resend } from "npm:resend@3.2.0";
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-const SITE_URL = Deno.env.get("SITE_URL") || "https://sistema.nucleopriori.com.br";
+// Forçamos a URL oficial para evitar redirecionamentos incorretos (ex: n8n)
+const SITE_URL = "https://sistema.nucleopriori.com.br";
 
 const resend = new Resend(RESEND_API_KEY);
 
@@ -86,7 +87,7 @@ Deno.serve(async (req) => {
       // 3b. Verificar se já passaram 30 minutos desde a ÚLTIMA consulta agendada
       if (appointments && appointments.length > 0) {
         // Encontrar o maior end_time
-        const lastApp = [...appointments].sort((a, b) => b.end_time.localeCompare(a.end_time))[0];
+        const lastApp: any = [...appointments].sort((a: any, b: any) => b.end_time.localeCompare(a.end_time))[0];
         const [lastH, lastM] = lastApp.end_time.split(':').map(Number);
         
         // Para calcular a diferença de tempo, precisamos de um objeto Date no fuso de Brasília
@@ -169,8 +170,8 @@ Deno.serve(async (req) => {
       `;
 
       pendingAppointments.forEach((app, index) => {
-        const customerObj = Array.isArray(app.customer) ? app.customer[0] : app.customer;
-        const roomObj = Array.isArray(app.room) ? app.room[0] : app.room;
+        const customerObj: any = Array.isArray(app.customer) ? app.customer[0] : app.customer;
+        const roomObj: any = Array.isArray(app.room) ? app.room[0] : app.room;
         
         const patientName = customerObj?.name || "Paciente sem nome";
         const patientPlan = customerObj?.health_plan && customerObj?.health_plan !== 'PARTICULAR' 
@@ -219,7 +220,7 @@ Deno.serve(async (req) => {
         });
 
         results.push({ psychologist: psy.name, status: "sent", id: mailResponse.data?.id });
-      } catch (sendError) {
+      } catch (sendError: any) {
         results.push({ psychologist: psy.name, status: "mail_error", error: sendError.message });
       }
     }
@@ -228,7 +229,7 @@ Deno.serve(async (req) => {
       headers: { 'Content-Type': 'application/json' }
     });
 
-  } catch (err) {
+  } catch (err: any) {
     return new Response(JSON.stringify({ error: err.message }), { status: 500 });
   }
 });

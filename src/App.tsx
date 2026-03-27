@@ -40,7 +40,9 @@ export default function App() {
 
   const navigate = (path: string) => {
     window.history.pushState({}, '', path);
-    setCurrentPath(path);
+    // Extraímos apenas o pathname para o estado do roteador customizado
+    const url = new URL(path, window.location.origin);
+    setCurrentPath(url.pathname);
     setIsAuthenticated(api.isAuthenticated());
   };
 
@@ -59,11 +61,24 @@ export default function App() {
     const isAdmin = user?.role === UserRole.ADMIN;
 
     // Rotas Públicas (acessíveis sem login)
-    if (currentPath === '/confirmacao' || currentPath === '/confirmacao/') {
+    // Usamos regex ou verificações mais flexíveis para evitar problemas com trailing slashes
+    const isMagicPath = currentPath === '/confirmacao' || currentPath === '/confirmacao/';
+    const isDirectPath = currentPath.startsWith('/confirmacao/');
+    const isPotentialConfirmation = currentPath.startsWith('/confirmacao');
+
+    if (isMagicPath) {
       return <MagicConfirmationPage />;
     }
 
-    if (currentPath.startsWith('/confirmacao/')) {
+    if (isDirectPath) {
+      return <ConfirmationPage />;
+    }
+    
+    // Fallback para quando o path é algo como /confirmacao?token=... ou /confirmacao/ID sem a barra final tratada acima
+    if (isPotentialConfirmation) {
+      if (window.location.search.includes('token=')) {
+        return <MagicConfirmationPage />;
+      }
       return <ConfirmationPage />;
     }
 

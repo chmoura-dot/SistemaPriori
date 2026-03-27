@@ -123,7 +123,7 @@ export const MagicConfirmationPage = () => {
     );
   }
 
-  const displayDate = date.includes('-') ? date.split('-').reverse().join('/') : date;
+  const displayDate = date && date.includes('-') ? date.split('-').reverse().join('/') : (date || 'Múltiplos Dias');
 
   return (
     <div className="min-h-screen bg-priori-bg pb-20">
@@ -182,7 +182,7 @@ export const MagicConfirmationPage = () => {
                   )}>
                     {app.customer?.name}
                   </h3>
-                  <div className="flex flex-wrap gap-2 text-xs font-medium uppercase tracking-wider">
+                  <div className="flex wrap gap-2 text-xs font-medium uppercase tracking-wider">
                     <span className="text-zinc-400 border border-zinc-200 px-2 py-0.5 rounded-md">
                        {app.type}
                     </span>

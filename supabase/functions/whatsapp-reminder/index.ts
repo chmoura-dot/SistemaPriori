@@ -3,7 +3,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.7";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-const APP_URL = Deno.env.get("APP_URL") || "https://sistema.nucleopriori.com.br";
+// Forçamos a URL oficial para evitar redirecionamentos incorretos (ex: n8n)
+const APP_URL = "https://sistema.nucleopriori.com.br";
 
 Deno.serve(async (req) => {
   try {
@@ -56,7 +57,7 @@ Deno.serve(async (req) => {
     const results = [];
 
     for (const app of (appointments || [])) {
-      // Como o cron roda às 06:00 BRT, processamos todos os agendamentos do dia de hoje
+      // Como o cron roda às 06:00 BRT, processamos todos agendamentos do dia de hoje
       const [year, month, day] = app.date.split('-').map(Number);
       
       const customer = Array.isArray(app.customer) ? app.customer[0] : app.customer;
@@ -125,7 +126,7 @@ Deno.serve(async (req) => {
           
           results.push({ id: app.id, status: "error", code: response.status, message: errorDetail });
         }
-      } catch (sendError) {
+      } catch (sendError: any) {
         results.push({ id: app.id, status: "fetch_error", error: sendError.message });
       }
     }
@@ -134,7 +135,7 @@ Deno.serve(async (req) => {
       headers: { 'Content-Type': 'application/json' }
     });
 
-  } catch (err) {
+  } catch (err: any) {
     return new Response(JSON.stringify({ error: err.message }), { status: 500 });
   }
 });

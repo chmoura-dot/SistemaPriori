@@ -7,7 +7,9 @@ import { cn } from '../lib/utils';
 
 export const ConfirmationPage = () => {
   // Manual route param extraction since react-router-dom is not used
-  const id = window.location.pathname.split('/').pop();
+  const pathParts = window.location.pathname.split('/').filter(Boolean);
+  const id = pathParts.length > 1 ? pathParts[pathParts.length - 1] : null;
+  
   const [appointment, setAppointment] = useState<Appointment | null>(null);
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [psychologist, setPsychologist] = useState<Psychologist | null>(null);

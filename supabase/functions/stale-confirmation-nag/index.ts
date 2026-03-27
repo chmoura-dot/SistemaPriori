@@ -5,7 +5,8 @@ import { Resend } from "npm:resend@3.2.0";
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-const SITE_URL = Deno.env.get("SITE_URL") || "https://sistema.nucleopriori.com.br";
+// Forçamos a URL oficial para evitar redirecionamentos incorretos (ex: n8n)
+const SITE_URL = "https://sistema.nucleopriori.com.br";
 
 const resend = new Resend(RESEND_API_KEY);
 
@@ -13,12 +14,15 @@ Deno.serve(async (req) => {
   try {
     const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
 
-    // 1. Calcular data limite (hoje - 5 dias) em Brasília
+    // 1. Calcular data limite (ontem) em Brasília
+    // Queremos cobrar tudo o que aconteceu até ontem e ainda não foi confirmado.
     const thresholdDate = new Date();
-    thresholdDate.setHours(thresholdDate.getHours() - (3 + (5 * 24))); // Brasília - 5 dias
+    thresholdDate.setHours(thresholdDate.getHours() - (3 + 24)); // Brasília - 1 dia
     const thresholdStr = thresholdDate.toISOString().split('T')[0];
 
-    // 2. Buscar agendamentos pendentes há mais de 5 dias
+    console.log(`[StaleNag] Buscando pendências anteriores a: ${thresholdStr}`);
+
+    // 2. Buscar agendamentos pendentes (desde o passado até ontem)
     const { data: staleAppointments, error: appError } = await supabase
       .from('appointments')
       .select(`
@@ -41,7 +45,7 @@ Deno.serve(async (req) => {
 
     // 3. Agrupar por psicólogo
     const psychologistMap = new Map();
-    staleAppointments.forEach(app => {
+    staleAppointments.forEach((app: any) => {
       const psy = Array.isArray(app.psychologist) ? app.psychologist[0] : app.psychologist;
       if (!psy || !psy.email) return;
 
@@ -59,7 +63,7 @@ Deno.serve(async (req) => {
 
     const results = [];
 
-    // 4. Para cada psicólogo com pendências, enviar o lembrete
+    // 4. Para cada psicólogo with pendências, enviar o lembrete
     for (const [psyId, data] of psychologistMap.entries()) {
       const psy = data.info;
       const sortedDates = Array.from(data.dates).sort() as string[];
@@ -108,7 +112,7 @@ Deno.serve(async (req) => {
 
             <p style="font-size: 14px; color: #666; background-color: #f8fafc; padding: 15px; border-radius: 8px;">
               <strong>Por que recebi isso?</strong><br>
-              Recebemos normas de que nenhum atendimento pode ficar sem confirmação (presença ou falta) por mais de 5 dias.
+              Recebemos normas de que todos os atendimentos devem ser validados (presença ou falta) até o final do dia de trabalho. Este lembrete será enviado diariamente até que a agenda esteja em dia.
             </p>
           </div>
           <div style="background-color: #f1f5f9; padding: 20px; text-align: center; font-size: 12px; color: #64748b; border-top: 1px solid #e2e8f0;">
@@ -127,7 +131,7 @@ Deno.serve(async (req) => {
         });
 
         results.push({ psychologist: psy.name, status: "sent", id: mailResponse.data?.id });
-      } catch (sendError) {
+      } catch (sendError: any) {
         results.push({ psychologist: psy.name, status: "mail_error", error: sendError.message });
       }
     }
@@ -136,7 +140,7 @@ Deno.serve(async (req) => {
       headers: { 'Content-Type': 'application/json' }
     });
 
-  } catch (err) {
+  } catch (err: any) {
     return new Response(JSON.stringify({ error: err.message }), { status: 500 });
   }
 });
