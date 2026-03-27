@@ -1,5 +1,7 @@
 {
   "rewrites": [
+    { "source": "/confirmacao/(.*)", "destination": "/index.html" },
+    { "source": "/confirmacao", "destination": "/index.html" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }

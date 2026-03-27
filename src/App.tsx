@@ -46,7 +46,10 @@ export default function App() {
 
   // Auth Guard Effect
   useEffect(() => {
-    if (!isAuthenticated && currentPath !== '/login' && !currentPath.startsWith('/confirmacao')) {
+    // Permitimos as rotas de confirmação sem login
+    const isPublicRoute = currentPath === '/login' || currentPath.startsWith('/confirmacao');
+    
+    if (!isAuthenticated && !isPublicRoute) {
       navigate('/login');
     }
   }, [isAuthenticated, currentPath]);
@@ -56,7 +59,7 @@ export default function App() {
     const isAdmin = user?.role === UserRole.ADMIN;
 
     // Rotas Públicas (acessíveis sem login)
-    if (currentPath === '/confirmacao') {
+    if (currentPath === '/confirmacao' || currentPath === '/confirmacao/') {
       return <MagicConfirmationPage />;
     }
 
