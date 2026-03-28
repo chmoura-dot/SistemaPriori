@@ -30,26 +30,27 @@ export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(api.isAuthenticated());
 
   useEffect(() => {
-    const handlePopState = () => {
-      setCurrentPath(window.location.pathname);
+    const handleHashChange = () => {
+      setCurrentPath(window.location.hash.replace('#', '') || '/');
       setIsAuthenticated(api.isAuthenticated());
     };
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
+    window.addEventListener('hashchange', handleHashChange);
+    // Initialize
+    if (window.location.hash) {
+      setCurrentPath(window.location.hash.replace('#', '') || '/');
+    }
+    return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
   const navigate = (path: string) => {
-    window.history.pushState({}, '', path);
-    // Extraímos apenas o pathname para o estado do roteador customizado
-    const url = new URL(path, window.location.origin);
-    setCurrentPath(url.pathname);
-    setIsAuthenticated(api.isAuthenticated());
+    window.location.hash = path;
   };
 
   // Auth Guard Effect
   useEffect(() => {
+    const hashPath = window.location.hash.replace('#', '') || '/';
     // Permitimos as rotas de confirmação sem login
-    const isPublicRoute = currentPath === '/login' || currentPath.startsWith('/confirmacao');
+    const isPublicRoute = hashPath === '/login' || hashPath.startsWith('/confirmacao');
     
     if (!isAuthenticated && !isPublicRoute) {
       navigate('/login');
@@ -59,9 +60,17 @@ export default function App() {
   const renderPage = () => {
     const user = api.getCurrentUser();
     const isAdmin = user?.role === UserRole.ADMIN;
+    const hashPath = window.location.hash.replace('#', '') || '/';
 
+    // Rotas Públicas via Hash
+    if (hashPath.startsWith('/confirmacao')) {
+      if (window.location.hash.includes('token=')) {
+        return <MagicConfirmationPage />;
+      }
+      return <ConfirmationPage />;
+    }
 
-    if (!isAuthenticated || currentPath === '/login') {
+    if (!isAuthenticated || hashPath === '/login') {
       return <LoginPage onNavigate={navigate} />;
     }
 

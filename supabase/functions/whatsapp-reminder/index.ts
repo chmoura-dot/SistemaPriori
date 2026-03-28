@@ -78,8 +78,8 @@ Deno.serve(async (req) => {
 
       const psychName = psychologist?.name || "Psicólogo";
       const formattedDate = `${day.toString().padStart(2, '0')}/${month.toString().padStart(2, '0')}`;
-      // Usar página HTML física para evitar problemas de roteamento no Vercel
-      const confirmationLink = `${APP_URL}/paciente.html?confirmacao=${app.id}`;
+      // Usar HashRouter para evitar erros 404 no Vercel
+      const confirmationLink = `${APP_URL}/#/confirmacao/${app.id}`;
 
       const message = `Olá *${patientName}*, aqui é da Núcleo Priori. Passando para lembrar da sua consulta com *${psychName}* hoje, dia *${formattedDate}* às *${app.start_time}*.\n\nPor favor, confirme sua presença clicando no link abaixo:\n${confirmationLink}`;
 
