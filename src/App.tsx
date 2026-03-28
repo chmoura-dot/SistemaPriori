@@ -26,31 +26,45 @@ import { cn } from './lib/utils';
 import { UserRole } from './services/types';
 
 export default function App() {
-  const [currentPath, setCurrentPath] = useState(window.location.pathname);
+  // Inicialização ultra-robusta: checa Hash e Pathname
+  const getInitialPath = () => {
+    const hashPath = window.location.hash.replace('#', '');
+    if (hashPath && hashPath !== '') return hashPath;
+    return window.location.pathname;
+  };
+
+  const [currentPath, setCurrentPath] = useState(getInitialPath());
   const [isAuthenticated, setIsAuthenticated] = useState(api.isAuthenticated());
 
   useEffect(() => {
-    const handleHashChange = () => {
-      setCurrentPath(window.location.hash.replace('#', '') || '/');
+    const handleRoutechange = () => {
+      const path = window.location.hash.replace('#', '') || window.location.pathname;
+      setCurrentPath(path);
       setIsAuthenticated(api.isAuthenticated());
     };
-    window.addEventListener('hashchange', handleHashChange);
-    // Initialize
-    if (window.location.hash) {
-      setCurrentPath(window.location.hash.replace('#', '') || '/');
-    }
-    return () => window.removeEventListener('hashchange', handleHashChange);
+
+    window.addEventListener('hashchange', handleRoutechange);
+    window.addEventListener('popstate', handleRoutechange);
+    
+    return () => {
+      window.removeEventListener('hashchange', handleRoutechange);
+      window.removeEventListener('popstate', handleRoutechange);
+    };
   }, []);
 
   const navigate = (path: string) => {
-    window.location.hash = path;
+    if (path.startsWith('/')) {
+      window.history.pushState({}, '', path);
+    } else {
+      window.location.hash = path;
+    }
+    setCurrentPath(path);
+    setIsAuthenticated(api.isAuthenticated());
   };
 
   // Auth Guard Effect
   useEffect(() => {
-    const hashPath = window.location.hash.replace('#', '') || '/';
-    // Permitimos as rotas de confirmação sem login
-    const isPublicRoute = hashPath === '/login' || hashPath.startsWith('/confirmacao');
+    const isPublicRoute = currentPath === '/login' || currentPath.startsWith('/confirmacao');
     
     if (!isAuthenticated && !isPublicRoute) {
       navigate('/login');
@@ -60,17 +74,16 @@ export default function App() {
   const renderPage = () => {
     const user = api.getCurrentUser();
     const isAdmin = user?.role === UserRole.ADMIN;
-    const hashPath = window.location.hash.replace('#', '') || '/';
 
-    // Rotas Públicas via Hash
-    if (hashPath.startsWith('/confirmacao')) {
-      if (window.location.hash.includes('token=')) {
+    // Rotas Públicas (acessíveis sem login)
+    if (currentPath.startsWith('/confirmacao')) {
+      if (window.location.href.includes('token=')) {
         return <MagicConfirmationPage />;
       }
       return <ConfirmationPage />;
     }
 
-    if (!isAuthenticated || hashPath === '/login') {
+    if (!isAuthenticated || currentPath === '/login') {
       return <LoginPage onNavigate={navigate} />;
     }
 
