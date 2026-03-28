@@ -6,14 +6,25 @@ import { Button } from '../components/Button';
 import { cn } from '../lib/utils';
 
 export const ConfirmationPage = () => {
-  // Extração do ID via Query Param ou Path (suporte a ambos)
-  const params = new URLSearchParams(window.location.search);
-  const queryId = params.get('confirmacao');
-  
-  const pathParts = window.location.pathname.split('/').filter(Boolean);
-  const pathId = pathParts.length > 1 ? pathParts[pathParts.length - 1] : null;
-  
-  const id = queryId || pathId;
+  // Extração do ID via Query Param, Hash ou Path (suporte a todos os formatos)
+  const getAppointmentId = () => {
+    // 1. Tentar via Query Param (?confirmacao=ID)
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('confirmacao')) return params.get('confirmacao');
+
+    // 2. Tentar via Hash (#/confirmacao/ID)
+    if (window.location.hash.includes('/confirmacao/')) {
+      return window.location.hash.split('/confirmacao/').pop()?.split('?')[0];
+    }
+
+    // 3. Tentar via Path (/confirmacao/ID)
+    const pathParts = window.location.pathname.split('/').filter(Boolean);
+    if (pathParts.length > 1) return pathParts[pathParts.length - 1];
+
+    return null;
+  };
+
+  const id = getAppointmentId();
   
   const [appointment, setAppointment] = useState<Appointment | null>(null);
   const [customer, setCustomer] = useState<Customer | null>(null);

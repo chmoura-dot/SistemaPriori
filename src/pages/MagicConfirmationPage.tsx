@@ -37,8 +37,18 @@ export const MagicConfirmationPage = () => {
   const [cancellationModal, setCancellationModal] = useState<{ id: string } | null>(null);
   const [isNag, setIsNag] = useState(false);
 
-  // Extração do token via Query Param
-  const token = new URLSearchParams(window.location.search).get('token');
+  // Extração do token via Query Param ou Hash (suporte a ambos)
+  const getToken = () => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('token')) return params.get('token');
+
+    if (window.location.hash.includes('token=')) {
+      return window.location.hash.split('token=').pop()?.split('&')[0];
+    }
+    return null;
+  };
+
+  const token = getToken();
 
   const loadAppointments = useCallback(async () => {
     if (!token) {
