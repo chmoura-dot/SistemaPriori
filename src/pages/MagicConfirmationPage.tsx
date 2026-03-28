@@ -62,10 +62,16 @@ export const MagicConfirmationPage = () => {
 
     try {
       const response = await fetch(`${EDGE_FUNCTION_URL}?token=${token}`);
-      const data = await response.json();
+      
+      let data;
+      try {
+        data = await response.json();
+      } catch (e) {
+        throw new Error('A API retornou uma resposta inválida.');
+      }
 
       if (!response.ok) {
-        throw new Error(data.error || 'Erro ao carregar agenda.');
+        throw new Error(data.error || `Erro da API (${response.status}): Link inválido ou expirado.`);
       }
 
       setAppointments(data.appointments || []);
