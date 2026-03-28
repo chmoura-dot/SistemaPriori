@@ -43,7 +43,10 @@ export const MagicConfirmationPage = () => {
     if (params.get('token')) return params.get('token');
 
     if (window.location.hash.includes('token=')) {
-      return window.location.hash.split('token=').pop()?.split('&')[0];
+      const hashParts = window.location.hash.split('token=');
+      if (hashParts.length > 1) {
+        return hashParts[1].split('&')[0].split('?')[0];
+      }
     }
     return null;
   };
