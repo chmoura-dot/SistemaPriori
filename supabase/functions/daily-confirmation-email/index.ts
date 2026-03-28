@@ -144,7 +144,7 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      const magicLink = `${SITE_URL}/?token=${tokenRecord.id}`;
+      const magicLink = `${SITE_URL}/psicologo.html?token=${tokenRecord.id}`;
 
       // 5. Montar a Tabela HTML para as pendências
       let emailHtml = `

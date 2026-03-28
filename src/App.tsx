@@ -60,27 +60,6 @@ export default function App() {
     const user = api.getCurrentUser();
     const isAdmin = user?.role === UserRole.ADMIN;
 
-    // Estratégia Infalível: Verificação via Query Params na raiz
-    const params = new URLSearchParams(window.location.search);
-    const hasConfirmationId = params.has('confirmacao');
-    const hasToken = params.has('token');
-
-    // Se houver parâmetro de confirmação ou token, renderizamos a página pública correspondente
-    if (hasConfirmationId) {
-      return <ConfirmationPage />;
-    }
-    if (hasToken) {
-      return <MagicConfirmationPage />;
-    }
-
-    // Suporte para as rotas antigas (legacy) caso ainda existam links circulando
-    const isLegacyPath = currentPath.startsWith('/confirmacao');
-    if (isLegacyPath) {
-      if (window.location.search.includes('token=')) {
-        return <MagicConfirmationPage />;
-      }
-      return <ConfirmationPage />;
-    }
 
     if (!isAuthenticated || currentPath === '/login') {
       return <LoginPage onNavigate={navigate} />;
