@@ -32,6 +32,7 @@ export const ConfirmationPage = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [status, setStatus] = useState<'pending' | 'success' | 'error' | 'already_processed'>('pending');
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [notes, setNotes] = useState('');
 
   useEffect(() => {
@@ -40,9 +41,16 @@ export const ConfirmationPage = () => {
       try {
         // Chamada para a Edge Function que permite acesso sem login via ID
         const response = await fetch(`https://ntqkrxtesuaeobxpmznr.supabase.co/functions/v1/confirm-appointment?appointmentId=${id}`);
-        const data = await response.json();
+        
+        let data;
+        try {
+          data = await response.json();
+        } catch (e) {
+          throw new Error('A API retornou uma resposta inválida.');
+        }
 
         if (!response.ok || !data.appointment) {
+          setErrorMessage(data.error || `Erro da API (${response.status}): Agendamento não encontrado.`);
           setStatus('error');
           setIsLoading(false);
           return;
@@ -123,7 +131,7 @@ export const ConfirmationPage = () => {
         <div className="bg-white p-8 rounded-3xl shadow-xl border border-zinc-100 max-w-md w-full">
           <AlertCircle size={64} className="text-red-500 mx-auto mb-4" />
           <h1 className="text-2xl font-bold text-priori-navy mb-2">Ops! Link Inválido</h1>
-          <p className="text-zinc-500 mb-6">Não conseguimos encontrar este agendamento. Por favor, entre em contato com a clínica.</p>
+          <p className="text-zinc-500 mb-6">{errorMessage || 'Não conseguimos encontrar este agendamento. Por favor, entre em contato com a clínica.'}</p>
           <Button onClick={() => window.location.href = 'https://nucleopriori.com.br'} className="w-full bg-priori-navy text-white">
             Voltar para o Site
           </Button>
