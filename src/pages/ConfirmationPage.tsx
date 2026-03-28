@@ -6,9 +6,14 @@ import { Button } from '../components/Button';
 import { cn } from '../lib/utils';
 
 export const ConfirmationPage = () => {
-  // Manual route param extraction since react-router-dom is not used
+  // Extração do ID via Query Param ou Path (suporte a ambos)
+  const params = new URLSearchParams(window.location.search);
+  const queryId = params.get('confirmacao');
+  
   const pathParts = window.location.pathname.split('/').filter(Boolean);
-  const id = pathParts.length > 1 ? pathParts[pathParts.length - 1] : null;
+  const pathId = pathParts.length > 1 ? pathParts[pathParts.length - 1] : null;
+  
+  const id = queryId || pathId;
   
   const [appointment, setAppointment] = useState<Appointment | null>(null);
   const [customer, setCustomer] = useState<Customer | null>(null);

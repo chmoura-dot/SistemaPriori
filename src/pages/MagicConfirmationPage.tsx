@@ -37,6 +37,7 @@ export const MagicConfirmationPage = () => {
   const [cancellationModal, setCancellationModal] = useState<{ id: string } | null>(null);
   const [isNag, setIsNag] = useState(false);
 
+  // Extração do token via Query Param
   const token = new URLSearchParams(window.location.search).get('token');
 
   const loadAppointments = useCallback(async () => {

@@ -60,22 +60,22 @@ export default function App() {
     const user = api.getCurrentUser();
     const isAdmin = user?.role === UserRole.ADMIN;
 
-    // Rotas Públicas (acessíveis sem login)
-    // Usamos regex ou verificações mais flexíveis para evitar problemas com trailing slashes
-    const isMagicPath = currentPath === '/confirmacao' || currentPath === '/confirmacao/';
-    const isDirectPath = currentPath.startsWith('/confirmacao/');
-    const isPotentialConfirmation = currentPath.startsWith('/confirmacao');
+    // Estratégia Infalível: Verificação via Query Params na raiz
+    const params = new URLSearchParams(window.location.search);
+    const hasConfirmationId = params.has('confirmacao');
+    const hasToken = params.has('token');
 
-    if (isMagicPath) {
+    // Se houver parâmetro de confirmação ou token, renderizamos a página pública correspondente
+    if (hasConfirmationId) {
+      return <ConfirmationPage />;
+    }
+    if (hasToken) {
       return <MagicConfirmationPage />;
     }
 
-    if (isDirectPath) {
-      return <ConfirmationPage />;
-    }
-    
-    // Fallback para quando o path é algo como /confirmacao?token=... ou /confirmacao/ID sem a barra final tratada acima
-    if (isPotentialConfirmation) {
+    // Suporte para as rotas antigas (legacy) caso ainda existam links circulando
+    const isLegacyPath = currentPath.startsWith('/confirmacao');
+    if (isLegacyPath) {
       if (window.location.search.includes('token=')) {
         return <MagicConfirmationPage />;
       }

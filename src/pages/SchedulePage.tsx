@@ -367,7 +367,7 @@ export const SchedulePage = () => {
       return;
     }
 
-    const confirmationUrl = `${window.location.origin}/confirmacao/${appointment.id}`;
+    const confirmationUrl = `${window.location.origin}/?confirmacao=${appointment.id}`;
     const message = `Olá ${customer.name}, aqui é do Núcleo Priori. Estamos passando para confirmar sua consulta para o dia ${new Date(appointment.date + 'T12:00:00').toLocaleDateString('pt-BR')} às ${appointment.startTime}.\n\nPor favor, confirme ou informe se não poderá comparecer clicando no link abaixo:\n${confirmationUrl}`;
     
     // Update reminder_sent_at in DB
