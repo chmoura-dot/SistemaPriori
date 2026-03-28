@@ -4,7 +4,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.7";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 // Forçamos a URL oficial para evitar redirecionamentos incorretos (ex: n8n)
-const APP_URL = "https://sistema.nucleopriori.com.br";
+const APP_URL = "https://sistema-priori.vercel.app";
 
 Deno.serve(async (req) => {
   try {
