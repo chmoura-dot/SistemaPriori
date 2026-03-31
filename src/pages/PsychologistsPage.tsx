@@ -104,8 +104,8 @@ export const PsychologistsPage = () => {
       try {
         await api.invitePsychologist(email);
         alert('Convite enviado com sucesso!');
-      } catch (error) {
-        alert('Erro ao enviar convite.');
+      } catch (error: any) {
+        alert(`Erro ao enviar convite: ${error?.message || error}`);
         console.error(error);
       }
     }
