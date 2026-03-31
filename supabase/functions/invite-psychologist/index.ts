@@ -30,22 +30,41 @@ Deno.serve(async (req) => {
     });
 
     if (error) {
+      // Se o usuário já existe, não conseguimos convidá-lo novamente.
+      // Em vez disso, enviamos um e-mail de redefinição de senha para que ele possa acessar.
+      if (error.message.toLowerCase().includes('already registered')) {
+        const { error: resetError } = await supabaseClient.auth.resetPasswordForEmail(email);
+        
+        if (resetError) {
+          throw new Error(`Usuário já registrado, mas falhou ao enviar link de redefinição: ${resetError.message}`);
+        }
+        
+        return new Response(
+          JSON.stringify({ success: true, message: 'Usuário já existia. E-mail de redefinição de senha enviado.' }),
+          {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 200,
+          }
+        );
+      }
       throw error;
     }
 
     return new Response(
-      JSON.stringify({ success: true, message: 'Convite enviado com sucesso.', user: data.user }),
+      JSON.stringify({ success: true, message: 'Convite enviado com sucesso.', user: data?.user }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 200,
       }
     );
   } catch (error: any) {
+    // Retornamos 200 com success: false para que o frontend consiga ler o JSON com a mensagem de erro
+    // Em vez de retornar 400 ou 500, o que geraria um erro opaco no supabase.functions.invoke
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ success: false, error: error.message }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 400,
+        status: 200,
       }
     );
   }

@@ -371,10 +371,15 @@ export const supabaseService: AppService = {
   },
 
   invitePsychologist: async (email) => {
-    const { error } = await supabase.functions.invoke('invite-psychologist', {
+    const { data, error } = await supabase.functions.invoke('invite-psychologist', {
       body: { email }
     });
-    if (error) throw new Error(error.message);
+    if (error) {
+      throw new Error(error.message);
+    }
+    if (data && data.success === false) {
+      throw new Error(data.error || 'Erro desconhecido');
+    }
   },
 
   // ── Rooms ─────────────────────────────────────────────
