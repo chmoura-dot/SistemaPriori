@@ -12,8 +12,8 @@ Deno.serve(async (req) => {
 
     // 0. Buscar configurações da Z-API
     const { data: settings, error: settingsError } = await supabase
-      .from('settings')
-      .select('zapi_url, zapi_token')
+      .from("settings")
+      .select("zapi_url, zapi_token")
       .single();
 
     if (settingsError || !settings?.zapi_url) {
@@ -26,20 +26,20 @@ Deno.serve(async (req) => {
 
     // 1. Calcular a data de hoje para buscar agendamentos (Horário de Brasília)
     // Usamos Intl para garantir o fuso correto de SP independente do servidor
-    const brDate = new Intl.DateTimeFormat('pt-BR', {
-      timeZone: 'America/Sao_Paulo',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit'
+    const brDate = new Intl.DateTimeFormat("pt-BR", {
+      timeZone: "America/Sao_Paulo",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
     }).format(new Date());
     
-    const [dayStr, monthStr, yearStr] = brDate.split('/');
+    const [dayStr, monthStr, yearStr] = brDate.split("/");
     const todayStr = `${yearStr}-${monthStr}-${dayStr}`;
 
     console.log(`[WhatsAppReminder] Processando lembretes para o dia: ${todayStr} (Data local BR)`);
 
     const { data: appointments, error } = await supabase
-      .from('appointments')
+      .from("appointments")
       .select(`
         id,
         date,
@@ -47,10 +47,11 @@ Deno.serve(async (req) => {
         customer:customers (name, phone),
         psychologist:psychologists (name)
       `)
-      .eq('date', todayStr)
-      .eq('status', 'active')
-      .eq('confirmation_status', 'pending')
-      .is('reminder_sent_at', null);
+      .eq("date", todayStr)
+      .eq("status", "active")
+      .eq("confirmation_status", "pending")
+      .eq("is_internal", false)
+      .is("reminder_sent_at", null);
 
     if (error) throw error;
 
@@ -58,7 +59,7 @@ Deno.serve(async (req) => {
 
     for (const app of (appointments || [])) {
       // Como o cron roda às 06:00 BRT, processamos todos agendamentos do dia de hoje
-      const [year, month, day] = app.date.split('-').map(Number);
+      const [year, month, day] = app.date.split("-").map(Number);
       
       const customer = Array.isArray(app.customer) ? app.customer[0] : app.customer;
       const psychologist = Array.isArray(app.psychologist) ? app.psychologist[0] : app.psychologist;
@@ -70,14 +71,16 @@ Deno.serve(async (req) => {
 
       const patientName = customer.name || "Paciente";
       
-      // Limpa e garante o formato internacional (55 no início para Brasil)
+      // Modo de Teste: Todas as mensagens serão enviadas para este número.
+      // REMOVER ou COMENTAR esta linha para voltar ao envio normal.
       let patientPhone = customer.phone.replace(/\D/g, "");
       if (patientPhone.length > 0 && !patientPhone.startsWith("55")) {
         patientPhone = "55" + patientPhone;
       }
+      //
 
       const psychName = psychologist?.name || "Psicólogo";
-      const formattedDate = `${day.toString().padStart(2, '0')}/${month.toString().padStart(2, '0')}`;
+      const formattedDate = `${day.toString().padStart(2, "0")}/${month.toString().padStart(2, "0")}`;
       // Usar HashRouter para evitar erros 404 no Vercel
       const confirmationLink = `${APP_URL}/#/confirmacao/${app.id}`;
 
@@ -85,7 +88,7 @@ Deno.serve(async (req) => {
 
       // 2. Enviar via Z-API
       const headers: Record<string, string> = {
-        'Content-Type': 'application/json'
+        "Content-Type": "application/json"
       };
       
       // Só enviamos o Client-Token se ele for diferente do ID da instância (erro comum de configuração)
@@ -94,12 +97,13 @@ Deno.serve(async (req) => {
       const instanceId = instanceIdMatch ? instanceIdMatch[1] : null;
 
       if (ZAPI_TOKEN && ZAPI_TOKEN !== instanceId) {
-        headers['Client-Token'] = ZAPI_TOKEN;
+        headers["Client-Token"] = ZAPI_TOKEN;
       }
 
       try {
+        console.log(`[WhatsAppReminder] Enviando para ${patientPhone} via ${ZAPI_URL}`);
         const response = await fetch(`${ZAPI_URL}/send-text`, {
-          method: 'POST',
+          method: "POST",
           headers,
           body: JSON.stringify({
             phone: patientPhone,
@@ -109,9 +113,9 @@ Deno.serve(async (req) => {
 
         if (response.ok) {
           await supabase
-            .from('appointments')
+            .from("appointments")
             .update({ reminder_sent_at: new Date().toISOString() })
-            .eq('id', app.id);
+            .eq("id", app.id);
           
           results.push({ id: app.id, status: "sent" });
         } else {
@@ -133,7 +137,7 @@ Deno.serve(async (req) => {
     }
 
     return new Response(JSON.stringify({ success: true, processed: results }), {
-      headers: { 'Content-Type': 'application/json' }
+      headers: { "Content-Type": "application/json" }
     });
 
   } catch (err: any) {

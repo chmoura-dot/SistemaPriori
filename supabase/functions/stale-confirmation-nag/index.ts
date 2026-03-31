@@ -33,6 +33,7 @@ Deno.serve(async (req) => {
       .lte('date', thresholdStr)
       .eq('confirmed_psychologist', false)
       .neq('status', 'canceled')
+      .eq('is_internal', false)
       .order('date', { ascending: true });
 
     if (appError) throw appError;

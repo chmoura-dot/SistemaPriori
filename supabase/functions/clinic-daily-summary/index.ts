@@ -37,10 +37,14 @@ Deno.serve(async (req) => {
         type,
         customer:customers (name, health_plan),
         psychologist:psychologists (name),
-        room:rooms (name)
+        room:rooms (name),
+        is_internal,
+        internal_type,
+        internal_title
       `)
       .eq('date', todayStr)
       .eq('status', 'active')
+      //.eq('is_internal', false) // Removido para incluir internos
       .order('start_time');
 
     if (appError) throw appError;
@@ -54,13 +58,13 @@ Deno.serve(async (req) => {
     // 3. Agrupar agendamentos por psicólogo
     const groupedByPsychologist: Record<string, any[]> = {};
     
-    appointments.forEach(app => {
-      const psyName = app.psychologist?.name || "Profissional não identificado";
-      if (!groupedByPsychologist[psyName]) {
-        groupedByPsychologist[psyName] = [];
-      }
-      groupedByPsychologist[psyName].push(app);
-    });
+      appointments.forEach(app => {
+        const psyName = app.psychologist?.name || "Profissional não identificado";
+        if (!groupedByPsychologist[psyName]) {
+          groupedByPsychologist[psyName] = [];
+        }
+        groupedByPsychologist[psyName].push(app);
+      });
 
     // 4. Montar o HTML do E-mail
     let emailHtml = `
@@ -101,11 +105,27 @@ Deno.serve(async (req) => {
         emailHtml += `
           <tr style="background-color: ${bgColor};">
             <td style="padding: 10px; border: 1px solid #e2e8f0; font-weight: bold;">${app.start_time} - ${app.end_time}</td>
-            <td style="padding: 10px; border: 1px solid #e2e8f0;">${patientInfo}</td>
-            <td style="padding: 10px; border: 1px solid #e2e8f0;">${location}</td>
+          <td style="padding: 10px; border: 1px solid #e2e8f0;">${patientInfo}</td>
+          <td style="padding: 10px; border: 1px solid #e2e8f0;">${location}</td>
+        </tr>
+      `;
+    });
+
+    // Adicionar linhas para horários internos
+    appointments.forEach(app => {
+      if (app.is_internal) {
+        const psyName = app.psychologist?.name || "Profissional não identificado";
+        const internalLabel = app.internal_title || app.internal_type || "Horário Interno";
+        const bgColor = '#f9fafb';
+
+        emailHtml += `
+          <tr style="background-color: ${bgColor}; font-style: italic; color: #6b7280;">
+            <td style="padding: 10px; border: 1px solid #e2e8f0; font-weight: bold;">${app.start_time} - ${app.end_time}</td>
+            <td style="padding: 10px; border: 1px solid #e2e8f0;" colspan="2">${internalLabel}</td>
           </tr>
         `;
-      });
+      }
+    });
 
       emailHtml += `
           </tbody>

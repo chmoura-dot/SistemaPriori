@@ -277,7 +277,7 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
       if (!data[monthKey]) {
         data[monthKey] = { month: monthKey, sortKey };
         planNames.forEach(name => {
-          data[monthKey][name] = 0;
+          data[monthKey][name as string] = 0;
         });
       }
       

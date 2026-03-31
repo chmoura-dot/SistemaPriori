@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, Phone, Calendar, MessageCircle, FileText, X, Globe, Home, Layers, Mail } from 'lucide-react';
+import { Plus, Edit2, Trash2, Phone, Calendar, MessageCircle, FileText, X, Globe, Home, Layers, Mail, Key } from 'lucide-react';
 import { api } from '../services/api';
 import { Psychologist, PsychologistAvailability } from '../services/types';
 import { Button } from '../components/Button';
@@ -92,6 +92,22 @@ export const PsychologistsPage = () => {
     if (confirm('Tem certeza que deseja excluir este psicólogo?')) {
       await api.deletePsychologist(id);
       await loadPsychologists();
+    }
+  };
+
+  const handleInvite = async (email: string) => {
+    if (!email) {
+      alert('Este psicólogo não possui um e-mail cadastrado.');
+      return;
+    }
+    if (confirm('Deseja enviar um e-mail de convite de acesso ao aplicativo?')) {
+      try {
+        await api.invitePsychologist(email);
+        alert('Convite enviado com sucesso!');
+      } catch (error) {
+        alert('Erro ao enviar convite.');
+        console.error(error);
+      }
     }
   };
 
@@ -244,6 +260,13 @@ export const PsychologistsPage = () => {
             </div>
 
             <div className="flex items-center justify-end gap-2 pt-4 border-t border-zinc-100">
+              <button 
+                onClick={() => handleInvite(psy.email)}
+                title="Gerar Acesso / Reenviar Convite"
+                className="p-2 text-zinc-400 hover:text-emerald-500 hover:bg-emerald-500/5 rounded-lg transition-all mr-auto"
+              >
+                <Key size={16} />
+              </button>
               <button 
                 onClick={() => handleOpenModal(psy)}
                 className="p-2 text-zinc-400 hover:text-priori-navy hover:bg-priori-navy/5 rounded-lg transition-all"

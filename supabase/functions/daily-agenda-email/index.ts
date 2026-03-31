@@ -55,6 +55,7 @@ Deno.serve(async (req) => {
         .eq('psychologist_id', psy.id)
         .eq('date', todayStr)
         .eq('status', 'active')
+        .eq('is_internal', false)
         .order('start_time');
 
       if (appError) {

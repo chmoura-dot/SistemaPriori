@@ -126,24 +126,26 @@ Deno.serve(async (req) => {
       }
 
       // CASO A: Resposta do Paciente (WhatsApp)
-      if (patientResponse) {
-        const { data: updatedApp, error: updateError } = await supabase
-          .from('appointments')
-          .update({
-            confirmation_status: patientResponse,
-            patient_notes: notes || null,
-            confirmed_patient: patientResponse === 'confirmed'
-          })
-          .eq('id', appointmentId)
-          .select()
-          .single();
+if (patientResponse) {
+  const { data: updatedApp, error: updateError } = await supabase
+    .from('appointments')
+    .update({
+      confirmation_status: patientResponse,
+      patient_notes: notes || null,
+      confirmed_patient: patientResponse === 'confirmed',
+      status: patientResponse === 'declined' ? 'canceled' : undefined,
+      cancellation_billing: patientResponse === 'declined' ? null : undefined
+    })
+    .eq('id', appointmentId)
+    .select()
+    .single();
 
-        if (updateError) throw new Error(updateError.message);
+  if (updateError) throw new Error(updateError.message);
 
-        return new Response(JSON.stringify({ success: true, updated: updatedApp }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        });
-      }
+  return new Response(JSON.stringify({ success: true, updated: updatedApp }), {
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+  });
+}
 
       // CASO B: Resposta do Psicólogo (via Token de E-mail)
       if (!token || !action) {

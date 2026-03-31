@@ -77,6 +77,7 @@ Deno.serve(async (req) => {
         .eq('psychologist_id', psy.id)
         .eq('date', todayStr)
         .neq('status', 'canceled') // Ignora os cancelados
+        .eq('is_internal', false)
         .order('start_time');
 
       if (appError) {

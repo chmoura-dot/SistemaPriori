@@ -58,7 +58,7 @@ export const ConfirmationPage = () => {
 
         const app = data.appointment;
 
-        if (app.confirmation_status !== 'pending') {
+        if (app.confirmation_status !== 'pending' || app.status === 'canceled') {
           setStatus('already_processed');
         }
 

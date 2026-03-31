@@ -135,6 +135,12 @@ export interface Appointment {
   denialResolution?: 'accepted' | 'appealed';
   createdAt: string;
   cancellationBilling?: 'none' | 'plan' | 'particular';
+
+  // Novos campos para horário interno
+  isInternal?: boolean;
+  internalType?: 'SUPERVISAO' | 'RESPONSAVEIS' | 'REUNIAO' | 'ADMIN' | 'OUTRO';
+  internalTitle?: string;
+  internalNotes?: string;
 }
 
 export enum BillingBatchStatus {
@@ -315,6 +321,7 @@ export interface AppService {
   createPsychologist: (psychologist: Omit<Psychologist, 'id'>) => Promise<Psychologist>;
   updatePsychologist: (id: string, psychologist: Partial<Psychologist>) => Promise<Psychologist>;
   deletePsychologist: (id: string) => Promise<void>;
+  invitePsychologist: (email: string) => Promise<void>;
   
   // Rooms
   getRooms: () => Promise<Room[]>;

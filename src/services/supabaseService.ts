@@ -333,6 +333,18 @@ export const supabaseService: AppService = {
         .select()
         .single()
     );
+    
+    // Após criar o psicólogo, tenta enviar o convite de acesso se houver e-mail
+    if (p.email) {
+      try {
+        await supabase.functions.invoke('invite-psychologist', {
+          body: { email: p.email }
+        });
+      } catch (err) {
+        console.error('Erro ao enviar convite de acesso:', err);
+      }
+    }
+    
     return toPsychologist(row);
   },
 
@@ -355,6 +367,13 @@ export const supabaseService: AppService = {
 
   deletePsychologist: async (id) => {
     const { error } = await supabase.from('psychologists').delete().eq('id', id);
+    if (error) throw new Error(error.message);
+  },
+
+  invitePsychologist: async (email) => {
+    const { error } = await supabase.functions.invoke('invite-psychologist', {
+      body: { email }
+    });
     if (error) throw new Error(error.message);
   },
 
@@ -505,7 +524,7 @@ export const supabaseService: AppService = {
     if (a.status !== undefined) updates.status = a.status;
     if (a.confirmedPatient !== undefined) updates.confirmed_patient = a.confirmedPatient;
     if (a.confirmedPsychologist !== undefined) updates.confirmed_psychologist = a.confirmedPsychologist;
-    if (a.confirmationStatus !== undefined) updates.confirmationStatus = a.confirmationStatus;
+    if (a.confirmationStatus !== undefined) updates.confirmation_status = a.confirmationStatus;
     if (a.reminderSentAt !== undefined) updates.reminder_sent_at = a.reminderSentAt;
     if (a.patientNotes !== undefined) updates.patient_notes = a.patientNotes;
     if (a.isRecurring !== undefined) updates.is_recurring = a.isRecurring;
