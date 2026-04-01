@@ -43,6 +43,7 @@ export const ExpensesPage = () => {
     date: new Date().toISOString().split('T')[0],
     isRecurring: false
   });
+  const [amountInput, setAmountInput] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [isReadingPdf, setIsReadingPdf] = useState(false);
 
@@ -101,6 +102,7 @@ export const ExpensesPage = () => {
       date: expense.date,
       isRecurring: expense.isRecurring
     });
+    setAmountInput(expense.amount > 0 ? expense.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '');
     setIsModalOpen(true);
   };
 
@@ -117,7 +119,18 @@ export const ExpensesPage = () => {
       date: new Date().toISOString().split('T')[0],
       isRecurring: expense.isRecurring
     });
+    setAmountInput(expense.amount > 0 ? expense.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '');
     setIsModalOpen(true);
+  };
+
+  const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value;
+    // Permite apenas dígitos, vírgula e ponto
+    const filtered = raw.replace(/[^0-9.,]/g, '');
+    setAmountInput(filtered);
+    // Converte para número: substitui vírgula por ponto para parseFloat
+    const numeric = parseFloat(filtered.replace(',', '.'));
+    setFormData({ ...formData, amount: isNaN(numeric) ? 0 : numeric });
   };
 
   const handleDelete = async (id: string) => {
@@ -282,6 +295,7 @@ export const ExpensesPage = () => {
               ...extractedData,
               description: extractedData.description
             });
+            setAmountInput(extractedData.amount > 0 ? extractedData.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '');
             setEditingExpense(null);
             setIsModalOpen(true);
             successCount++;
@@ -415,6 +429,7 @@ export const ExpensesPage = () => {
           </div>
           <Button onClick={() => {
             setEditingExpense(null);
+            setAmountInput('');
             setFormData({
               description: '',
               amount: 0,
@@ -598,10 +613,11 @@ export const ExpensesPage = () => {
             </div>
             <Input
               label="Valor (R$)"
-              type="number"
-              step="0.01"
-              value={formData.amount}
-              onChange={(e) => setFormData({ ...formData, amount: parseFloat(e.target.value) })}
+              type="text"
+              inputMode="decimal"
+              placeholder="Ex: 139,90"
+              value={amountInput}
+              onChange={handleAmountChange}
               required
             />
           </div>
