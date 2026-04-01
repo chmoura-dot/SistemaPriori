@@ -71,6 +71,7 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
 
   // Filtro de período
   const today = new Date();
+  const [filterMode, setFilterMode] = useState<'month' | 'year' | 'all'>('month');
   const [selectedMonth, setSelectedMonth] = useState(today.getMonth()); // 0-11
   const [selectedYear, setSelectedYear] = useState(today.getFullYear());
 
@@ -101,23 +102,27 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
 
   // ─── Filtro de período ───────────────────────────────────────────────────
 
-  const isInSelectedMonth = (dateStr: string) => {
+  const isInSelectedPeriod = (dateStr: string) => {
+    if (filterMode === 'all') return true;
     const d = new Date(dateStr + 'T12:00:00');
+    if (filterMode === 'year') return d.getFullYear() === selectedYear;
     return d.getMonth() === selectedMonth && d.getFullYear() === selectedYear;
   };
 
-  const isInPrevMonth = (dateStr: string) => {
+  const isInPrevPeriod = (dateStr: string) => {
+    if (filterMode === 'all') return false;
+    const d = new Date(dateStr + 'T12:00:00');
+    if (filterMode === 'year') return d.getFullYear() === selectedYear - 1;
     const prevMonth = selectedMonth === 0 ? 11 : selectedMonth - 1;
     const prevYear = selectedMonth === 0 ? selectedYear - 1 : selectedYear;
-    const d = new Date(dateStr + 'T12:00:00');
     return d.getMonth() === prevMonth && d.getFullYear() === prevYear;
   };
 
-  const appointmentsFiltered = appointments.filter(a => isInSelectedMonth(a.date));
-  const appointmentsPrevMonth = appointments.filter(a => isInPrevMonth(a.date));
+  const appointmentsFiltered = appointments.filter(a => isInSelectedPeriod(a.date));
+  const appointmentsPrevMonth = appointments.filter(a => isInPrevPeriod(a.date));
 
-  const expensesFiltered = expenses.filter(e => isInSelectedMonth(e.date));
-  const expensesPrevMonth = expenses.filter(e => isInPrevMonth(e.date));
+  const expensesFiltered = expenses.filter(e => isInSelectedPeriod(e.date));
+  const expensesPrevMonth = expenses.filter(e => isInPrevPeriod(e.date));
 
   // Meses disponíveis para o seletor
   const availableMonths = useMemo(() => {
@@ -126,7 +131,6 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
       const d = new Date(a.date + 'T12:00:00');
       months.add(`${d.getFullYear()}-${d.getMonth()}`);
     });
-    // Sempre incluir mês atual
     months.add(`${today.getFullYear()}-${today.getMonth()}`);
     return Array.from(months)
       .map(m => {
@@ -135,6 +139,15 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
       })
       .sort((a, b) => a.year !== b.year ? a.year - b.year : a.month - b.month);
   }, [appointments]);
+
+  // Anos disponíveis para o seletor
+  const availableYears = useMemo(() => {
+    const years = new Set<number>();
+    appointments.forEach(a => years.add(new Date(a.date + 'T12:00:00').getFullYear()));
+    expenses.forEach(e => years.add(new Date(e.date + 'T12:00:00').getFullYear()));
+    years.add(today.getFullYear());
+    return Array.from(years).sort((a, b) => a - b);
+  }, [appointments, expenses]);
 
   // ─── Helpers de cálculo ──────────────────────────────────────────────────
 
@@ -238,7 +251,7 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
     if (c.status !== CustomerStatus.INACTIVE) return false;
     // Usa lastAppointmentDate como proxy de quando ficou inativo
     const ref = c.lastAppointmentDate || c.createdAt;
-    return isInSelectedMonth(ref);
+    return isInSelectedPeriod(ref);
   });
 
   const churnByReason = Object.values(InactivationReason).map(reason => ({
@@ -513,7 +526,11 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
 
   const waitingListPending = waitingList.filter(w => w.status === 'pending');
 
-  const selectedMonthLabel = new Date(selectedYear, selectedMonth, 1).toLocaleString('pt-BR', { month: 'long', year: 'numeric' });
+  const selectedMonthLabel = filterMode === 'all'
+    ? 'Todo o Período'
+    : filterMode === 'year'
+    ? `${selectedYear}`
+    : new Date(selectedYear, selectedMonth, 1).toLocaleString('pt-BR', { month: 'long', year: 'numeric' });
 
   // ─── Render ──────────────────────────────────────────────────────────────
 
@@ -561,23 +578,58 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
               <h2 className="text-2xl font-bold text-priori-navy">Visão Geral</h2>
               <p className="text-zinc-500">Acompanhe o desempenho da clínica em tempo real.</p>
             </div>
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2 bg-white border border-zinc-100 rounded-xl px-4 py-2.5 shadow-sm">
-                <Calendar size={16} className="text-priori-navy" />
-                <select
-                  className="text-sm font-bold text-priori-navy bg-transparent focus:outline-none cursor-pointer"
-                  value={`${selectedYear}-${selectedMonth}`}
-                  onChange={e => {
-                    const [y, m] = e.target.value.split('-').map(Number);
-                    setSelectedYear(y);
-                    setSelectedMonth(m);
-                  }}
-                >
-                  {availableMonths.map(m => (
-                    <option key={`${m.year}-${m.month}`} value={`${m.year}-${m.month}`}>{m.label}</option>
-                  ))}
-                </select>
+            <div className="flex items-center gap-2 flex-wrap justify-end">
+              {/* Toggle de modo */}
+              <div className="flex bg-zinc-100 p-1 rounded-xl">
+                {(['month', 'year', 'all'] as const).map(mode => (
+                  <button
+                    key={mode}
+                    onClick={() => setFilterMode(mode)}
+                    className={cn(
+                      "px-3 py-1.5 text-xs font-bold uppercase tracking-wider rounded-lg transition-all whitespace-nowrap",
+                      filterMode === mode ? "bg-white text-priori-navy shadow-sm" : "text-zinc-500 hover:text-priori-navy"
+                    )}
+                  >
+                    {mode === 'month' ? 'Mês' : mode === 'year' ? 'Ano' : 'Todo Período'}
+                  </button>
+                ))}
               </div>
+
+              {/* Seletor de Mês */}
+              {filterMode === 'month' && (
+                <div className="flex items-center gap-2 bg-white border border-zinc-100 rounded-xl px-4 py-2.5 shadow-sm">
+                  <Calendar size={16} className="text-priori-navy" />
+                  <select
+                    className="text-sm font-bold text-priori-navy bg-transparent focus:outline-none cursor-pointer"
+                    value={`${selectedYear}-${selectedMonth}`}
+                    onChange={e => {
+                      const [y, m] = e.target.value.split('-').map(Number);
+                      setSelectedYear(y);
+                      setSelectedMonth(m);
+                    }}
+                  >
+                    {availableMonths.map(m => (
+                      <option key={`${m.year}-${m.month}`} value={`${m.year}-${m.month}`}>{m.label}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Seletor de Ano */}
+              {filterMode === 'year' && (
+                <div className="flex items-center gap-2 bg-white border border-zinc-100 rounded-xl px-4 py-2.5 shadow-sm">
+                  <Calendar size={16} className="text-priori-navy" />
+                  <select
+                    className="text-sm font-bold text-priori-navy bg-transparent focus:outline-none cursor-pointer"
+                    value={selectedYear}
+                    onChange={e => setSelectedYear(Number(e.target.value))}
+                  >
+                    {availableYears.map(y => (
+                      <option key={y} value={y}>{y}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
           </div>
 
