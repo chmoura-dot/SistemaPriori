@@ -115,6 +115,10 @@ function toAppointment(row: any): Appointment {
     denialResolution: row.denial_resolution ?? undefined,
     createdAt: row.created_at,
     cancellationBilling: row.cancellation_billing ?? undefined,
+    isInternal: row.is_internal ?? false,
+    internalType: row.internal_type ?? undefined,
+    internalTitle: row.internal_title ?? undefined,
+    internalNotes: row.internal_notes ?? undefined,
   };
 }
 
@@ -286,20 +290,28 @@ export const supabaseService: AppService = {
 
   isAuthenticated: () => {
     if (currentUser) return true;
-    const stored = localStorage.getItem('nucleo_user_v2');
-    if (stored) {
-      currentUser = JSON.parse(stored);
-      return true;
+    try {
+      const stored = localStorage.getItem('nucleo_user_v2');
+      if (stored) {
+        currentUser = JSON.parse(stored);
+        return true;
+      }
+    } catch {
+      localStorage.removeItem('nucleo_user_v2');
     }
     return false;
   },
 
   getCurrentUser: () => {
     if (currentUser) return currentUser;
-    const stored = localStorage.getItem('nucleo_user_v2');
-    if (stored) {
-      currentUser = JSON.parse(stored);
-      return currentUser;
+    try {
+      const stored = localStorage.getItem('nucleo_user_v2');
+      if (stored) {
+        currentUser = JSON.parse(stored);
+        return currentUser;
+      }
+    } catch {
+      localStorage.removeItem('nucleo_user_v2');
     }
     return null;
   },
@@ -448,7 +460,7 @@ export const supabaseService: AppService = {
         const dateObj = new Date(dateStr + 'T12:00:00');
         
         appointmentsToInsert.push({
-          customer_id: a.customerId,
+          customer_id: a.isInternal ? null : (a.customerId || null),
           psychologist_id: a.psychologistId,
           room_id: a.roomId ?? null,
           mode: a.mode,
@@ -471,6 +483,10 @@ export const supabaseService: AppService = {
           denial_resolution: a.denialResolution ?? null,
           confirmation_status: 'pending',
           cancellation_billing: a.cancellationBilling ?? null,
+          is_internal: a.isInternal ?? false,
+          internal_type: a.isInternal ? (a.internalType ?? null) : null,
+          internal_title: a.isInternal ? (a.internalTitle ?? null) : null,
+          internal_notes: a.isInternal ? (a.internalNotes ?? null) : null,
         });
       }
 
@@ -485,7 +501,7 @@ export const supabaseService: AppService = {
         supabase
           .from('appointments')
           .insert({
-            customer_id: a.customerId,
+            customer_id: a.isInternal ? null : (a.customerId || null),
             psychologist_id: a.psychologistId,
             room_id: a.roomId ?? null,
             mode: a.mode,
@@ -506,6 +522,10 @@ export const supabaseService: AppService = {
             denial_resolution: a.denialResolution ?? null,
             confirmation_status: 'pending',
             cancellation_billing: a.cancellationBilling ?? null,
+            is_internal: a.isInternal ?? false,
+            internal_type: a.isInternal ? (a.internalType ?? null) : null,
+            internal_title: a.isInternal ? (a.internalTitle ?? null) : null,
+            internal_notes: a.isInternal ? (a.internalNotes ?? null) : null,
           })
           .select()
           .single()
@@ -543,6 +563,14 @@ export const supabaseService: AppService = {
     if (a.denialReason !== undefined) updates.denial_reason = a.denialReason;
     if (a.denialResolution !== undefined) updates.denial_resolution = a.denialResolution;
     if (a.cancellationBilling !== undefined) updates.cancellation_billing = a.cancellationBilling;
+    if (a.isInternal !== undefined) {
+      updates.is_internal = a.isInternal;
+      // Quando é interno, forçar customer_id para null
+      if (a.isInternal) updates.customer_id = null;
+    }
+    if (a.internalType !== undefined) updates.internal_type = a.internalType;
+    if (a.internalTitle !== undefined) updates.internal_title = a.internalTitle;
+    if (a.internalNotes !== undefined) updates.internal_notes = a.internalNotes;
 
     const row = await throwOnError(
       supabase.from('appointments').update(updates).eq('id', id).select().single()

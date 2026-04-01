@@ -55,7 +55,7 @@ const NfsePage = () => {
   }, []);
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.target?.files;
+    const files = e.target.files;
     if (!files || files.length === 0) return;
     processFiles(Array.from(files));
   };

@@ -40,7 +40,8 @@ export const ConfirmationPage = () => {
       if (!id) return;
       try {
         // Chamada para a Edge Function que permite acesso sem login via ID
-        const response = await fetch(`https://ntqkrxtesuaeobxpmznr.supabase.co/functions/v1/confirm-appointment?appointmentId=${id}`);
+        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+        const response = await fetch(`${supabaseUrl}/functions/v1/confirm-appointment?appointmentId=${id}`);
         
         let data;
         try {
@@ -89,7 +90,8 @@ export const ConfirmationPage = () => {
     setIsSubmitting(true);
     try {
       // Enviar resposta via Edge Function (evita problemas de RLS)
-      const res = await fetch('https://ntqkrxtesuaeobxpmznr.supabase.co/functions/v1/confirm-appointment', {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+      const res = await fetch(`${supabaseUrl}/functions/v1/confirm-appointment`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

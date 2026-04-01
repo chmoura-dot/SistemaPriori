@@ -23,6 +23,12 @@ Deno.serve(async (req) => {
       throw new Error('E-mail é obrigatório para enviar o convite.');
     }
 
+    // Validação básica de formato de email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      throw new Error('Formato de e-mail inválido.');
+    }
+
     const { data, error } = await supabaseClient.auth.admin.inviteUserByEmail(email, {
       data: {
         role: 'psychologist'

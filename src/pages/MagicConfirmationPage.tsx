@@ -13,8 +13,9 @@ import {
 import { Button } from '../components/Button';
 import { cn } from '../lib/utils';
 
-// Definindo a URL da Edge Function (pode ser configurada via env no futuro)
-const EDGE_FUNCTION_URL = 'https://ntqkrxtesuaeobxpmznr.supabase.co/functions/v1/confirm-appointment';
+// URL da Edge Function lida da variável de ambiente para evitar hardcode
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
+const EDGE_FUNCTION_URL = `${SUPABASE_URL}/functions/v1/confirm-appointment`;
 
 interface AppointmentData {
   id: string;
