@@ -371,6 +371,18 @@ export const CustomersPage = () => {
     return dateStr.split('-').reverse().join('/');
   };
 
+  const calculateAge = (birthDate?: string): string | null => {
+    if (!birthDate) return null;
+    const birth = new Date(birthDate);
+    const today = new Date();
+    let age = today.getFullYear() - birth.getFullYear();
+    const monthDiff = today.getMonth() - birth.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+      age--;
+    }
+    return `${age} anos`;
+  };
+
   const calculateClincTime = (firstDate?: string, createdAt?: string) => {
     const start = firstDate ? new Date(firstDate) : (createdAt ? new Date(createdAt) : new Date());
     const now = new Date();
@@ -492,6 +504,11 @@ export const CustomersPage = () => {
                             <span className="text-[10px] text-priori-gold font-bold uppercase tracking-wider">
                               {calculateClincTime(customer.firstAppointmentDate, customer.createdAt)}
                             </span>
+                            {calculateAge(customer.birthDate) && (
+                              <span className="text-[10px] text-zinc-400 font-medium">
+                                {calculateAge(customer.birthDate)}
+                              </span>
+                            )}
                           </div>
                         </div>
                       </div>
