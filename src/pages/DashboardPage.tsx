@@ -221,10 +221,16 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
 
   // ─── Ticket Médio ────────────────────────────────────────────────────────
 
-  const ticketMedioConsulta = appsRealizados.length > 0 ? revenueRealizado / appsRealizados.length : 0;
+  // Usa todos os agendamentos não-cancelados do mês (realizados + previstos) para não zerar no início do mês
+  const appsNaoCancelados = appointmentsFiltered.filter(a => a.status !== AppointmentStatus.CANCELED);
+  const appsNaoCanceladosPrev = appointmentsPrevMonth.filter(a => a.status !== AppointmentStatus.CANCELED);
+  const revenueTotal = calculateRevenue(appsNaoCancelados) + subscriptionRevenue;
+  const revenueTotalPrev = calculateRevenue(appsNaoCanceladosPrev);
+
+  const ticketMedioConsulta = appsNaoCancelados.length > 0 ? revenueTotal / appsNaoCancelados.length : 0;
   const activeCustomersCount = customers.filter(c => c.status === CustomerStatus.ACTIVE).length;
-  const ticketMedioPaciente = activeCustomersCount > 0 ? revenueRealizado / activeCustomersCount : 0;
-  const ticketMedioConsultaPrev = appsRealizadosPrev.length > 0 ? revenueRealizadoPrev / appsRealizadosPrev.length : 0;
+  const ticketMedioPaciente = activeCustomersCount > 0 ? revenueTotal / activeCustomersCount : 0;
+  const ticketMedioConsultaPrev = appsNaoCanceladosPrev.length > 0 ? revenueTotalPrev / appsNaoCanceladosPrev.length : 0;
 
   // ─── Churn / Retenção ────────────────────────────────────────────────────
 
@@ -279,7 +285,8 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
 
   const activePsychologists = psychologists.filter(p => p.active);
   const estimatedCapacity = activePsychologists.length * workingDaysInMonth * 6; // ~6 consultas/dia/psicólogo
-  const occupancyRate = estimatedCapacity > 0 ? Math.min((appsRealizados.length / estimatedCapacity) * 100, 100) : 0;
+  // Usa todos os agendamentos não-cancelados (realizados + previstos) para refletir ocupação real da agenda
+  const occupancyRate = estimatedCapacity > 0 ? Math.min((appsNaoCancelados.length / estimatedCapacity) * 100, 100) : 0;
 
   // ─── Heatmap de Horários ─────────────────────────────────────────────────
 
