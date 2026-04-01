@@ -309,6 +309,8 @@ export interface AppService {
       createdAt?: string;
     }>
   >;
+
+  deleteInvoice: (id: string) => Promise<void>;
   // Auth
   login: (email: string, password: string) => Promise<User | null>;
   logout: () => void;

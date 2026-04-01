@@ -250,6 +250,14 @@ export const supabaseService: AppService = {
     if (error) throw new Error(error.message);
     return { success: true, importedCount: rows.length };
   },
+
+  deleteInvoice: async (id) => {
+    const { error } = await supabase
+      .from('nfse_invoices')
+      .delete()
+      .eq('id', id);
+    if (error) throw new Error(error.message);
+  },
   // ── Auth ──────────────────────────────────────────────
   login: async (email: string, password: string) => {
     // 1. Authenticate with Supabase Auth

@@ -540,6 +540,10 @@ export const mockService: AppService = {
     return { success: true, importedCount: _invoices.length };
   },
 
+  deleteInvoice: async (_id) => {
+    await delay(300);
+  },
+
   login: async (email, password) => {
     await delay(500);
     
@@ -601,6 +605,10 @@ export const mockService: AppService = {
     await delay(500);
     const psychologists = getFromStorage<Psychologist>(STORAGE_KEYS.PSYCHOLOGISTS);
     saveToStorage(STORAGE_KEYS.PSYCHOLOGISTS, psychologists.filter(p => p.id !== id));
+  },
+
+  invitePsychologist: async (_email) => {
+    await delay(300);
   },
 
   getRooms: async () => {

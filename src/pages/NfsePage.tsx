@@ -2,7 +2,11 @@ import React, { useEffect, useState, useRef } from 'react';
 import { Button } from '../components/Button';
 import { Modal } from '../components/Modal';
 import { api } from '../services/api';
-import { Upload, FileText, X, Check, AlertCircle, Loader2 } from 'lucide-react';
+import { Upload, FileText, X, Check, AlertCircle, Loader2, Trash2 } from 'lucide-react';
+import * as pdfjsLib from 'pdfjs-dist';
+
+// Configura o worker do pdfjs via CDN para evitar problemas de bundling
+pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
 
 type NfseInvoice = {
   id: string;
@@ -27,6 +31,127 @@ type PendingInvoice = {
   message?: string;
 };
 
+// Formata data ISO (YYYY-MM-DD) para dd/MM/yyyy
+const formatDate = (dateStr: string): string => {
+  if (!dateStr) return '-';
+  const parts = dateStr.split('T')[0].split('-');
+  if (parts.length !== 3) return dateStr;
+  return `${parts[2]}/${parts[1]}/${parts[0]}`;
+};
+
+// Converte data dd/MM/yyyy para YYYY-MM-DD
+const parseBrDate = (dateStr: string): string => {
+  if (!dateStr) return '';
+  const match = dateStr.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+  if (!match) return '';
+  return `${match[3]}-${match[2]}-${match[1]}`;
+};
+
+// Extrai texto de todas as páginas de um PDF
+const extractPdfText = async (file: File): Promise<string> => {
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  let fullText = '';
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    const pageText = content.items
+      .map((item: any) => item.str)
+      .join(' ');
+    fullText += pageText + '\n';
+  }
+  return fullText;
+};
+
+// Parseia o texto extraído do PDF no padrão DANFS-e (Prefeitura de Niterói / padrão nacional)
+const parseDanfseText = (text: string, fileName: string): PendingInvoice => {
+  // Remove espaços extras e normaliza o texto para facilitar os regex
+  const t = text.replace(/\s+/g, ' ').trim();
+
+  // ── Número da NFS-e ──────────────────────────────────────────────────────
+  // Padrão: "Número da NFS-e 26" ou "NúmerodaNFS-e 26"
+  const invoiceNumberMatch =
+    t.match(/N[úu]mero\s*da\s*NFS-?e\s+(\d+)/i) ||
+    t.match(/NFS-?e\s+N[ºo°]?\s*(\d+)/i);
+  const invoiceNumber = invoiceNumberMatch ? invoiceNumberMatch[1] : '';
+
+  // ── Data de Emissão ───────────────────────────────────────────────────────
+  // Padrão: "Data e Hora da emissão da NFS-e 03/02/2026 17:34:51"
+  const issueDateMatch =
+    t.match(/Data\s*e\s*Hora\s*da\s*emiss[aã]o\s*da\s*NFS-?e\s+(\d{2}\/\d{2}\/\d{4})/i) ||
+    t.match(/Compet[eê]ncia\s*da\s*NFS-?e\s+(\d{2}\/\d{2}\/\d{4})/i) ||
+    t.match(/Data\s*de\s*Emiss[aã]o\s*[:\-]?\s*(\d{2}\/\d{2}\/\d{4})/i);
+  const issueDateBr = issueDateMatch ? issueDateMatch[1] : '';
+  const issueDate = parseBrDate(issueDateBr);
+
+  // ── CNPJ/CPF do Tomador ───────────────────────────────────────────────────
+  // O tomador vem DEPOIS do emitente no documento. Estratégia: pegar todos os CNPJs/CPFs
+  // e usar o segundo (o primeiro é do emitente, o segundo é do tomador)
+  const cnpjPattern = /\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}/g;
+  const cpfPattern = /\d{3}\.\d{3}\.\d{3}-\d{2}/g;
+  const allCnpjs = t.match(cnpjPattern) || [];
+  const allCpfs = t.match(cpfPattern) || [];
+  const allDocs = [...allCnpjs, ...allCpfs];
+  // O tomador é o segundo documento encontrado (o primeiro é do prestador/emitente)
+  const payerCNPJ = allDocs.length >= 2 ? allDocs[1] : (allDocs[0] || '');
+
+  // ── Nome do Tomador ───────────────────────────────────────────────────────
+  // Padrão: "TOMADOR DO SERVIÇO ... CNPJ/CPF/NIF 39.427.632/0001-71 ... Nome/NomeEmpresarial ASSOCIACAO PETROBRAS..."
+  // Estratégia: pegar o texto após o CNPJ do tomador até a próxima seção
+  let payerName = '';
+  if (payerCNPJ) {
+    const escapedCnpj = payerCNPJ.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // Tenta pegar o nome após o CNPJ do tomador
+    const afterCnpj = t.split(escapedCnpj)[1] || '';
+    // O nome vem após "Nome/ NomeEmpresarial" ou diretamente após o CNPJ
+    const nameMatch =
+      afterCnpj.match(/Nome\s*\/?\s*Nome\s*Empresarial\s+([A-ZÁÉÍÓÚÀÂÊÔÃÕÇ][A-ZÁÉÍÓÚÀÂÊÔÃÕÇ\s\-\.\/]+?)(?:\s+E-mail|\s+Endere[çc]o|\s+Munic[íi]pio|\s+CEP)/i) ||
+      afterCnpj.match(/^[\s\-]*([A-ZÁÉÍÓÚÀÂÊÔÃÕÇ][A-ZÁÉÍÓÚÀÂÊÔÃÕÇ\s\-\.\/]{5,80}?)(?:\s+E-mail|\s+Endere[çc]o|\s+Munic[íi]pio)/i);
+    if (nameMatch) {
+      payerName = nameMatch[1].trim();
+    }
+  }
+
+  // Fallback: busca direta por "TOMADOR DO SERVIÇO" e pega o nome
+  if (!payerName) {
+    const tomadorMatch = t.match(/TOMADOR\s*DO\s*SERVI[ÇC]O[\s\S]{0,300}?Nome\s*\/?\s*Nome\s*Empresarial\s+([A-ZÁÉÍÓÚÀÂÊÔÃÕÇ][A-ZÁÉÍÓÚÀÂÊÔÃÕÇ\s\-\.\/]+?)(?:\s+E-mail|\s+Endere[çc]o|\s+Munic[íi]pio|\s+CEP)/i);
+    if (tomadorMatch) payerName = tomadorMatch[1].trim();
+  }
+
+  // ── Valor do Serviço ──────────────────────────────────────────────────────
+  // Padrão: "Valor do Serviço R$ 25.705,41" ou "Valor Líquido da NFS-e R$ 25.705,41"
+  const valorMatch =
+    t.match(/Valor\s*L[íi]quido\s*da\s*NFS-?e\s+R\$\s*([\d.,]+)/i) ||
+    t.match(/VALOR\s*TOTAL\s*DA\s*NFS-?E[\s\S]{0,100}?Valor\s*do\s*Servi[çc]o\s+R\$\s*([\d.,]+)/i) ||
+    t.match(/Valor\s*do\s*Servi[çc]o\s+R\$\s*([\d.,]+)/i);
+  let totalAmount = 0;
+  if (valorMatch) {
+    // Converte "25.705,41" → 25705.41
+    const raw = valorMatch[1].replace(/\./g, '').replace(',', '.');
+    totalAmount = parseFloat(raw) || 0;
+  }
+
+  // ── Descrição do Serviço ──────────────────────────────────────────────────
+  const descMatch = t.match(/Descri[çc][aã]o\s*do\s*Servi[çc]o\s+(.+?)(?:\s+TRIBUTA[ÇC][AÃ]O|\s+Valor\s*do\s*Servi[çc]o|\s+C[óo]digo\s*de\s*Tributa[çc][aã]o)/i);
+  const description = descMatch ? descMatch[1].trim() : '';
+
+  // ── Validação ─────────────────────────────────────────────────────────────
+  if (!invoiceNumber || !payerCNPJ) {
+    throw new Error('Não foi possível identificar o número da nota ou o CNPJ do tomador. Verifique se o PDF é uma NFS-e válida.');
+  }
+
+  return {
+    invoiceNumber,
+    issueDate,
+    payerName,
+    payerCNPJ,
+    totalAmount,
+    description,
+    fileName,
+    status: 'pending',
+  };
+};
+
 const NfsePage = () => {
   const [invoices, setInvoices] = useState<NfseInvoice[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -37,6 +162,7 @@ const NfsePage = () => {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchInvoices = async () => {
     setIsLoading(true);
@@ -52,7 +178,17 @@ const NfsePage = () => {
 
   useEffect(() => {
     fetchInvoices();
+    return () => {
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+    };
   }, []);
+
+  // Auto-dismiss da mensagem de sucesso após 5 segundos
+  const showSuccess = (msg: string) => {
+    setSuccessMessage(msg);
+    if (successTimerRef.current) clearTimeout(successTimerRef.current);
+    successTimerRef.current = setTimeout(() => setSuccessMessage(null), 5000);
+  };
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -65,48 +201,14 @@ const NfsePage = () => {
     setErrorMessage(null);
 
     for (const file of files) {
-      if (!file.name.toLowerCase().endsWith('.xml')) {
+      if (!file.name.toLowerCase().endsWith('.pdf')) {
         continue;
       }
 
       try {
-        const text = await file.text();
-        const parser = new DOMParser();
-        const xmlDoc = parser.parseFromString(text, "text/xml");
-
-        // Helper para pegar valor de tag ignorando namespace se necessário
-        const getTagValue = (tagName: string) => {
-          const el = xmlDoc.getElementsByTagName(tagName)[0];
-          return el?.textContent?.trim() || '';
-        };
-
-        // Padrão ABRASF (tags comuns)
-        const invoiceNumber = getTagValue('Numero');
-        const issueDateRaw = getTagValue('DataEmissao'); // Ex: 2024-03-22T10:00:00
-        const issueDate = issueDateRaw ? issueDateRaw.split('T')[0] : '';
-        
-        // Dados do Tomador
-        const payerName = getTagValue('RazaoSocial');
-        const payerCNPJ = getTagValue('Cnpj') || getTagValue('Cpf');
-        
-        // Valores
-        const totalAmount = parseFloat(getTagValue('ValorServicos') || '0');
-        const description = getTagValue('Discriminacao');
-
-        if (!invoiceNumber || !payerCNPJ) {
-          throw new Error('Formato de XML não reconhecido ou campos obrigatórios ausentes.');
-        }
-
-        newPending.push({
-          invoiceNumber,
-          issueDate,
-          payerName,
-          payerCNPJ,
-          totalAmount,
-          description,
-          fileName: file.name,
-          status: 'pending'
-        });
+        const text = await extractPdfText(file);
+        const parsed = parseDanfseText(text, file.name);
+        newPending.push(parsed);
       } catch (err: any) {
         console.error(`Erro ao ler arquivo ${file.name}:`, err);
         newPending.push({
@@ -118,7 +220,7 @@ const NfsePage = () => {
           description: '',
           fileName: file.name,
           status: 'error',
-          message: err.message || 'Erro ao processar XML'
+          message: err.message || 'Erro ao processar PDF',
         });
       }
     }
@@ -126,7 +228,7 @@ const NfsePage = () => {
     setPendingInvoices(prev => [...prev, ...newPending]);
     if (newPending.length > 0) setIsModalOpen(true);
     
-    // Limpa o input para permitir selecionar o mesmo arquivo novamente se necessário
+    // Limpa o input para permitir selecionar o mesmo arquivo novamente
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -144,11 +246,11 @@ const NfsePage = () => {
         payerName: inv.payerName,
         payerCNPJ: inv.payerCNPJ,
         totalAmount: inv.totalAmount,
-        description: inv.description
+        description: inv.description,
       })));
 
       if (result.success) {
-        setSuccessMessage(`${result.importedCount} notas importadas com sucesso!`);
+        showSuccess(`${result.importedCount} nota(s) importada(s) com sucesso!`);
         setPendingInvoices([]);
         setIsModalOpen(false);
         fetchInvoices();
@@ -164,12 +266,24 @@ const NfsePage = () => {
     setPendingInvoices(prev => prev.filter((_, i) => i !== index));
   };
 
+  const handleDeleteInvoice = async (inv: NfseInvoice) => {
+    if (!confirm(`Deseja excluir a nota Nº ${inv.invoiceNumber} (${inv.payer?.nome || '-'})? Esta ação não pode ser desfeita.`)) return;
+
+    try {
+      await api.deleteInvoice(inv.id);
+      showSuccess(`Nota Nº ${inv.invoiceNumber} excluída com sucesso.`);
+      fetchInvoices();
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Erro ao excluir nota fiscal.');
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-priori-navy">Notas Fiscais (NFS-e)</h1>
-          <p className="text-sm text-zinc-500">Importe seus arquivos XML da prefeitura para sincronizar o financeiro.</p>
+          <p className="text-sm text-zinc-500">Importe seus arquivos PDF da NFS-e para sincronizar o financeiro.</p>
         </div>
         
         <div className="flex items-center gap-2">
@@ -177,7 +291,7 @@ const NfsePage = () => {
             type="file"
             ref={fileInputRef}
             onChange={handleFileSelect}
-            accept=".xml"
+            accept=".pdf"
             multiple
             className="hidden"
           />
@@ -186,7 +300,7 @@ const NfsePage = () => {
             className="flex items-center gap-2 bg-priori-gold hover:bg-priori-gold/90 text-priori-navy border-none"
           >
             <Upload size={18} />
-            Importar XML
+            Importar PDF
           </Button>
         </div>
       </div>
@@ -228,7 +342,7 @@ const NfsePage = () => {
               <FileText size={48} strokeWidth={1} />
               <div className="text-center">
                 <p className="font-medium text-zinc-600">Nenhuma nota encontrada</p>
-                <p className="text-sm">Clique em "Importar XML" para começar.</p>
+                <p className="text-sm">Clique em "Importar PDF" para começar.</p>
               </div>
             </div>
           ) : (
@@ -240,13 +354,14 @@ const NfsePage = () => {
                   <th className="px-6 py-3 font-semibold text-zinc-600 border-b border-zinc-200 text-xs uppercase tracking-wider">Tomador</th>
                   <th className="px-6 py-3 font-semibold text-zinc-600 border-b border-zinc-200 text-xs uppercase tracking-wider">Valor</th>
                   <th className="px-6 py-3 font-semibold text-zinc-600 border-b border-zinc-200 text-xs uppercase tracking-wider">Status</th>
+                  <th className="px-6 py-3 border-b border-zinc-200 w-12"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-100">
                 {invoices.map((inv) => (
                   <tr key={inv.id} className="hover:bg-zinc-50/50 transition-colors">
                     <td className="px-6 py-4 font-mono font-medium text-zinc-700">{inv.invoiceNumber}</td>
-                    <td className="px-6 py-4 text-zinc-600">{inv.issueDate}</td>
+                    <td className="px-6 py-4 text-zinc-600">{formatDate(inv.issueDate)}</td>
                     <td className="px-6 py-4">
                       <div className="font-medium text-zinc-800">{inv.payer?.nome}</div>
                       <div className="text-xs text-zinc-500 font-mono">{inv.payer?.cpf_cnpj}</div>
@@ -258,6 +373,15 @@ const NfsePage = () => {
                       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
                         {inv.status}
                       </span>
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <button
+                        onClick={() => handleDeleteInvoice(inv)}
+                        title="Excluir nota"
+                        className="text-zinc-400 hover:text-red-500 transition-colors p-1 rounded-lg hover:bg-red-50"
+                      >
+                        <Trash2 size={16} />
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -275,7 +399,7 @@ const NfsePage = () => {
       >
         <div className="space-y-4">
           <p className="text-sm text-zinc-500">
-            Confira as notas encontradas nos arquivos selecionados antes de confirmar a importação.
+            Confira os dados extraídos dos PDFs antes de confirmar a importação.
           </p>
 
           <div className="max-h-[400px] overflow-y-auto rounded-lg border border-zinc-200">
@@ -301,13 +425,13 @@ const NfsePage = () => {
                         <span className="text-red-600 font-medium">{inv.message}</span>
                       ) : (
                         <div>
-                          <div className="font-medium text-zinc-800">{inv.payerName}</div>
+                          <div className="font-medium text-zinc-800">{inv.payerName || '—'}</div>
                           <div className="text-zinc-500">{inv.payerCNPJ}</div>
                         </div>
                       )}
                     </td>
                     <td className="px-4 py-3 text-right font-semibold">
-                      {inv.status !== 'error' && `R$ ${inv.totalAmount.toFixed(2)}`}
+                      {inv.status !== 'error' && `R$ ${inv.totalAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
                     </td>
                     <td className="px-4 py-3 text-right">
                       {!isImporting && (
