@@ -1,1 +1,0 @@
-console.log("Script de teste real limpo e válido na raiz. Adicione seu código aqui.");
