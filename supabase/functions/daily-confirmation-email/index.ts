@@ -115,9 +115,9 @@ Deno.serve(async (req) => {
       // Se não houver pendências para confirmar, não envia e-mail para não gerar SPAM
       // No entanto, criamos o token para marcar o dia como processado
       if (pendingAppointments.length === 0) {
-        const expiresAt = new Date();
-        expiresAt.setHours(expiresAt.getHours() + 48);
-        await supabase.from('appointment_tokens').insert({
+      const expiresAt = new Date();
+      expiresAt.setHours(expiresAt.getHours() + 240);
+      await supabase.from('appointment_tokens').insert({
           psychologist_id: psy.id,
           date: todayStr,
           expires_at: expiresAt.toISOString()
@@ -128,7 +128,7 @@ Deno.serve(async (req) => {
 
       // 4. Gerar Token de Confirmação
       const expiresAt = new Date();
-      expiresAt.setHours(expiresAt.getHours() + 48); // Link válido por 48h
+      expiresAt.setHours(expiresAt.getHours() + 240); // Link válido por 10 dias
 
       const { data: tokenRecord, error: tokenError } = await supabase
         .from('appointment_tokens')
@@ -206,7 +206,7 @@ Deno.serve(async (req) => {
           
           <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; font-size: 12px; color: #666; text-align: center;">
             <p>Sistema Priori &copy; ${new Date().getFullYear()}</p>
-            <p>Este link é seguro e exclusivo para você. Validade: 48 horas.</p>
+            <p>Este link é seguro e exclusivo para você. Validade: 10 dias.</p>
           </div>
         </div>
       `;

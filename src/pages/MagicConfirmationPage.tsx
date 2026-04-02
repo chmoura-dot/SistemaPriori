@@ -13,6 +13,20 @@ import {
 import { Button } from '../components/Button';
 import { cn } from '../lib/utils';
 
+// Toast simples para feedback visual
+const Toast = ({ message, type }: { message: string; type: 'success' | 'error' | 'info' }) => {
+  const colors = {
+    success: 'bg-emerald-500',
+    error: 'bg-red-500',
+    info: 'bg-priori-navy'
+  };
+  return (
+    <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 ${colors[type]} text-white px-5 py-3 rounded-2xl shadow-xl text-sm font-bold animate-in slide-in-from-bottom-4 duration-300`}>
+      {message}
+    </div>
+  );
+};
+
 // URL da Edge Function lida da variável de ambiente para evitar hardcode
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
 const EDGE_FUNCTION_URL = `${SUPABASE_URL}/functions/v1/confirm-appointment`;
@@ -37,6 +51,12 @@ export const MagicConfirmationPage = () => {
   const [error, setError] = useState<string | null>(null);
   const [cancellationModal, setCancellationModal] = useState<{ id: string } | null>(null);
   const [isNag, setIsNag] = useState(false);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+
+  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  };
 
   // Extração do token via Query Param ou Hash (suporte a ambos)
   const getToken = () => {
@@ -92,6 +112,18 @@ export const MagicConfirmationPage = () => {
   const handleAction = async (appointmentId: string, action: 'confirm' | 'cancel' | 'pendency', billing?: string) => {
     if (!token) return;
     setIsProcessing(appointmentId);
+
+    // Snapshot do estado anterior para rollback em caso de erro
+    const previousAppointments = appointments;
+
+    // Atualização otimista imediata
+    setAppointments(prev => prev.map(app =>
+      app.id === appointmentId ? {
+        ...app,
+        confirmed_psychologist: action === 'confirm',
+        status: action === 'cancel' ? 'canceled' : 'active'
+      } : app
+    ));
     
     try {
       const response = await fetch(EDGE_FUNCTION_URL, {
@@ -103,18 +135,19 @@ export const MagicConfirmationPage = () => {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Erro ao processar ação.');
 
-      // Atualizar lista local
-      setAppointments(prev => prev.map(app => 
-        app.id === appointmentId ? { 
-          ...app, 
-          confirmed_psychologist: action === 'confirm',
-          status: action === 'cancel' ? 'canceled' : 'active'
-        } : app
-      ));
+      // Feedback visual de sucesso
+      const messages = {
+        confirm: '✅ Presença confirmada!',
+        cancel: '❌ Falta registrada.',
+        pendency: '↩️ Status desfeito.'
+      };
+      showToast(messages[action], action === 'confirm' ? 'success' : action === 'cancel' ? 'error' : 'info');
       
       setCancellationModal(null);
     } catch (err: any) {
-      alert(err.message);
+      // Reverter estado local em caso de erro
+      setAppointments(previousAppointments);
+      showToast(`Erro: ${err.message}`, 'error');
     } finally {
       setIsProcessing(null);
     }
@@ -302,6 +335,9 @@ export const MagicConfirmationPage = () => {
       <div className="mt-12 text-center text-[10px] text-zinc-400 uppercase font-medium tracking-[0.2em] px-4">
         Sistema Priori • Neuropsicologia e Psicoterapia
       </div>
+
+      {/* Toast de Feedback */}
+      {toast && <Toast message={toast.message} type={toast.type} />}
     </div>
   );
 };

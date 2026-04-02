@@ -77,7 +77,19 @@ export default function App() {
 
     // Rotas Públicas (acessíveis sem login)
     if (currentPath.startsWith('/confirmacao')) {
-      if (window.location.href.includes('token=')) {
+      // Distingue a página do psicólogo (magic link com token) da página do paciente (appointmentId)
+      // Verifica tanto query params quanto hash para máxima compatibilidade
+      const searchParams = new URLSearchParams(window.location.search);
+      const hashParams = new URLSearchParams(
+        window.location.hash.includes('?') 
+          ? window.location.hash.split('?')[1] 
+          : window.location.hash.includes('token=') 
+            ? window.location.hash.split('token=').map((p, i) => i === 0 ? '' : `token=${p}`).join('') 
+            : ''
+      );
+      const hasPsychologistToken = searchParams.has('token') || hashParams.has('token') || window.location.hash.includes('token=');
+      
+      if (hasPsychologistToken) {
         return <MagicConfirmationPage />;
       }
       return <ConfirmationPage />;

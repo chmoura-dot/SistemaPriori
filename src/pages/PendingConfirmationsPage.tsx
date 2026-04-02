@@ -8,12 +8,17 @@ import {
   Loader2,
   ChevronRight,
   Filter,
-  CheckCircle2
+  CheckCircle2,
+  Mail,
+  Send
 } from 'lucide-react';
 import { api } from '../services/api';
 import { Appointment, Psychologist, Customer, AppointmentStatus } from '../services/types';
 import { cn } from '../lib/utils';
 import { Button } from '../components/Button';
+
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 
 export const PendingConfirmationsPage = () => {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -21,6 +26,8 @@ export const PendingConfirmationsPage = () => {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedPsyId, setSelectedPsyId] = useState<string>('all');
+  const [sendingEmail, setSendingEmail] = useState<string | null>(null);
+  const [emailFeedback, setEmailFeedback] = useState<{ psyId: string; message: string; type: 'success' | 'error' } | null>(null);
 
   const loadData = async () => {
     setIsLoading(true);
@@ -70,6 +77,40 @@ export const PendingConfirmationsPage = () => {
     const message = `Olá ${psy.name}, aqui é da coordenação do Núcleo Priori. Notamos que você possui ${count} atendimentos pendentes de confirmação no sistema há mais de 24 horas. Por favor, poderia regularizar sua agenda? Isso é fundamental para nosso faturamento. Obrigado!`;
     const url = `https://wa.me/55${psy.phone.replace(/\D/g, '')}?text=${encodeURIComponent(message)}`;
     window.open(url, '_blank');
+  };
+
+  const sendEmailReminder = async (psy: Psychologist) => {
+    setSendingEmail(psy.id);
+    setEmailFeedback(null);
+
+    try {
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/resend-confirmation`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+        },
+        body: JSON.stringify({ psychologist_id: psy.id })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Erro ao enviar e-mail.');
+      }
+
+      if (data.message && data.message.includes('Nenhuma pendência')) {
+        setEmailFeedback({ psyId: psy.id, message: 'Nenhuma pendência encontrada para este psicólogo.', type: 'error' });
+      } else {
+        setEmailFeedback({ psyId: psy.id, message: `✅ E-mail enviado para ${psy.name}!`, type: 'success' });
+      }
+    } catch (err: any) {
+      setEmailFeedback({ psyId: psy.id, message: `❌ Erro: ${err.message}`, type: 'error' });
+    } finally {
+      setSendingEmail(null);
+      // Limpar feedback após 5 segundos
+      setTimeout(() => setEmailFeedback(null), 5000);
+    }
   };
 
   // Agrupar pendências por psicólogo
@@ -157,15 +198,37 @@ export const PendingConfirmationsPage = () => {
                   <div>
                     <h3 className="font-bold text-priori-navy uppercase tracking-tight">{psy.name}</h3>
                     <p className="text-xs text-zinc-500 font-medium">{apps.length} sessões pendentes</p>
+                    {emailFeedback?.psyId === psy.id && (
+                      <p className={cn(
+                        "text-xs font-bold mt-1",
+                        emailFeedback.type === 'success' ? "text-emerald-600" : "text-red-500"
+                      )}>
+                        {emailFeedback.message}
+                      </p>
+                    )}
                   </div>
                 </div>
-                <Button 
-                  onClick={() => sendWhatsAppNag(psy, apps.length)}
-                  className="bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl px-6"
-                >
-                  <MessageCircle size={18} className="mr-2" />
-                  Cobrar via WhatsApp
-                </Button>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <Button 
+                    onClick={() => sendEmailReminder(psy)}
+                    disabled={sendingEmail === psy.id}
+                    className="bg-priori-navy hover:bg-priori-navy/90 text-white rounded-2xl px-5 disabled:opacity-60"
+                  >
+                    {sendingEmail === psy.id ? (
+                      <Loader2 size={16} className="mr-2 animate-spin" />
+                    ) : (
+                      <Mail size={16} className="mr-2" />
+                    )}
+                    {sendingEmail === psy.id ? 'Enviando...' : 'Reenviar Link por E-mail'}
+                  </Button>
+                  <Button 
+                    onClick={() => sendWhatsAppNag(psy, apps.length)}
+                    className="bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl px-5"
+                  >
+                    <MessageCircle size={16} className="mr-2" />
+                    Cobrar via WhatsApp
+                  </Button>
+                </div>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse">

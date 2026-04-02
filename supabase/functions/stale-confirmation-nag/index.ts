@@ -77,7 +77,7 @@ Deno.serve(async (req) => {
 
       // Gerar Token de Confirmação Genérico (sem data específica)
       const expiresAt = new Date();
-      expiresAt.setHours(expiresAt.getHours() + 72); // Nag link válido por 3 dias
+      expiresAt.setHours(expiresAt.getHours() + 240); // Nag link válido por 10 dias
 
       const { data: tokenRecord, error: tokenError } = await supabase
         .from('appointment_tokens')

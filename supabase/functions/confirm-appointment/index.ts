@@ -43,6 +43,7 @@ Deno.serve(async (req) => {
             room:rooms (id, name)
           `)
           .eq('id', appointmentId)
+          .eq('is_internal', false)
           .single();
 
         if (appError || !appData) {
@@ -126,26 +127,42 @@ Deno.serve(async (req) => {
       }
 
       // CASO A: Resposta do Paciente (WhatsApp)
-if (patientResponse) {
-  const { data: updatedApp, error: updateError } = await supabase
-    .from('appointments')
-    .update({
-      confirmation_status: patientResponse,
-      patient_notes: notes || null,
-      confirmed_patient: patientResponse === 'confirmed',
-      status: patientResponse === 'declined' ? 'canceled' : undefined,
-      cancellation_billing: patientResponse === 'declined' ? null : undefined
-    })
-    .eq('id', appointmentId)
-    .select()
-    .single();
+      if (patientResponse) {
+        // Verificar se o agendamento já está cancelado (ex: paciente já recusou antes)
+        const { data: currentApp, error: currentAppError } = await supabase
+          .from('appointments')
+          .select('id, status, confirmation_status')
+          .eq('id', appointmentId)
+          .single();
 
-  if (updateError) throw new Error(updateError.message);
+        if (currentAppError || !currentApp) {
+          throw new Error('Agendamento não encontrado.');
+        }
 
-  return new Response(JSON.stringify({ success: true, updated: updatedApp }), {
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-  });
-}
+        // Se o psicólogo já cancelou, não permitir que o paciente reabra
+        if (currentApp.status === 'canceled' && patientResponse === 'confirmed') {
+          throw new Error('Este agendamento já foi cancelado e não pode ser reaberto pelo paciente.');
+        }
+
+        const { data: updatedApp, error: updateError } = await supabase
+          .from('appointments')
+          .update({
+            confirmation_status: patientResponse,
+            patient_notes: notes || null,
+            confirmed_patient: patientResponse === 'confirmed',
+            status: patientResponse === 'declined' ? 'canceled' : undefined,
+            cancellation_billing: patientResponse === 'declined' ? null : undefined
+          })
+          .eq('id', appointmentId)
+          .select()
+          .single();
+
+        if (updateError) throw new Error(updateError.message);
+
+        return new Response(JSON.stringify({ success: true, updated: updatedApp }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
 
       // CASO B: Resposta do Psicólogo (via Token de E-mail)
       if (!token || !action) {
@@ -196,7 +213,8 @@ if (patientResponse) {
       } else if (action === 'pendency') {
         updates = {
           confirmed_psychologist: false,
-          status: 'active'
+          status: 'active',
+          cancellation_billing: null
         };
       }
 
