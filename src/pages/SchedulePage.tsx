@@ -34,7 +34,9 @@ import {
   AppointmentStatus,
   UserRole,
   Plan,
-  RecurrenceFrequency
+  RecurrenceFrequency,
+  Holiday,
+  ClinicClosure
 } from '../services/types';
 import { Button } from '../components/Button';
 import { Modal } from '../components/Modal';
@@ -62,6 +64,8 @@ export const SchedulePage = () => {
   const [psychologists, setPsychologists] = useState<Psychologist[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [plans, setPlans] = useState<Plan[]>([]);
+  const [holidays, setHolidays] = useState<Holiday[]>([]);
+  const [closures, setClosures] = useState<ClinicClosure[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const user = api.getCurrentUser();
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -122,12 +126,14 @@ export const SchedulePage = () => {
 
   const loadData = async () => {
     setIsLoading(true);
-    const [a, r, p, c, plansData] = await Promise.all([
-      api.getAppointments(), // Load all for weekly view
+    const [a, r, p, c, plansData, h, cl] = await Promise.all([
+      api.getAppointments(),
       api.getRooms(),
       api.getPsychologists(),
       api.getCustomers(),
-      api.getPlans()
+      api.getPlans(),
+      api.getHolidays(),
+      api.getClinicClosures(),
     ]);
     setAppointments(a);
     setRooms(r);
@@ -136,6 +142,8 @@ export const SchedulePage = () => {
     if (p.length > 0 && !selectedPsychologistId) setSelectedPsychologistId(p[0].id);
     setCustomers(c.filter(cust => cust.status === 'active'));
     setPlans(plansData);
+    setHolidays(h);
+    setClosures(cl);
     setIsLoading(false);
   };
 
@@ -640,6 +648,50 @@ export const SchedulePage = () => {
         </div>
       ) : (
         <>
+          {/* Holiday / Closure Banner for current date */}
+          {(() => {
+            const currentDateStr = viewMode === 'daily' ? date : null;
+            if (!currentDateStr) return null;
+            const holiday = holidays.find(h => h.date === currentDateStr);
+            const closure = closures.find(c => currentDateStr >= c.startDate && currentDateStr <= c.endDate);
+            if (closure) {
+              return (
+                <div className="flex items-center gap-3 p-3 bg-zinc-100 border border-zinc-300 rounded-xl text-zinc-700">
+                  <span className="text-lg">🏖️</span>
+                  <div>
+                    <p className="text-sm font-bold">Clínica Fechada — {closure.reason}</p>
+                    <p className="text-xs text-zinc-500">
+                      {new Date(closure.startDate + 'T12:00:00').toLocaleDateString('pt-BR')} até {new Date(closure.endDate + 'T12:00:00').toLocaleDateString('pt-BR')}
+                    </p>
+                  </div>
+                </div>
+              );
+            }
+            if (holiday && !holiday.clinicOpen) {
+              return (
+                <div className="flex items-center gap-3 p-3 bg-red-50 border border-red-200 rounded-xl text-red-800">
+                  <span className="text-lg">🎌</span>
+                  <div>
+                    <p className="text-sm font-bold">Feriado: {holiday.name}</p>
+                    <p className="text-xs text-red-600 capitalize">{holiday.type}</p>
+                  </div>
+                </div>
+              );
+            }
+            if (holiday && holiday.clinicOpen) {
+              return (
+                <div className="flex items-center gap-3 p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-800">
+                  <span className="text-lg">⚠️</span>
+                  <div>
+                    <p className="text-sm font-bold">Ponto Facultativo: {holiday.name}</p>
+                    <p className="text-xs text-amber-600">A clínica está aberta normalmente.</p>
+                  </div>
+                </div>
+              );
+            }
+            return null;
+          })()}
+
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <h2 className="text-2xl font-bold text-priori-navy">Agenda de Salas</h2>
@@ -997,11 +1049,11 @@ export const SchedulePage = () => {
                                             </div>
                                             {!appointment.isInternal && <StatusIcons appointment={appointment} />}
                                           </div>
-                                          <div className="flex flex-col gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                                          <div className="flex flex-col gap-1 opacity-100 transition-opacity">
                                             <button onClick={() => handleReminder(appointment)} className={cn("transition-colors", appointment.reminderSentAt ? "text-amber-600" : "text-zinc-400 hover:text-priori-navy")} title="Enviar Lembrete"><Bell size={10} /></button>
                                             <button onClick={() => handleEdit(appointment)} className="text-zinc-400 hover:text-priori-navy"><Edit2 size={10} /></button>
                                             {currentStatus !== 'canceled' && <button type="button" onClick={(e) => { e.stopPropagation(); setCancellationModalAppId(appointment.id); }} className="text-red-400 hover:text-red-600 font-bold bg-red-50 px-1 rounded transition-colors text-[10px]" title="Cancelar Sessão">✕</button>}
-                                            <button type="button" onClick={(e) => { e.stopPropagation(); handleDelete(appointment); }} className="text-zinc-400 hover:text-red-500"><Trash2 size={10} /></button>
+                                            <button type="button" onClick={(e) => { e.stopPropagation(); handleDelete(appointment); }} className="text-zinc-400 hover:text-red-500" title="Excluir"><Trash2 size={10} /></button>
                                           </div>
                                         </div>
                                         {appointment.needsRenewal && (
@@ -1140,11 +1192,11 @@ export const SchedulePage = () => {
                                             </div>
                                             {!appointment.isInternal && <StatusIcons appointment={appointment} />}
                                           </div>
-                                          <div className="flex flex-col gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                                          <div className="flex flex-col gap-1 opacity-100 transition-opacity">
                                             <button onClick={() => handleReminder(appointment)} className={cn("transition-colors", appointment.reminderSentAt ? "text-amber-600" : "text-zinc-400 hover:text-priori-navy")} title="Enviar Lembrete"><Bell size={10} /></button>
                                             <button onClick={() => handleEdit(appointment)} className="text-zinc-400 hover:text-priori-navy"><Edit2 size={10} /></button>
                                             {currentStatus !== 'canceled' && <button type="button" onClick={(e) => { e.stopPropagation(); setCancellationModalAppId(appointment.id); }} className="text-red-400 hover:text-red-600 font-bold bg-red-50 px-1 rounded transition-colors text-[10px]" title="Cancelar Sessão">✕</button>}
-                                            <button type="button" onClick={(e) => { e.stopPropagation(); handleDelete(appointment); }} className="text-zinc-400 hover:text-red-500"><Trash2 size={10} /></button>
+                                            <button type="button" onClick={(e) => { e.stopPropagation(); handleDelete(appointment); }} className="text-zinc-400 hover:text-red-500" title="Excluir"><Trash2 size={10} /></button>
                                           </div>
                                         </div>
                                         {appointment.needsRenewal && (

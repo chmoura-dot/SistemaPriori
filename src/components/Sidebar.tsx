@@ -17,7 +17,8 @@ import {
   Blocks,
   ClipboardList,
   KeySquare,
-  ListOrdered
+  ListOrdered,
+  CalendarOff
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { api } from '../services/api';
@@ -39,6 +40,7 @@ const menuItems = [
   { icon: TrendingDown, label: 'Despesas', path: '/despesas', adminOnly: true },
   { icon: Users, label: 'Psicólogos', path: '/psicologos' },
   { icon: ListOrdered, label: 'Fila de Espera', path: '/fila-espera' },
+  { icon: CalendarOff, label: 'Feriados', path: '/feriados' },
   { icon: Blocks, label: 'Integrações', path: '/settings', adminOnly: true },
 ];
 

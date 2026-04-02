@@ -20,6 +20,7 @@ import { SettingsPage } from './pages/SettingsPage';
 import { AccountSecurityPage } from './pages/AccountSecurityPage';
 import { PendingConfirmationsPage } from './pages/PendingConfirmationsPage';
 import { AmsPasswordsPage } from './pages/AmsPasswordsPage';
+import { HolidaysPage } from './pages/HolidaysPage';
 import { RenewalAlert } from './components/RenewalAlert';
 import { api } from './services/api';
 import { cn } from './lib/utils';
@@ -135,6 +136,8 @@ export default function App() {
         return <PendingConfirmationsPage />;
       case '/senhas-ams':
         return <AmsPasswordsPage />;
+      case '/feriados':
+        return <HolidaysPage />;
       default:
         return <DashboardPage onNavigate={navigate} />;
     }

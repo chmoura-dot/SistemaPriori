@@ -1117,4 +1117,90 @@ export const supabaseService: AppService = {
     const { error } = await supabase.from('waiting_list').delete().eq('id', id);
     if (error) throw new Error(error.message);
   },
+
+  // ── Holidays ──────────────────────────────────────────
+  getHolidays: async () => {
+    const { data, error } = await supabase.from('holidays').select('*').order('date');
+    if (error) throw new Error(error.message);
+    return (data ?? []).map((row: any) => ({
+      id: row.id,
+      date: row.date,
+      name: row.name,
+      type: row.type,
+      recurring: row.recurring,
+      clinicOpen: row.clinic_open,
+      createdAt: row.created_at,
+    }));
+  },
+
+  createHoliday: async (h) => {
+    const row = await throwOnError(
+      supabase.from('holidays').insert({
+        date: h.date,
+        name: h.name,
+        type: h.type,
+        recurring: h.recurring,
+        clinic_open: h.clinicOpen,
+      }).select().single()
+    );
+    return { id: row.id, date: row.date, name: row.name, type: row.type, recurring: row.recurring, clinicOpen: row.clinic_open, createdAt: row.created_at };
+  },
+
+  updateHoliday: async (id, h) => {
+    const updates: Record<string, any> = {};
+    if (h.date !== undefined) updates.date = h.date;
+    if (h.name !== undefined) updates.name = h.name;
+    if (h.type !== undefined) updates.type = h.type;
+    if (h.recurring !== undefined) updates.recurring = h.recurring;
+    if (h.clinicOpen !== undefined) updates.clinic_open = h.clinicOpen;
+    const row = await throwOnError(
+      supabase.from('holidays').update(updates).eq('id', id).select().single()
+    );
+    return { id: row.id, date: row.date, name: row.name, type: row.type, recurring: row.recurring, clinicOpen: row.clinic_open, createdAt: row.created_at };
+  },
+
+  deleteHoliday: async (id) => {
+    const { error } = await supabase.from('holidays').delete().eq('id', id);
+    if (error) throw new Error(error.message);
+  },
+
+  // ── Clinic Closures ───────────────────────────────────
+  getClinicClosures: async () => {
+    const { data, error } = await supabase.from('clinic_closures').select('*').order('start_date');
+    if (error) throw new Error(error.message);
+    return (data ?? []).map((row: any) => ({
+      id: row.id,
+      startDate: row.start_date,
+      endDate: row.end_date,
+      reason: row.reason,
+      createdAt: row.created_at,
+    }));
+  },
+
+  createClinicClosure: async (c) => {
+    const row = await throwOnError(
+      supabase.from('clinic_closures').insert({
+        start_date: c.startDate,
+        end_date: c.endDate,
+        reason: c.reason,
+      }).select().single()
+    );
+    return { id: row.id, startDate: row.start_date, endDate: row.end_date, reason: row.reason, createdAt: row.created_at };
+  },
+
+  updateClinicClosure: async (id, c) => {
+    const updates: Record<string, any> = {};
+    if (c.startDate !== undefined) updates.start_date = c.startDate;
+    if (c.endDate !== undefined) updates.end_date = c.endDate;
+    if (c.reason !== undefined) updates.reason = c.reason;
+    const row = await throwOnError(
+      supabase.from('clinic_closures').update(updates).eq('id', id).select().single()
+    );
+    return { id: row.id, startDate: row.start_date, endDate: row.end_date, reason: row.reason, createdAt: row.created_at };
+  },
+
+  deleteClinicClosure: async (id) => {
+    const { error } = await supabase.from('clinic_closures').delete().eq('id', id);
+    if (error) throw new Error(error.message);
+  },
 };

@@ -1073,4 +1073,34 @@ export const mockService: AppService = {
       list.filter((e) => e.id !== id)
     );
   },
+
+  // ── Holidays (mock) ───────────────────────────────────
+  getHolidays: async () => {
+    await delay(200);
+    return [];
+  },
+  createHoliday: async (h) => {
+    await delay(300);
+    return { ...h, id: Math.random().toString(36).substr(2, 9), createdAt: new Date().toISOString() };
+  },
+  updateHoliday: async (id, h) => {
+    await delay(300);
+    return { id, date: '', name: '', type: 'nacional' as const, recurring: false, clinicOpen: false, createdAt: '', ...h };
+  },
+  deleteHoliday: async (_id) => { await delay(200); },
+
+  // ── Clinic Closures (mock) ────────────────────────────
+  getClinicClosures: async () => {
+    await delay(200);
+    return [];
+  },
+  createClinicClosure: async (c) => {
+    await delay(300);
+    return { ...c, id: Math.random().toString(36).substr(2, 9), createdAt: new Date().toISOString() };
+  },
+  updateClinicClosure: async (id, c) => {
+    await delay(300);
+    return { id, startDate: '', endDate: '', reason: '', createdAt: '', ...c };
+  },
+  deleteClinicClosure: async (_id) => { await delay(200); },
 };

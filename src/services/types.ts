@@ -264,6 +264,24 @@ export interface Settings {
   updatedAt: string;
 }
 
+export interface Holiday {
+  id: string;
+  date: string; // YYYY-MM-DD
+  name: string;
+  type: 'nacional' | 'estadual' | 'municipal' | 'facultativo';
+  recurring: boolean;
+  clinicOpen: boolean; // se a clínica abre mesmo assim
+  createdAt: string;
+}
+
+export interface ClinicClosure {
+  id: string;
+  startDate: string; // YYYY-MM-DD
+  endDate: string; // YYYY-MM-DD
+  reason: string;
+  createdAt: string;
+}
+
 export interface WaitingListEntry {
   id: string;
   customerName: string;
@@ -387,4 +405,16 @@ export interface AppService {
   createWaitingListEntry: (entry: Omit<WaitingListEntry, 'id' | 'createdAt'>) => Promise<WaitingListEntry>;
   updateWaitingListEntry: (id: string, entry: Partial<WaitingListEntry>) => Promise<WaitingListEntry>;
   deleteWaitingListEntry: (id: string) => Promise<void>;
+
+  // Holidays
+  getHolidays: () => Promise<Holiday[]>;
+  createHoliday: (holiday: Omit<Holiday, 'id' | 'createdAt'>) => Promise<Holiday>;
+  updateHoliday: (id: string, holiday: Partial<Holiday>) => Promise<Holiday>;
+  deleteHoliday: (id: string) => Promise<void>;
+
+  // Clinic Closures
+  getClinicClosures: () => Promise<ClinicClosure[]>;
+  createClinicClosure: (closure: Omit<ClinicClosure, 'id' | 'createdAt'>) => Promise<ClinicClosure>;
+  updateClinicClosure: (id: string, closure: Partial<ClinicClosure>) => Promise<ClinicClosure>;
+  deleteClinicClosure: (id: string) => Promise<void>;
 }
