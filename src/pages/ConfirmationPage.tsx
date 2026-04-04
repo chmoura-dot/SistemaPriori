@@ -103,13 +103,6 @@ export const ConfirmationPage = () => {
 
       if (!res.ok) throw new Error('Falha ao salvar resposta');
 
-      if (response === 'declined') {
-        const message = `Olá ${psychologist.name}, o paciente ${customer?.name} informou que não poderá comparecer à consulta de ${new Date(appointment.date + 'T12:00:00').toLocaleDateString()} às ${appointment.startTime}. Motivo: ${notes || 'Não informado'}.`;
-        const phone = psychologist.phone.replace(/\D/g, '');
-        const url = `https://wa.me/55${phone}?text=${encodeURIComponent(message)}`;
-        window.open(url, '_blank');
-      }
-
       setStatus('success');
     } catch (error) {
       console.error('Erro ao salvar resposta:', error);
