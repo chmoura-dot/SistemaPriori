@@ -971,7 +971,7 @@ export const SchedulePage = () => {
                           const psychologist = psychologists.find(p => p.id === appointment?.psychologistId);
 
                           return (
-                            <div key={`${slot}-${room.id}`} className="p-0.5 border-r border-zinc-100 last:border-r-0 min-h-[44px] relative group">
+                            <div key={`${slot}-${room.id}`} className="p-0.5 border-r border-zinc-100 last:border-r-0 min-h-[80px] relative group">
                               {appointment ? (
                                 isFirstSlot ? (
                                   (() => {
