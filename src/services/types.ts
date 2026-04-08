@@ -127,10 +127,13 @@ export interface Appointment {
   recurrenceFrequency?: RecurrenceFrequency;
   recurrenceGroupId?: string;
   needsRenewal?: boolean;
+  renewedAt?: string;
+  renewedBy?: string;
   customPrice?: number;
   customRepassAmount?: number;
   billingBatchId?: string;
   billingStatus?: 'paid' | 'denied';
+  billingIgnored?: boolean;
   denialReason?: string;
   denialResolution?: 'accepted' | 'appealed';
   createdAt: string;

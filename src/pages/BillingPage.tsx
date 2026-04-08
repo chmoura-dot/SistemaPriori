@@ -1,17 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  FileText, 
   Plus, 
-  Search, 
-  Filter, 
   CheckCircle2, 
   Clock, 
-  Calendar as CalendarIcon,
-  ChevronRight,
   Trash2,
   AlertCircle,
   Loader2,
-  Download
+  Download,
+  Ban
 } from 'lucide-react';
 import { api } from '../services/api';
 import { exportToExcel } from '../lib/excel';
@@ -49,8 +45,6 @@ export const BillingPage = () => {
     resolution?: 'accepted' | 'appealed'
   }>>({});
   const [selectedPlan, setSelectedPlan] = useState<HealthPlan>(HealthPlan.AMS_PETROBRAS);
-  const [startDate, setStartDate] = useState(format(new Date(), 'yyyy-MM-01'));
-  const [endDate, setEndDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [batchNumber, setBatchNumber] = useState('');
   const [selectedAppointmentIds, setSelectedAppointmentIds] = useState<string[]>([]);
 
@@ -204,11 +198,28 @@ export const BillingPage = () => {
       return (
         customer?.healthPlan === selectedPlan &&
         !a.billingBatchId &&
-        a.date >= startDate &&
-        a.date <= endDate &&
+        !a.billingIgnored &&
         a.confirmedPsychologist // Only bill confirmed ones
       );
-    });
+    }).sort((a, b) => a.date.localeCompare(b.date));
+  };
+
+  const calculateTotalSelectedAmount = (): number => {
+    return appointments
+      .filter(a => selectedAppointmentIds.includes(a.id))
+      .reduce((sum, a) => sum + getAppPrice(a), 0);
+  };
+
+  const handleIgnoreAppointment = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!confirm('Marcar este atendimento como "Ignorado para Faturamento"? Ele não aparecerá mais na lista de disponíveis, mas o histórico será mantido.')) return;
+    try {
+      await api.updateAppointment(id, { billingIgnored: true });
+      setAppointments(prev => prev.map(a => a.id === id ? { ...a, billingIgnored: true } : a));
+      setSelectedAppointmentIds(prev => prev.filter(i => i !== id));
+    } catch (error) {
+      console.error('Error ignoring appointment:', error);
+    }
   };
 
   const toggleAppointmentSelection = (id: string) => {
@@ -352,7 +363,7 @@ export const BillingPage = () => {
         className="max-w-4xl"
       >
         <div className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 gap-4">
             <div>
               <label className="block text-sm font-medium text-priori-navy mb-1">Operadora</label>
               <select
@@ -367,28 +378,6 @@ export const BillingPage = () => {
                   <option key={plan} value={plan}>{plan}</option>
                 ))}
               </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-priori-navy mb-1">Início</label>
-              <Input
-                type="date"
-                value={startDate}
-                onChange={(e) => {
-                  setStartDate(e.target.value);
-                  setSelectedAppointmentIds([]);
-                }}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-priori-navy mb-1">Fim</label>
-              <Input
-                type="date"
-                value={endDate}
-                onChange={(e) => {
-                  setEndDate(e.target.value);
-                  setSelectedAppointmentIds([]);
-                }}
-              />
             </div>
           </div>
 
@@ -422,7 +411,7 @@ export const BillingPage = () => {
             <div className="max-h-64 overflow-y-auto border border-zinc-100 rounded-xl divide-y divide-zinc-100">
               {getEligibleAppointments().length === 0 ? (
                 <div className="p-8 text-center text-zinc-500 text-sm">
-                  Nenhum atendimento confirmado encontrado para este período e operadora.
+                  Nenhum atendimento confirmado encontrado para esta operadora.
                 </div>
               ) : (
                 getEligibleAppointments().map(app => {
@@ -449,14 +438,33 @@ export const BillingPage = () => {
                           {psychologist?.name} • {format(new Date(app.date + 'T12:00:00'), 'dd/MM/yyyy')} • {app.startTime}
                         </div>
                       </div>
-                      <div className="text-sm font-medium text-priori-navy">
+                      <div className="text-sm font-medium text-priori-navy mr-2">
                         {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(getAppPrice(app))}
                       </div>
+                      <button
+                        onClick={(e) => handleIgnoreAppointment(app.id, e)}
+                        className="p-1.5 text-zinc-300 hover:text-red-400 hover:bg-red-50 rounded-lg transition-all flex-shrink-0"
+                        title="Ignorar para faturamento"
+                      >
+                        <Ban size={15} />
+                      </button>
                     </div>
                   );
                 })
               )}
             </div>
+
+            {/* Somatório dinâmico */}
+            {selectedAppointmentIds.length > 0 && (
+              <div className="mt-3 flex items-center justify-between px-4 py-3 bg-priori-navy/5 rounded-xl border border-priori-navy/10">
+                <span className="text-sm font-medium text-priori-navy">
+                  Total selecionado ({selectedAppointmentIds.length} {selectedAppointmentIds.length === 1 ? 'atendimento' : 'atendimentos'})
+                </span>
+                <span className="text-lg font-bold text-priori-navy">
+                  {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(calculateTotalSelectedAmount())}
+                </span>
+              </div>
+            )}
           </div>
 
           <div className="border-t border-zinc-100 pt-4">
