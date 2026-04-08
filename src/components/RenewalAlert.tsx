@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { AlertCircle, Calendar, User, RefreshCw, XCircle } from 'lucide-react';
+import { AlertCircle, Calendar, User, RefreshCw, XCircle, Clock } from 'lucide-react';
 import { api } from '../services/api';
 import { Appointment, AppointmentStatus, RecurrenceFrequency } from '../services/types';
 import { Modal } from './Modal';
@@ -28,6 +28,15 @@ export const RenewalAlert = () => {
     setIsDismissedSession(true);
   };
 
+  // Calcula quantos dias faltam para o vencimento (negativo = já venceu)
+  const getDaysUntilDue = (dateStr: string): number => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const due = new Date(dateStr + 'T12:00:00');
+    due.setHours(0, 0, 0, 0);
+    return Math.ceil((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  };
+
   const loadData = async () => {
     if (!api.isAuthenticated()) return;
     try {
@@ -41,14 +50,17 @@ export const RenewalAlert = () => {
       const customerMap = customersData.reduce((acc, c) => ({ ...acc, [c.id]: c.name }), {});
       const psychologistMap = psychologistsData.reduce((acc, p) => ({ ...acc, [p.id]: p.name }), {});
       
-      // Filter: only show if appointment date is today or in the past
-      // AND ignored less than 3 times today
-      const today = new Date().toISOString().split('T')[0];
+      // Filtro: mostrar se vence em até 7 dias (incluindo já vencidos)
+      // E ignorado menos de 3 vezes hoje
       const filtered = appointmentsData.filter(app => {
-        const isDue = app.date <= today;
+        const daysUntilDue = getDaysUntilDue(app.date);
+        const isDue = daysUntilDue <= 7; // Alerta antecipado: 7 dias antes
         const dismissalCount = getDismissalCount(app.id);
         return isDue && dismissalCount < 3;
       });
+      
+      // Ordenar: vencidos primeiro, depois por data mais próxima
+      filtered.sort((a, b) => a.date.localeCompare(b.date));
       
       setCustomers(customerMap);
       setPsychologists(psychologistMap);
@@ -70,7 +82,7 @@ export const RenewalAlert = () => {
   const handleRenew = async (appointment: Appointment) => {
     setIsProcessing(true);
     try {
-      // Logic copied from SchedulePage.tsx handleRenew
+      // Criar próximo agendamento +7 dias a partir da data do atual
       const d = new Date(appointment.date + 'T12:00:00');
       d.setDate(d.getDate() + 7);
       const nextDate = d.toISOString().split('T')[0];
@@ -92,8 +104,12 @@ export const RenewalAlert = () => {
         recurrenceFrequency: appointment.recurrenceFrequency || RecurrenceFrequency.SEMANAL
       });
 
-      // Mark current as renewed
-      await api.updateAppointment(appointment.id, { needsRenewal: false });
+      // Marcar atual como renovado com histórico
+      await api.updateAppointment(appointment.id, {
+        needsRenewal: false,
+        renewedAt: new Date().toISOString(),
+        renewedBy: user?.email ?? 'sistema',
+      });
       
       await loadData();
     } catch (error: any) {
@@ -121,26 +137,61 @@ export const RenewalAlert = () => {
 
   if (needingRenewal.length === 0 || isDismissedSession) return null;
 
-  // We only show one at a time to focus the user
+  // Mostrar um de cada vez
   const current = needingRenewal[0];
+  const daysUntilDue = getDaysUntilDue(current.date);
+  const isOverdue = daysUntilDue < 0;
+  const isToday = daysUntilDue === 0;
+  const isUpcoming = daysUntilDue > 0;
+
+  const urgencyColor = isOverdue
+    ? { bg: 'bg-red-50', border: 'border-red-100', icon: 'bg-red-100', iconText: 'text-red-600', title: 'text-red-900', text: 'text-red-800' }
+    : isToday
+    ? { bg: 'bg-amber-50', border: 'border-amber-100', icon: 'bg-amber-100', iconText: 'text-amber-600', title: 'text-amber-900', text: 'text-amber-800' }
+    : { bg: 'bg-blue-50', border: 'border-blue-100', icon: 'bg-blue-100', iconText: 'text-blue-600', title: 'text-blue-900', text: 'text-blue-800' };
+
+  const urgencyLabel = isOverdue
+    ? `Vencido há ${Math.abs(daysUntilDue)} dia(s)`
+    : isToday
+    ? 'Vence hoje!'
+    : `Vence em ${daysUntilDue} dia(s)`;
+
+  const modalTitle = isOverdue
+    ? 'Atenção: Renovação Atrasada 🚨'
+    : isToday
+    ? 'Atenção: Renovação Necessária 🔔'
+    : 'Aviso: Renovação Próxima ⏰';
 
   return (
     <Modal
       isOpen={true}
       onClose={() => handleLater(current)}
-      title="Atenção: Renovação Necessária 🔔"
+      title={modalTitle}
       className="max-w-md"
     >
       <div className="space-y-6">
-        <div className="flex items-start gap-4 p-4 bg-amber-50 border border-amber-100 rounded-2xl">
-          <div className="p-2 bg-amber-100 rounded-lg shrink-0">
-            <AlertCircle className="text-amber-600" size={24} />
+        <div className={`flex items-start gap-4 p-4 ${urgencyColor.bg} border ${urgencyColor.border} rounded-2xl`}>
+          <div className={`p-2 ${urgencyColor.icon} rounded-lg shrink-0`}>
+            {isUpcoming ? (
+              <Clock className={urgencyColor.iconText} size={24} />
+            ) : (
+              <AlertCircle className={urgencyColor.iconText} size={24} />
+            )}
           </div>
           <div className="space-y-1">
-            <h4 className="font-bold text-amber-900">Agendamento Finalizado</h4>
-            <p className="text-sm text-amber-800 leading-relaxed">
-              O ciclo de sessões deste paciente chegou ao fim. Você precisa renovar o horário para as próximas 4 semanas ou liberar o espaço na agenda.
+            <h4 className={`font-bold ${urgencyColor.title}`}>
+              {isOverdue ? 'Ciclo de Sessões Encerrado' : isToday ? 'Agendamento Finalizado' : 'Renovação em Breve'}
+            </h4>
+            <p className={`text-sm ${urgencyColor.text} leading-relaxed`}>
+              {isOverdue
+                ? 'O ciclo de sessões deste paciente já encerrou. Renove o horário ou libere o espaço na agenda.'
+                : isToday
+                ? 'O ciclo de sessões deste paciente chega ao fim hoje. Renove o horário para as próximas 4 semanas ou libere o espaço.'
+                : `O ciclo de sessões deste paciente encerrará em ${daysUntilDue} dia(s). Prepare-se para renovar.`}
             </p>
+            <span className={`inline-block text-xs font-bold px-2 py-0.5 rounded-full ${urgencyColor.icon} ${urgencyColor.iconText}`}>
+              {urgencyLabel}
+            </span>
           </div>
         </div>
 
@@ -159,6 +210,14 @@ export const RenewalAlert = () => {
             <Calendar size={18} className="text-zinc-400" />
             <span>Última sessão: {new Date(current.date + 'T12:00:00').toLocaleDateString('pt-BR')} às {current.startTime}</span>
           </div>
+          {needingRenewal.length > 1 && (
+            <div className="flex items-center gap-3 text-zinc-500 text-xs">
+              <div className="w-[18px] flex justify-center">
+                <div className="w-2 h-2 rounded-full bg-zinc-300" />
+              </div>
+              <span>+{needingRenewal.length - 1} outro(s) agendamento(s) pendente(s)</span>
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-1 gap-3">

@@ -107,6 +107,8 @@ function toAppointment(row: any): Appointment {
     recurrenceFrequency: row.recurrence_frequency ?? undefined,
     recurrenceGroupId: row.recurrence_group_id ?? undefined,
     needsRenewal: row.needs_renewal ?? false,
+    renewedAt: row.renewed_at ?? undefined,
+    renewedBy: row.renewed_by ?? undefined,
     customPrice: row.custom_price ?? undefined,
     customRepassAmount: row.custom_repass_amount ?? undefined,
     billingBatchId: row.billing_batch_id ?? undefined,
@@ -950,7 +952,7 @@ export const supabaseService: AppService = {
   },
 
   createRepasse: async (r) => {
-    const row = await throwOnError(
+    const row: any = await throwOnError(
       supabase
         .from('repasses')
         .insert({
@@ -985,7 +987,7 @@ export const supabaseService: AppService = {
     if (r.notes !== undefined) updates.notes = r.notes;
     if (r.totalAmount !== undefined) updates.total_amount = r.totalAmount;
 
-    const row = await throwOnError(
+    const row: any = await throwOnError(
       supabase.from('repasses').update(updates).eq('id', id).select().single()
     );
     return {
@@ -1059,7 +1061,7 @@ export const supabaseService: AppService = {
   },
 
   createWaitingListEntry: async (e) => {
-    const row = await throwOnError(
+    const row: any = await throwOnError(
       supabase
         .from('waiting_list')
         .insert({
@@ -1097,7 +1099,7 @@ export const supabaseService: AppService = {
     if (e.notes !== undefined) updates.notes = e.notes;
     if (e.status !== undefined) updates.status = e.status;
 
-    const row = await throwOnError(
+    const row: any = await throwOnError(
       supabase.from('waiting_list').update(updates).eq('id', id).select().single()
     );
     return {

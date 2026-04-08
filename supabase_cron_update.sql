@@ -97,3 +97,20 @@ SELECT cron.schedule('stale-confirmation-nag', '0 11 * * 3', $$
   ) as request_id;
 $$);
 
+-- 7. Lembrete de Renovação de Agenda (Diariamente às 08:00 BRT / 11:00 UTC)
+-- Envia email para nucleopriorirj@gmail.com com agendamentos que vencem em até 3 dias
+DO $$
+BEGIN
+  PERFORM cron.unschedule('renewal-reminder-email');
+EXCEPTION WHEN OTHERS THEN
+  NULL;
+END $$;
+
+SELECT cron.schedule('renewal-reminder-email', '0 11 * * *', $$
+  SELECT net.http_post(
+      url:='https://ntqkrxtesuaeobxpmznr.supabase.co/functions/v1/renewal-reminder-email',
+      headers:='{"Content-Type": "application/json", "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im50cWtyeHRlc3VhZW9ieHBtem5yIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MzI1NDE2NiwiZXhwIjoyMDg4ODMwMTY2fQ.0XTQSt4jeJ5oc9LxQQgoONtOWDJMMydQrH7gqtdMzkY"}'::jsonb,
+      body:='{}'::jsonb
+  ) as request_id;
+$$);
+

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   LayoutDashboard, 
   Users, 
@@ -18,7 +18,8 @@ import {
   ClipboardList,
   KeySquare,
   ListOrdered,
-  CalendarOff
+  CalendarOff,
+  RefreshCw
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { api } from '../services/api';
@@ -51,7 +52,32 @@ interface SidebarProps {
 
 export const Sidebar = ({ currentPath, onNavigate }: SidebarProps) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [renewalCount, setRenewalCount] = useState(0);
   const user = api.getCurrentUser();
+
+  useEffect(() => {
+    const loadRenewalCount = async () => {
+      if (!api.isAuthenticated()) return;
+      try {
+        const appointments = await api.getAppointmentsNeedingRenewal();
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        // Conta agendamentos que vencem em até 7 dias
+        const count = appointments.filter(app => {
+          const due = new Date(app.date + 'T12:00:00');
+          due.setHours(0, 0, 0, 0);
+          const daysUntil = Math.ceil((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+          return daysUntil <= 7;
+        }).length;
+        setRenewalCount(count);
+      } catch {
+        // silencioso
+      }
+    };
+    loadRenewalCount();
+    const interval = setInterval(loadRenewalCount, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   const handleLogout = () => {
     api.logout();
@@ -100,27 +126,39 @@ export const Sidebar = ({ currentPath, onNavigate }: SidebarProps) => {
         </div>
 
         <nav className="flex-1 px-4 py-4 space-y-1.5 overflow-y-auto custom-scrollbar">
-          {menuItems.filter((item: any) => !item.adminOnly || user?.role === UserRole.ADMIN).map((item, index) => (
-            <button
-              key={`${item.path}-${index}`}
-              onClick={() => {
-                onNavigate(item.path);
-                setIsOpen(false);
-              }}
-              className={cn(
-                "w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl text-sm font-semibold transition-all duration-300",
-                currentPath === item.path 
-                  ? "bg-priori-gold text-priori-navy shadow-lg shadow-priori-gold/30 scale-[1.02]" 
-                  : "text-white/70 hover:bg-white/10 hover:text-white"
-              )}
-            >
-              <item.icon size={20} className={cn(
-                "transition-colors",
-                currentPath === item.path ? "text-priori-navy" : "text-white/40"
-              )} />
-              {item.label}
-            </button>
-          ))}
+          {menuItems.filter((item: any) => !item.adminOnly || user?.role === UserRole.ADMIN).map((item, index) => {
+            const isAgenda = item.path === '/agenda';
+            const isActive = currentPath === item.path;
+            return (
+              <button
+                key={`${item.path}-${index}`}
+                onClick={() => {
+                  onNavigate(item.path);
+                  setIsOpen(false);
+                }}
+                className={cn(
+                  "w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl text-sm font-semibold transition-all duration-300 relative",
+                  isActive
+                    ? "bg-priori-gold text-priori-navy shadow-lg shadow-priori-gold/30 scale-[1.02]" 
+                    : "text-white/70 hover:bg-white/10 hover:text-white"
+                )}
+              >
+                <item.icon size={20} className={cn(
+                  "transition-colors",
+                  isActive ? "text-priori-navy" : "text-white/40"
+                )} />
+                {item.label}
+                {isAgenda && renewalCount > 0 && (
+                  <span className={cn(
+                    "ml-auto flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[10px] font-bold",
+                    isActive ? "bg-priori-navy text-white" : "bg-red-500 text-white"
+                  )}>
+                    {renewalCount > 9 ? '9+' : renewalCount}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </nav>
 
         <div className="p-4 border-t border-white/5 space-y-2 bg-black/10">
