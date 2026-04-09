@@ -89,7 +89,7 @@ export const SchedulePage = () => {
     isRecurring: false,
     recurrenceFrequency: RecurrenceFrequency.SEMANAL,
     isInternal: false,
-    internalType: 'SUPERVISAO',
+    internalType: 'SUPERVISAO' as 'SUPERVISAO' | 'RESPONSAVEIS' | 'REUNIAO' | 'ADMIN' | 'OUTRO',
     internalTitle: '',
     internalNotes: ''
   });
@@ -210,7 +210,7 @@ export const SchedulePage = () => {
             status: AppointmentStatus.ACTIVE,
             roomId: formData.mode === AttendanceMode.ONLINE ? undefined : formData.roomId,
             isInternal: formData.isInternal,
-            internalType: formData.isInternal ? formData.internalType : undefined,
+            internalType: formData.isInternal ? (formData.internalType as any) : undefined,
             internalTitle: formData.isInternal ? formData.internalTitle : undefined,
           });
         } else {
@@ -218,7 +218,7 @@ export const SchedulePage = () => {
             ...formData,
             roomId: formData.mode === AttendanceMode.ONLINE ? undefined : formData.roomId,
             isInternal: formData.isInternal,
-            internalType: formData.isInternal ? formData.internalType : undefined,
+            internalType: formData.isInternal ? (formData.internalType as any) : undefined,
             internalTitle: formData.isInternal ? formData.internalTitle : undefined,
           });
         }
@@ -230,7 +230,7 @@ export const SchedulePage = () => {
           status: AppointmentStatus.ACTIVE,
           roomId: formData.mode === AttendanceMode.ONLINE ? undefined : formData.roomId,
           isInternal: formData.isInternal,
-          internalType: formData.isInternal ? formData.internalType : undefined,
+          internalType: formData.isInternal ? (formData.internalType as any) : undefined,
           internalTitle: formData.isInternal ? formData.internalTitle : undefined,
         });
       }
@@ -297,8 +297,12 @@ export const SchedulePage = () => {
 
   const handleConfirm = async (id: string, type: 'patient' | 'psychologist') => {
     try {
+      const app = appointments.find(a => a.id === id);
+      if (!app) return;
+      const currentValue = type === 'patient' ? app.confirmedPatient : app.confirmedPsychologist;
+      
       await api.updateAppointment(id, {
-        [type === 'patient' ? 'confirmedPatient' : 'confirmedPsychologist']: true
+        [type === 'patient' ? 'confirmedPatient' : 'confirmedPsychologist']: !currentValue
       });
       await loadData();
     } catch (error) {

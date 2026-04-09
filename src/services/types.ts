@@ -137,7 +137,7 @@ export interface Appointment {
   denialReason?: string;
   denialResolution?: 'accepted' | 'appealed';
   createdAt: string;
-  cancellationBilling?: 'none' | 'plan' | 'particular';
+  cancellationBilling?: 'none' | 'plan' | 'particular' | null;
 
   // Novos campos para horário interno
   isInternal?: boolean;

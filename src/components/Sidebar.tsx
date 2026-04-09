@@ -30,7 +30,7 @@ const menuItems = [
   { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard', adminOnly: true },
   { icon: CalendarIcon, label: 'Agenda', path: '/agenda' },
   { icon: KeySquare, label: 'Senhas AMS / PAE', path: '/senhas-ams' },
-  { icon: ClipboardList, label: 'Pendentes', path: '/pendentes' },
+  { icon: ClipboardList, label: 'Validações', path: '/pendentes' },
   { icon: Users, label: 'Pacientes', path: '/clientes' },
   { icon: Package, label: 'Planos', path: '/planos' },
   { icon: BarChart3, label: 'Financeiro', path: '/financeiro' },
