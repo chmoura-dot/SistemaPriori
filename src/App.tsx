@@ -5,7 +5,6 @@ import { DashboardPage } from './pages/DashboardPage';
 import { CustomersPage } from './pages/CustomersPage';
 import { WaitingListPage } from './pages/WaitingListPage';
 import { PlansPage } from './pages/PlansPage';
-import { PaymentsPage } from './pages/PaymentsPage';
 import { ExpensesPage } from './pages/ExpensesPage';
 import { FinancialPage } from './pages/FinancialPage';
 import { SchedulePage } from './pages/SchedulePage';
@@ -114,8 +113,6 @@ export default function App() {
         return <PlansPage />;
       case '/financeiro':
         return <FinancialPage key="financeiro-page" />;
-      case '/pagamentos':
-        return <PaymentsPage />;
       case '/faturamento':
         return <BillingPage />;
       case '/nfse': // Rota para a página de NFS-e

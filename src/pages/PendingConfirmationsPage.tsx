@@ -196,18 +196,27 @@ export const PendingConfirmationsPage = () => {
 
   const totalFiltered = groupedAppointments.reduce((acc, curr) => acc + curr.apps.length, 0);
 
-  // Geração das opções de meses (últimos 6 meses)
+  // Geração das opções de meses baseada nos agendamentos existentes
   const monthOptions = useMemo(() => {
-    const options = [];
-    const d = new Date();
-    for (let i = 0; i < 6; i++) {
-      const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      const label = d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
-      options.push({ value, label: label.charAt(0).toUpperCase() + label.slice(1) });
-      d.setMonth(d.getMonth() - 1);
-    }
-    return options;
-  }, []);
+    const months = new Set<string>();
+    appointments.forEach(app => {
+      if (app.date) {
+        months.add(app.date.substring(0, 7));
+      }
+    });
+
+    return Array.from(months)
+      .sort((a, b) => b.localeCompare(a)) // Mais recentes primeiro
+      .map(value => {
+        const [year, month] = value.split('-');
+        const d = new Date(parseInt(year), parseInt(month) - 1, 1);
+        const label = d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+        return {
+          value,
+          label: label.charAt(0).toUpperCase() + label.slice(1)
+        };
+      });
+  }, [appointments]);
 
   return (
     <div className="space-y-6 pb-20">

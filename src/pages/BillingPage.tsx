@@ -228,6 +228,14 @@ export const BillingPage = () => {
     );
   };
 
+  const pendingBatches = batches.filter(b => b.status === BillingBatchStatus.SENT);
+  const totalPendingAmount = pendingBatches.reduce((acc, b) => acc + b.totalAmount, 0);
+  
+  const paidBatches = batches.filter(b => b.status === BillingBatchStatus.PAID);
+  const totalPaidAmount = paidBatches.reduce((acc, b) => acc + b.totalAmount, 0);
+
+  const totalDenied = appointments.filter(a => a.billingStatus === 'denied').length;
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -237,19 +245,58 @@ export const BillingPage = () => {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-priori-navy">Faturamento</h1>
+          <h1 className="text-3xl font-bold text-priori-navy tracking-tight">Faturamento</h1>
           <p className="text-zinc-500 mt-1">Gerencie lotes e envios para operadoras</p>
         </div>
         <Button 
           onClick={() => setIsCreateModalOpen(true)}
-          className="bg-priori-navy hover:bg-priori-navy/90"
+          className="bg-priori-navy hover:bg-priori-navy/90 shadow-sm"
         >
           <Plus size={20} className="mr-2" />
           Novo Lote
         </Button>
+      </div>
+
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-white rounded-2xl border border-zinc-100 p-6 shadow-sm flex items-start gap-4">
+          <div className="p-3 bg-amber-50 text-amber-600 rounded-xl">
+            <Clock size={24} />
+          </div>
+          <div>
+            <p className="text-sm font-medium text-zinc-500 mb-1">A Receber ({pendingBatches.length} lotes)</p>
+            <h3 className="text-2xl font-bold text-priori-navy">
+              {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalPendingAmount)}
+            </h3>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl border border-zinc-100 p-6 shadow-sm flex items-start gap-4">
+          <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl">
+            <CheckCircle2 size={24} />
+          </div>
+          <div>
+            <p className="text-sm font-medium text-zinc-500 mb-1">Total Recebido</p>
+            <h3 className="text-2xl font-bold text-priori-navy">
+              {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalPaidAmount)}
+            </h3>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl border border-zinc-100 p-6 shadow-sm flex items-start gap-4">
+          <div className="p-3 bg-red-50 text-red-600 rounded-xl">
+            <AlertCircle size={24} />
+          </div>
+          <div>
+            <p className="text-sm font-medium text-zinc-500 mb-1">Glosas Registradas</p>
+            <h3 className="text-2xl font-bold text-priori-navy">
+              {totalDenied} {totalDenied === 1 ? 'atendimento' : 'atendimentos'}
+            </h3>
+          </div>
+        </div>
       </div>
 
       {/* Batches List */}
@@ -258,25 +305,31 @@ export const BillingPage = () => {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-zinc-50/50 border-b border-zinc-100">
-                <th className="px-6 py-4 text-xs font-semibold text-priori-navy uppercase tracking-wider">Lote</th>
-                <th className="px-6 py-4 text-xs font-semibold text-priori-navy uppercase tracking-wider">Operadora</th>
-                <th className="px-6 py-4 text-xs font-semibold text-priori-navy uppercase tracking-wider">Data Envio</th>
-                <th className="px-6 py-4 text-xs font-semibold text-priori-navy uppercase tracking-wider">Atendimentos</th>
-                <th className="px-6 py-4 text-xs font-semibold text-priori-navy uppercase tracking-wider">Valor Total</th>
-                <th className="px-6 py-4 text-xs font-semibold text-priori-navy uppercase tracking-wider">Status</th>
-                <th className="px-6 py-4 text-xs font-semibold text-priori-navy uppercase tracking-wider text-right">Ações</th>
+                <th className="px-6 py-5 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Lote</th>
+                <th className="px-6 py-5 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Operadora</th>
+                <th className="px-6 py-5 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Envio</th>
+                <th className="px-6 py-5 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Atendimentos</th>
+                <th className="px-6 py-5 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Valor Total</th>
+                <th className="px-6 py-5 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Status</th>
+                <th className="px-6 py-5 text-xs font-semibold text-zinc-500 uppercase tracking-wider text-right">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100">
               {batches.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center text-zinc-500">
-                    Nenhum lote de faturamento encontrado.
+                  <td colSpan={7} className="px-6 py-16 text-center">
+                    <div className="flex flex-col items-center justify-center text-zinc-400">
+                      <div className="w-16 h-16 bg-zinc-50 rounded-full flex items-center justify-center mb-4">
+                        <Ban size={32} className="text-zinc-300" />
+                      </div>
+                      <p className="text-lg font-medium text-zinc-600">Nenhum lote encontrado</p>
+                      <p className="text-sm mt-1">Crie um novo lote para faturar os atendimentos.</p>
+                    </div>
                   </td>
                 </tr>
               ) : (
                 batches.map((batch) => (
-                  <tr key={batch.id} className="hover:bg-zinc-50/50 transition-colors">
+                  <tr key={batch.id} className="hover:bg-zinc-50/80 transition-colors group">
                     <td className="px-6 py-4">
                       <div className="font-medium text-priori-navy">#{batch.batchNumber}</div>
                     </td>
@@ -374,7 +427,7 @@ export const BillingPage = () => {
                 }}
                 className="w-full rounded-xl border-zinc-200 bg-zinc-50 text-sm focus:ring-priori-navy focus:border-priori-navy"
               >
-                {Object.values(HealthPlan).filter(p => p !== HealthPlan.PARTICULAR).map(plan => (
+                {Object.values(HealthPlan).map(plan => (
                   <option key={plan} value={plan}>{plan}</option>
                 ))}
               </select>
