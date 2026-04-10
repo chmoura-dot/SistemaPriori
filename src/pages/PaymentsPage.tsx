@@ -113,7 +113,7 @@ export const PaymentsPage = () => {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold text-priori-navy">Pagamentos</h2>
+        <h2 className="text-2xl font-bold text-priori-navy">Atendimentos</h2>
         <p className="text-zinc-500">Histórico financeiro da clínica.</p>
       </div>
 
@@ -264,7 +264,7 @@ export const PaymentsPage = () => {
                         "text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider",
                         item.type === 'subscription' ? "bg-priori-navy/10 text-priori-navy" : "bg-zinc-100 text-zinc-500"
                       )}>
-                        {item.type === 'subscription' ? 'Pago' : 'Faturada'}
+                        {item.type === 'subscription' ? 'Pago' : 'Disponível para faturamento'}
                       </span>
                     </td>
                   </tr>

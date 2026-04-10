@@ -34,7 +34,7 @@ const menuItems = [
   { icon: Users, label: 'Pacientes', path: '/clientes' },
   { icon: Package, label: 'Planos', path: '/planos' },
   { icon: BarChart3, label: 'Financeiro', path: '/financeiro' },
-  { icon: CreditCard, label: 'Pagamentos', path: '/pagamentos' },
+  { icon: CreditCard, label: 'Atendimentos', path: '/pagamentos' },
   { icon: FileText, label: 'Faturamento', path: '/faturamento' },
   { icon: ArrowRightLeft, label: 'Repasse', path: '/repasse' },
   { icon: BarChart3, label: 'Capacidade', path: '/capacidade', adminOnly: true },
