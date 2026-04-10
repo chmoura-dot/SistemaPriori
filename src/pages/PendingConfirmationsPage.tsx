@@ -31,7 +31,6 @@ export const PendingConfirmationsPage = () => {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   
-  const [selectedPsyId, setSelectedPsyId] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'confirmed' | 'canceled'>('pending');
   const [monthFilter, setMonthFilter] = useState<string>(() => {
     const today = new Date();
@@ -173,9 +172,6 @@ export const PendingConfirmationsPage = () => {
       if (statusFilter === 'confirmed' && !isConfirmed) return false;
       if (statusFilter === 'canceled' && !isCanceled) return false;
 
-      // Filtro de Psicólogo
-      if (selectedPsyId !== 'all' && a.psychologistId !== selectedPsyId) return false;
-
       return true;
     });
 
@@ -192,7 +188,7 @@ export const PendingConfirmationsPage = () => {
     });
 
     return Array.from(map.values()).sort((a, b) => b.apps.length - a.apps.length);
-  }, [appointments, psychologists, selectedPsyId, statusFilter, monthFilter]);
+  }, [appointments, psychologists, statusFilter, monthFilter]);
 
   const totalFiltered = groupedAppointments.reduce((acc, curr) => acc + curr.apps.length, 0);
 
@@ -284,17 +280,6 @@ export const PendingConfirmationsPage = () => {
           </button>
         </div>
 
-        {/* Filtro de Psicólogo */}
-        <select
-          value={selectedPsyId}
-          onChange={(e) => setSelectedPsyId(e.target.value)}
-          className="bg-zinc-50 border border-zinc-200 text-priori-navy text-sm rounded-xl px-3 py-2 outline-none focus:border-priori-navy"
-        >
-          <option value="all">Todos os Psicólogos</option>
-          {psychologists.map(p => (
-            <option key={p.id} value={p.id}>{p.name}</option>
-          ))}
-        </select>
       </div>
 
       {isLoading ? (
@@ -303,10 +288,10 @@ export const PendingConfirmationsPage = () => {
           <p className="text-sm font-medium">Carregando validações...</p>
         </div>
       ) : groupedAppointments.length > 0 ? (
-        <div className="grid grid-cols-1 gap-6">
+        <div className="grid grid-cols-1 gap-8">
           {groupedAppointments.map(({ psy, apps }) => (
-            <div key={psy.id} className="bg-white border border-zinc-100 rounded-[2rem] overflow-hidden shadow-sm">
-              <div className="p-6 border-b border-zinc-50 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-zinc-50/30">
+            <div key={psy.id} className="bg-white border border-zinc-100 rounded-3xl overflow-hidden shadow-md shadow-zinc-100/50">
+              <div className="p-6 sm:p-8 border-b border-zinc-50 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-zinc-50/50">
                 <div className="flex items-center gap-4">
                   <div className="w-12 h-12 rounded-2xl bg-priori-navy text-white flex items-center justify-center font-bold text-xl shadow-lg shadow-priori-navy/20">
                     {psy.name.charAt(0)}
@@ -350,17 +335,17 @@ export const PendingConfirmationsPage = () => {
                 )}
               </div>
               
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto p-2">
                 <table className="w-full text-left border-collapse min-w-[700px]">
                   <thead>
-                    <tr className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest border-b border-zinc-50 bg-zinc-50/50">
-                      <th className="px-6 py-4">Data/Hora</th>
+                    <tr className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest border-b border-zinc-100 bg-white">
+                      <th className="px-6 py-4 rounded-tl-xl">Data/Hora</th>
                       <th className="px-6 py-4">Paciente</th>
                       <th className="px-6 py-4">Status Atual</th>
-                      <th className="px-6 py-4 text-right">Ações Rápidas</th>
+                      <th className="px-6 py-4 text-right rounded-tr-xl">Ações Rápidas</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-zinc-50">
+                  <tbody className="divide-y divide-zinc-100">
                     {apps.sort((a, b) => b.date.localeCompare(a.date)).map(app => {
                       const customer = customers.find(c => c.id === app.customerId);
                       const isCanceled = app.status === AppointmentStatus.CANCELED;
