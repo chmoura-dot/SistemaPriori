@@ -460,13 +460,15 @@ export const supabaseService: AppService = {
       if (a.isRecurring) {
         const groupId = generateUUID();
         const appointmentsToInsert = [];
-        const startDate = new Date(a.date + 'T12:00:00');
+        const [startYear, startMonth, startDay] = a.date.split('-').map(Number);
         const intervalDays = a.recurrenceFrequency === RecurrenceFrequency.QUINZENAL ? 14 : 7;
         
         for (let i = 0; i < 4; i++) {
-          const currentDate = new Date(startDate);
-          currentDate.setDate(startDate.getDate() + (i * intervalDays));
-          const dateStr = currentDate.toISOString().split('T')[0];
+          const currentDate = new Date(startYear, startMonth - 1, startDay + (i * intervalDays));
+          const y = currentDate.getFullYear();
+          const m = String(currentDate.getMonth() + 1).padStart(2, '0');
+          const d = String(currentDate.getDate()).padStart(2, '0');
+          const dateStr = `${y}-${m}-${d}`;
         const dateObj = new Date(dateStr + 'T12:00:00');
         
         appointmentsToInsert.push({
@@ -1136,7 +1138,7 @@ export const supabaseService: AppService = {
   },
 
   createHoliday: async (h) => {
-    const row = await throwOnError(
+    const row: any = await throwOnError(
       supabase.from('holidays').insert({
         date: h.date,
         name: h.name,
@@ -1155,7 +1157,7 @@ export const supabaseService: AppService = {
     if (h.type !== undefined) updates.type = h.type;
     if (h.recurring !== undefined) updates.recurring = h.recurring;
     if (h.clinicOpen !== undefined) updates.clinic_open = h.clinicOpen;
-    const row = await throwOnError(
+    const row: any = await throwOnError(
       supabase.from('holidays').update(updates).eq('id', id).select().single()
     );
     return { id: row.id, date: row.date, name: row.name, type: row.type, recurring: row.recurring, clinicOpen: row.clinic_open, createdAt: row.created_at };
@@ -1180,7 +1182,7 @@ export const supabaseService: AppService = {
   },
 
   createClinicClosure: async (c) => {
-    const row = await throwOnError(
+    const row: any = await throwOnError(
       supabase.from('clinic_closures').insert({
         start_date: c.startDate,
         end_date: c.endDate,
@@ -1195,7 +1197,7 @@ export const supabaseService: AppService = {
     if (c.startDate !== undefined) updates.start_date = c.startDate;
     if (c.endDate !== undefined) updates.end_date = c.endDate;
     if (c.reason !== undefined) updates.reason = c.reason;
-    const row = await throwOnError(
+    const row: any = await throwOnError(
       supabase.from('clinic_closures').update(updates).eq('id', id).select().single()
     );
     return { id: row.id, startDate: row.start_date, endDate: row.end_date, reason: row.reason, createdAt: row.created_at };

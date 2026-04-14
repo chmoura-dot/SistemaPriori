@@ -54,9 +54,12 @@ export const SchedulePage = () => {
   });
   
   const changeDate = (days: number) => {
-    const d = new Date(date + 'T12:00:00');
-    d.setDate(d.getDate() + days);
-    setDate(d.toISOString().split('T')[0]);
+    const [year, month, day] = date.split('-').map(Number);
+    const d = new Date(year, month - 1, day + days);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    setDate(`${y}-${m}-${dd}`);
   };
 
   const [appointments, setAppointments] = useState<Appointment[]>([]);

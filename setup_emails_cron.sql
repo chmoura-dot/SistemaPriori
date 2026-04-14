@@ -1,5 +1,6 @@
 -- SCRIPT DE ATUALIZAÇÃO DAS ROTINAS DE E-MAIL (SUPABASE CRON)
 -- Este script configura o envio automático de Agenda, Confirmações e Lembretes.
+-- ⚠️  SEGURANÇA: NUNCA commite este arquivo com a chave real!
 -- IMPORTANTE: Substitua 'SUA_SERVICE_ROLE_KEY' pela chave encontrada em: 
 -- Dashboard do Supabase > Settings > API > service_role (secret)
 
@@ -40,8 +41,6 @@ $$);
 -- Cobra confirmações que ficaram esquecidas de dias anteriores.
 DO $$ BEGIN PERFORM cron.unschedule('stale-confirmation-nag'); EXCEPTION WHEN OTHERS THEN NULL; END $$;
 SELECT cron.schedule('stale-confirmation-nag', '15 11 * * *', $$
->>>>+++ REPLACE
-
   SELECT net.http_post(
       url:='https://ntqkrxtesuaeobxpmznr.supabase.co/functions/v1/stale-confirmation-nag',
       headers:='{"Content-Type": "application/json", "Authorization": "Bearer SUA_SERVICE_ROLE_KEY"}'::jsonb,

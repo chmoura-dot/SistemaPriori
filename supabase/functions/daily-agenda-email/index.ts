@@ -49,13 +49,16 @@ Deno.serve(async (req) => {
           end_time,
           mode,
           type,
+          is_internal,
+          internal_title,
+          internal_type,
           customer:customers (name, health_plan),
           room:rooms (name)
         `)
         .eq('psychologist_id', psy.id)
         .eq('date', todayStr)
         .eq('status', 'active')
-        .eq('is_internal', false)
+        // Inclui horários internos (supervisão, reunião, etc.) na agenda do psicólogo
         .order('start_time');
 
       if (appError) {
@@ -90,6 +93,25 @@ Deno.serve(async (req) => {
         const customerObj = Array.isArray(app.customer) ? app.customer[0] : app.customer;
         const roomObj = Array.isArray(app.room) ? app.room[0] : app.room;
         
+        const bgColor = index % 2 === 0 ? '#ffffff' : '#f9fafb';
+
+        // Horário interno (supervisão, reunião, etc.)
+        if ((app as any).is_internal) {
+          const internalTitle = (app as any).internal_title || (app as any).internal_type || 'Horário Interno';
+          emailHtml += `
+            <tr style="background-color: ${bgColor};">
+              <td style="padding: 12px 10px; border-bottom: 1px solid #e5e7eb; white-space: nowrap;">
+                <strong>${app.start_time}</strong> às ${app.end_time}
+              </td>
+              <td style="padding: 12px 10px; border-bottom: 1px solid #e5e7eb;" colspan="2">
+                <em style="color: #6b7280;">🔒 ${internalTitle}</em>
+                <br><small style="color: #9ca3af;">(Horário Interno - sem paciente)</small>
+              </td>
+            </tr>
+          `;
+          return;
+        }
+
         const patientName = customerObj?.name || "Paciente sem nome";
         const patientPlan = customerObj?.health_plan && customerObj?.health_plan !== 'PARTICULAR' 
           ? `<br><small style="color: #666;">(${customerObj.health_plan} - ${app.type})</small>` 
@@ -98,8 +120,6 @@ Deno.serve(async (req) => {
         const modeAndRoom = app.mode === 'Presencial' 
           ? `Presencial<br><small style="color: #666;">${roomObj?.name || "Sem sala"}</small>`
           : `On-line`;
-
-        const bgColor = index % 2 === 0 ? '#ffffff' : '#f9fafb';
 
         emailHtml += `
           <tr style="background-color: ${bgColor};">
@@ -136,7 +156,7 @@ Deno.serve(async (req) => {
         });
 
         results.push({ psychologist: psy.name, status: "sent", id: mailResponse.data?.id });
-      } catch (sendError) {
+      } catch (sendError: any) {
         results.push({ psychologist: psy.name, status: "mail_error", error: sendError.message });
       }
     }
@@ -145,7 +165,7 @@ Deno.serve(async (req) => {
       headers: { 'Content-Type': 'application/json' }
     });
 
-  } catch (err) {
+  } catch (err: any) {
     return new Response(JSON.stringify({ error: err.message }), { status: 500 });
   }
 });

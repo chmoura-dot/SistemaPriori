@@ -13,3 +13,8 @@ coverage/
 debug-db.cjs
 test-real-id.cjs
 real-link-test.mjs
+
+# ⚠️ SEGURANÇA: Scripts SQL com service_role key real (NUNCA versionar com chave preenchida)
+# Estes arquivos contêm placeholders. Preencha localmente e execute no Supabase Dashboard.
+supabase_cron_update.local.sql
+setup_emails_cron.local.sql
