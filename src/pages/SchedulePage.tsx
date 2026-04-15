@@ -127,10 +127,30 @@ export const SchedulePage = () => {
     );
   }, [customers, customerSearch]);
 
-  const loadData = async () => {
+  // Keep track of the currently loaded date range to avoid redundant fetches
+  const [loadedRange, setLoadedRange] = useState({ start: '', end: '' });
+
+  const loadData = async (targetDateStr: string = date, forceRefresh: boolean = false) => {
+    // Calculamos uma janela de 30 dias (15 dias antes, 15 dias depois) para dar fluidez na navegação
+    // sem precisar carregar o banco inteiro de uma vez
+    const d = new Date(targetDateStr + 'T12:00:00');
+    
+    const past = new Date(d);
+    past.setDate(d.getDate() - 15);
+    const startDate = past.toISOString().split('T')[0];
+    
+    const future = new Date(d);
+    future.setDate(d.getDate() + 15);
+    const endDate = future.toISOString().split('T')[0];
+
+    // Se a data já está dentro do range carregado e não é um forceRefresh, não carrega de novo
+    if (!forceRefresh && loadedRange.start && loadedRange.end && targetDateStr >= loadedRange.start && targetDateStr <= loadedRange.end) {
+      return;
+    }
+
     setIsLoading(true);
     const [a, r, p, c, plansData, h, cl] = await Promise.all([
-      api.getAppointments(),
+      api.getAppointmentsByRange(startDate, endDate),
       api.getRooms(),
       api.getPsychologists(),
       api.getCustomers(),
@@ -139,6 +159,7 @@ export const SchedulePage = () => {
       api.getClinicClosures(),
     ]);
     setAppointments(a);
+    setLoadedRange({ start: startDate, end: endDate });
     setRooms(r);
     if (r.length > 0 && !selectedRoom) setSelectedRoom(r[0].id);
     setPsychologists(p);
@@ -151,8 +172,17 @@ export const SchedulePage = () => {
   };
 
   useEffect(() => {
-    loadData();
+    loadData(date, true);
   }, []);
+
+  // Reload appointments if user navigates outside the currently loaded range
+  useEffect(() => {
+    if (loadedRange.start && loadedRange.end) {
+      if (date < loadedRange.start || date > loadedRange.end) {
+        loadData(date, true);
+      }
+    }
+  }, [date, loadedRange]);
 
   const getWeekDays = (baseDate: string) => {
     const date = new Date(baseDate + 'T12:00:00');
@@ -237,7 +267,7 @@ export const SchedulePage = () => {
           internalTitle: formData.isInternal ? formData.internalTitle : undefined,
         });
       }
-      await loadData();
+      await loadData(date, true); // Force refresh with current date
       setIsModalOpen(false);
       setEditingId(null);
       setUpdateFuture(false);
@@ -294,7 +324,7 @@ export const SchedulePage = () => {
     // Single delete logic (default or if specifically chosen)
     if (confirm('Deseja realmente desmarcar este horário específico?')) {
       await api.deleteAppointment(appointment.id);
-      await loadData();
+      await loadData(date, true);
     }
   };
 
@@ -307,7 +337,7 @@ export const SchedulePage = () => {
       await api.updateAppointment(id, {
         [type === 'patient' ? 'confirmedPatient' : 'confirmedPsychologist']: !currentValue
       });
-      await loadData();
+      await loadData(date, true);
     } catch (error) {
       alert('Erro ao confirmar');
     }
@@ -320,7 +350,7 @@ export const SchedulePage = () => {
         status: AppointmentStatus.CANCELED,
         cancellationBilling: billingMode
       });
-      await loadData();
+      await loadData(date, true);
     } catch (error) {
       alert('Erro ao cancelar agendamento');
     } finally {
@@ -357,7 +387,7 @@ export const SchedulePage = () => {
       // Mark current as renewed
       await api.updateAppointment(appointment.id, { needsRenewal: false });
       
-      await loadData();
+      await loadData(date, true);
       alert('Agendamento renovado com sucesso! Mais 4 semanas foram bloqueadas.');
     } catch (error: any) {
       alert(error.message || 'Erro ao renovar agendamento');
@@ -371,7 +401,7 @@ export const SchedulePage = () => {
     
     try {
       await api.updateAppointment(id, { needsRenewal: false });
-      await loadData();
+      await loadData(date, true);
     } catch (error) {
       alert('Erro ao desconsiderar alerta');
     }
@@ -407,7 +437,7 @@ export const SchedulePage = () => {
       await api.updateAppointment(appointment.id, { reminderSentAt: new Date().toISOString() });
       const url = `https://wa.me/55${customer.phone.replace(/\D/g, '')}?text=${encodeURIComponent(message)}`;
       window.open(url, '_blank');
-      await loadData();
+      await loadData(date, true);
     } catch (error) {
       alert('Erro ao registrar envio do lembrete');
     }

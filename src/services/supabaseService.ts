@@ -430,7 +430,7 @@ export const supabaseService: AppService = {
 
     // Limite alto para evitar truncamento padrão de 1000 registros do Supabase
     // O banco pode ter mais de 1000 agendamentos na janela de 210 dias
-    query = (query as any).order('date').order('start_time').limit(5000);
+    query = (query as any).order('date').order('start_time').limit(10000);
     const { data, error } = await query;
     if (error) throw new Error(error.message);
     return (data ?? []).map(toAppointment);
@@ -444,7 +444,7 @@ export const supabaseService: AppService = {
       .lte('date', endDate)
       .order('date')
       .order('start_time')
-      .limit(5000);
+      .limit(10000);
     if (error) throw new Error(error.message);
     return (data ?? []).map(toAppointment);
   },
