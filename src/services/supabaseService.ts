@@ -443,7 +443,8 @@ export const supabaseService: AppService = {
       .gte('date', startDate)
       .lte('date', endDate)
       .order('date')
-      .order('start_time');
+      .order('start_time')
+      .limit(5000);
     if (error) throw new Error(error.message);
     return (data ?? []).map(toAppointment);
   },
