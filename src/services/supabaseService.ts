@@ -424,7 +424,7 @@ export const supabaseService: AppService = {
       const past = new Date(today);
       past.setDate(today.getDate() - 30);
       const future = new Date(today);
-      future.setDate(today.getDate() + 180);
+      future.setDate(today.getDate() + 365);
       query = query
         .gte('date', past.toISOString().split('T')[0])
         .lte('date', future.toISOString().split('T')[0]);
