@@ -421,10 +421,8 @@ export const supabaseService: AppService = {
     } else {
       // Sem filtro: buscar 30 dias passados + 180 dias futuros
       const today = new Date();
-      const past = new Date(today);
-      past.setDate(today.getDate() - 30);
-      const future = new Date(today);
-      future.setDate(today.getDate() + 365);
+      const past = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
+      const future = new Date(today.getTime() + 180 * 24 * 60 * 60 * 1000);
       query = query
         .gte('date', past.toISOString().split('T')[0])
         .lte('date', future.toISOString().split('T')[0]);
