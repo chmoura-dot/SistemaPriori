@@ -1472,7 +1472,8 @@ export const SchedulePage = () => {
                               setFormData({ 
                                 ...formData, 
                                 customerId: c.id, 
-                                psychologistId: c.psychologistId || formData.psychologistId,
+                                // Não definimos mais psychologistId automaticamente aqui
+                                // psychologistId: c.psychologistId || formData.psychologistId,
                                 startTime: '',
                                 endTime: '',
                                 procedureCode: '' 
@@ -1535,86 +1536,180 @@ export const SchedulePage = () => {
 
           {(formData.customerId || formData.isInternal) && (
             <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
-              {/* 3. PSICÓLOGO */}
-              <div className="space-y-2">
-                <label className="text-sm font-bold text-zinc-500 uppercase tracking-widest">Psicólogo Responsável</label>
-                <select
-                  className="w-full rounded-xl bg-white border border-zinc-200 px-4 py-3 text-base text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/10 transition-all"
-                  value={formData.psychologistId}
-                  onChange={(e) => setFormData({ ...formData, psychologistId: e.target.value, startTime: '', endTime: '' })}
-                  required
-                >
-                  <option value="">Selecione um psicólogo...</option>
-                  {psychologists
-                    .filter(p => p.active)
-                    .map(p => (
-                      <option key={p.id} value={p.id}>{p.name}</option>
-                    ))
-                  }
-                </select>
+              {/* 3. DATA E HORÁRIO (Movido para cima) */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-zinc-500 uppercase tracking-widest">Data</label>
+                  <input
+                    type="date"
+                    className="w-full rounded-xl bg-white border border-zinc-200 px-4 py-3 text-base text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/10 transition-all"
+                    value={formData.date}
+                    onChange={(e) => setFormData({ ...formData, date: e.target.value, startTime: '', endTime: '', psychologistId: '', roomId: '' })}
+                    required
+                  />
+                  {formData.date && (
+                    <p className="text-xs text-zinc-500 mt-1">
+                      {new Date(formData.date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })}
+                    </p>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-zinc-500 uppercase tracking-widest">Hora Início</label>
+                  <select
+                    className="w-full rounded-xl bg-white border border-zinc-200 px-4 py-3 text-base text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/10 transition-all"
+                    value={formData.startTime}
+                    onChange={(e) => setFormData({ ...formData, startTime: e.target.value, psychologistId: '', roomId: '' })}
+                    required
+                  >
+                    <option value="">Selecione...</option>
+                    {allTimeSlots.filter(t => {
+                      // Agora que não dependemos do psicólogo aqui, apenas filtramos por limites gerais de horário
+                      // como sábado = 14:00, etc. (Opcionalmente, pode ser apenas a lista toda, mas vamos usar a checagem básica)
+                      const isOnline = formData.mode === AttendanceMode.ONLINE;
+                      const dateObj = new Date(formData.date + 'T12:00:00');
+                      const dayOfWeek = dateObj.getDay();
+                      const isSaturday = dayOfWeek === 6;
+                      const limit = isSaturday ? '14:00' : '20:00';
+                      
+                      // Bloqueia domingos
+                      if (dayOfWeek === 0) return false;
+                      
+                      // Aplica limite de horário para presencial
+                      if (!isOnline && t >= limit) return false;
+                      
+                      return true;
+                    }).map(t => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-zinc-500 uppercase tracking-widest">Hora Fim</label>
+                  <select
+                    className="w-full rounded-xl bg-white border border-zinc-200 px-4 py-3 text-base text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/10 transition-all"
+                    value={formData.endTime}
+                    onChange={(e) => setFormData({ ...formData, endTime: e.target.value, psychologistId: '', roomId: '' })}
+                    required
+                  >
+                    <option value="">Selecione...</option>
+                    {allTimeSlots.filter(t => t > formData.startTime).map(t => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
-              {formData.psychologistId && (
+              {formData.startTime && formData.endTime && (
                 <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
-                  {/* 4. DATA E HORÁRIO */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <div className="space-y-2">
-                      <label className="text-sm font-bold text-zinc-500 uppercase tracking-widest">Data</label>
-                      <input
-                        type="date"
-                        className="w-full rounded-xl bg-white border border-zinc-200 px-4 py-3 text-base text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/10 transition-all"
-                        value={formData.date}
-                        onChange={(e) => setFormData({ ...formData, date: e.target.value, startTime: '', endTime: '' })}
-                        required
+                  
+                  {/* TIPO DE ATENDIMENTO / TUSS (Só se não for interno) - Movido para antes do psicólogo */}
+                  {!formData.isInternal && (
+                    <div className="pt-4 border-t border-zinc-100">
+                      {(() => {
+                        const customer = customers.find(c => c.id === formData.customerId);
+                        if (customer?.healthPlan === HealthPlan.PARTICULAR) {
+                          return (
+                            <div className="space-y-4">
+                              <div className="p-3 bg-emerald-50 border border-emerald-100 rounded-xl">
+                                <p className="text-xs font-bold text-emerald-800 uppercase tracking-widest flex items-center gap-2">
+                                   <Check size={14} /> Atendimento Particular
+                                </p>
+                              </div>
+                              <div className="space-y-2">
+                                <label className="text-sm font-bold text-zinc-500 uppercase tracking-widest">Tipo de Atendimento</label>
+                                <select
+                                  className="w-full rounded-xl bg-white border border-zinc-200 px-4 py-3 text-base text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/10 transition-all"
+                                  value={formData.type}
+                                  onChange={(e) => setFormData({ ...formData, type: e.target.value as AppointmentType })}
+                                  required
+                                >
+                                  {Object.values(AppointmentType).map(type => (
+                                    <option key={type} value={type}>{type}</option>
+                                  ))}
+                                </select>
+                              </div>
+                            </div>
+                          );
+                        } else if (customer) {
+                          const plan = plans.find(p => p.name.toUpperCase() === customer.healthPlan.toUpperCase());
+                          return (
+                            <div className="space-y-4">
+                              <div className="p-3 bg-priori-navy/5 border border-priori-navy/10 rounded-xl">
+                                <p className="text-xs font-bold text-priori-navy uppercase tracking-widest flex items-center gap-2">
+                                   <Globe size={14} /> Convênio: {customer.healthPlan}
+                                </p>
+                              </div>
+                              <div className="space-y-2">
+                                <label className="text-sm font-bold text-zinc-500 uppercase tracking-widest">Procedimento / Código TUSS</label>
+                                <select
+                                  className="w-full rounded-xl bg-white border border-zinc-200 px-4 py-3 text-base text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/10 transition-all"
+                                  value={formData.procedureCode}
+                                  onChange={(e) => {
+                                    const proc = plan?.procedures.find(p => p.code === e.target.value);
+                                    setFormData({ 
+                                      ...formData, 
+                                      procedureCode: e.target.value,
+                                      type: proc ? proc.type : formData.type
+                                    });
+                                  }}
+                                  required
+                                >
+                                  <option value="">Selecione o procedimento...</option>
+                                  {plan?.procedures.map(proc => (
+                                    <option key={proc.code} value={proc.code}>
+                                      {proc.code} - {proc.type} ({proc.description})
+                                    </option>
+                                  ))}
+                                  {!plan && <option disabled>Nenhum procedimento cadastrado para este plano</option>}
+                                </select>
+                              </div>
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
+                    </div>
+                  )}
+
+                  {/* OBSERVAÇÕES INTERNAS */}
+                  {formData.isInternal && (
+                    <div className="pt-4 border-t border-zinc-100 space-y-2">
+                      <label className="text-sm font-bold text-zinc-500 uppercase tracking-widest">Observações (Opcional)</label>
+                      <textarea
+                        className="w-full rounded-xl bg-white border border-zinc-200 px-4 py-3 text-base text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/10 transition-all min-h-[80px] resize-none"
+                        placeholder="Detalhes adicionais sobre este horário..."
+                        value={formData.internalNotes}
+                        onChange={(e) => setFormData({ ...formData, internalNotes: e.target.value })}
                       />
-                      {formData.date && (
-                        <p className="text-xs text-zinc-500 mt-1">
-                          {new Date(formData.date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })}
-                        </p>
-                      )}
                     </div>
-                    <div className="space-y-2">
-                      <label className="text-sm font-bold text-zinc-500 uppercase tracking-widest">Hora Início</label>
-                      <select
-                        className="w-full rounded-xl bg-white border border-zinc-200 px-4 py-3 text-base text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/10 transition-all"
-                        value={formData.startTime}
-                        onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
-                        required
-                      >
-                        <option value="">Selecione...</option>
-                        {allTimeSlots.filter(t => {
-                          // For the start time selection, we allow any time that falls within 
-                          // the professional's availability, even if the default duration 
-                          // would exceed the shift end. This allows the user to manually 
-                          // shorten the session afterwards.
-                          // We check if at least 10 minutes are available.
-                          const minDuration = 10;
-                          const minEndTime = addMinutes(t, minDuration);
-                          return isPsychologistAvailable(formData.psychologistId, formData.date, t, minEndTime, formData.mode);
-                        }).map(t => (
-                          <option key={t} value={t}>{t}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-sm font-bold text-zinc-500 uppercase tracking-widest">Hora Fim</label>
-                      <select
-                        className="w-full rounded-xl bg-white border border-zinc-200 px-4 py-3 text-base text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/10 transition-all"
-                        value={formData.endTime}
-                        onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
-                        required
-                      >
-                        <option value="">Selecione...</option>
-                        {allTimeSlots.filter(t => t > formData.startTime).map(t => (
-                          <option key={t} value={t}>{t}</option>
-                        ))}
-                      </select>
-                    </div>
+                  )}
+
+                  {/* 4. PSICÓLOGO (Agora é um filtro dinâmico) */}
+                  <div className="space-y-2 pt-4 border-t border-zinc-100">
+                    <label className="text-sm font-bold text-zinc-500 uppercase tracking-widest">Psicólogo Disponível</label>
+                    <select
+                      className="w-full rounded-xl bg-white border border-zinc-200 px-4 py-3 text-base text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/10 transition-all"
+                      value={formData.psychologistId}
+                      onChange={(e) => setFormData({ ...formData, psychologistId: e.target.value })}
+                      required
+                    >
+                      <option value="">Selecione um psicólogo...</option>
+                      {psychologists
+                        .filter(p => p.active)
+                        .filter(p => isPsychologistAvailable(p.id, formData.date, formData.startTime, formData.endTime, formData.mode))
+                        .map(p => (
+                          <option key={p.id} value={p.id}>{p.name}</option>
+                        ))
+                      }
+                    </select>
+                    {psychologists.filter(p => p.active && isPsychologistAvailable(p.id, formData.date, formData.startTime, formData.endTime, formData.mode)).length === 0 && (
+                      <p className="text-xs text-red-500 mt-1">Nenhum psicólogo disponível neste dia/horário para este modo de atendimento.</p>
+                    )}
                   </div>
 
-                  {formData.startTime && (
+                  {formData.psychologistId && (
                     <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
-                      {/* 5. SALA (Preencial apenas) */}
+                      {/* 5. SALA (Presencial apenas) */}
                       {formData.mode === AttendanceMode.PRESENCIAL && (
                         <div className="space-y-2">
                           <label className="text-sm font-bold text-zinc-500 uppercase tracking-widest">Sala de Atendimento</label>
@@ -1630,6 +1725,7 @@ export const SchedulePage = () => {
                                 a.roomId === r.id && 
                                 a.date === formData.date &&
                                 a.id !== editingId &&
+                                a.status !== AppointmentStatus.CANCELED &&
                                 ((formData.startTime >= a.startTime && formData.startTime < a.endTime) ||
                                  (formData.endTime > a.startTime && formData.endTime <= a.endTime) ||
                                  (formData.startTime <= a.startTime && formData.endTime >= a.endTime))
@@ -1639,88 +1735,17 @@ export const SchedulePage = () => {
                               <option key={r.id} value={r.id}>{r.name}</option>
                             ))}
                           </select>
-                        </div>
-                      )}
-
-                      {/* TIPO DE ATENDIMENTO / TUSS (Só se não for interno) */}
-                      {!formData.isInternal && (
-                        <div className="pt-4 border-t border-zinc-100">
-                          {(() => {
-                            const customer = customers.find(c => c.id === formData.customerId);
-                            if (customer?.healthPlan === HealthPlan.PARTICULAR) {
-                              return (
-                                <div className="space-y-4">
-                                  <div className="p-3 bg-emerald-50 border border-emerald-100 rounded-xl">
-                                    <p className="text-xs font-bold text-emerald-800 uppercase tracking-widest flex items-center gap-2">
-                                       <Check size={14} /> Atendimento Particular
-                                    </p>
-                                  </div>
-                                  <div className="space-y-2">
-                                    <label className="text-sm font-bold text-zinc-500 uppercase tracking-widest">Tipo de Atendimento</label>
-                                    <select
-                                      className="w-full rounded-xl bg-white border border-zinc-200 px-4 py-3 text-base text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/10 transition-all"
-                                      value={formData.type}
-                                      onChange={(e) => setFormData({ ...formData, type: e.target.value as AppointmentType })}
-                                      required
-                                    >
-                                      {Object.values(AppointmentType).map(type => (
-                                        <option key={type} value={type}>{type}</option>
-                                      ))}
-                                    </select>
-                                  </div>
-                                </div>
-                              );
-                            } else if (customer) {
-                              const plan = plans.find(p => p.name.toUpperCase() === customer.healthPlan.toUpperCase());
-                              return (
-                                <div className="space-y-4">
-                                  <div className="p-3 bg-priori-navy/5 border border-priori-navy/10 rounded-xl">
-                                    <p className="text-xs font-bold text-priori-navy uppercase tracking-widest flex items-center gap-2">
-                                       <Globe size={14} /> Convênio: {customer.healthPlan}
-                                    </p>
-                                  </div>
-                                  <div className="space-y-2">
-                                    <label className="text-sm font-bold text-zinc-500 uppercase tracking-widest">Procedimento / Código TUSS</label>
-                                    <select
-                                      className="w-full rounded-xl bg-white border border-zinc-200 px-4 py-3 text-base text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/10 transition-all"
-                                      value={formData.procedureCode}
-                                      onChange={(e) => {
-                                        const proc = plan?.procedures.find(p => p.code === e.target.value);
-                                        setFormData({ 
-                                          ...formData, 
-                                          procedureCode: e.target.value,
-                                          type: proc ? proc.type : formData.type
-                                        });
-                                      }}
-                                      required
-                                    >
-                                      <option value="">Selecione o procedimento...</option>
-                                      {plan?.procedures.map(proc => (
-                                        <option key={proc.code} value={proc.code}>
-                                          {proc.code} - {proc.type} ({proc.description})
-                                        </option>
-                                      ))}
-                                      {!plan && <option disabled>Nenhum procedimento cadastrado para este plano</option>}
-                                    </select>
-                                  </div>
-                                </div>
-                              );
-                            }
-                            return null;
-                          })()}
-                        </div>
-                      )}
-
-                      {/* OBSERVAÇÕES INTERNAS */}
-                      {formData.isInternal && (
-                        <div className="pt-4 border-t border-zinc-100 space-y-2">
-                          <label className="text-sm font-bold text-zinc-500 uppercase tracking-widest">Observações (Opcional)</label>
-                          <textarea
-                            className="w-full rounded-xl bg-white border border-zinc-200 px-4 py-3 text-base text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/10 transition-all min-h-[80px] resize-none"
-                            placeholder="Detalhes adicionais sobre este horário..."
-                            value={formData.internalNotes}
-                            onChange={(e) => setFormData({ ...formData, internalNotes: e.target.value })}
-                          />
+                          {rooms.filter(r => r.active && !appointments.some(a => 
+                                a.roomId === r.id && 
+                                a.date === formData.date &&
+                                a.id !== editingId &&
+                                a.status !== AppointmentStatus.CANCELED &&
+                                ((formData.startTime >= a.startTime && formData.startTime < a.endTime) ||
+                                 (formData.endTime > a.startTime && formData.endTime <= a.endTime) ||
+                                 (formData.startTime <= a.startTime && formData.endTime >= a.endTime))
+                              )).length === 0 && (
+                            <p className="text-xs text-red-500 mt-1">Nenhuma sala disponível neste horário.</p>
+                          )}
                         </div>
                       )}
 
