@@ -54,8 +54,8 @@ export const SchedulePage = () => {
   });
   
   const changeDate = (days: number) => {
-    const [year, month, day] = date.split('-').map(Number);
-    const d = new Date(year, month - 1, day + days);
+    const d = new Date(date + 'T12:00:00');
+    d.setDate(d.getDate() + days);
     const y = d.getFullYear();
     const m = String(d.getMonth() + 1).padStart(2, '0');
     const dd = String(d.getDate()).padStart(2, '0');
