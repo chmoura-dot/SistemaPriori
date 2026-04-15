@@ -413,8 +413,24 @@ export const supabaseService: AppService = {
 
   // ── Appointments ──────────────────────────────────────
   getAppointments: async (date?: string) => {
-    let query = supabase.from('appointments').select('*').order('date').order('start_time');
-    if (date) query = query.eq('date', date);
+    let query = supabase.from('appointments').select('*');
+
+    if (date) {
+      // Data específica: buscar apenas aquele dia
+      query = query.eq('date', date);
+    } else {
+      // Sem filtro: buscar 30 dias passados + 180 dias futuros
+      const today = new Date();
+      const past = new Date(today);
+      past.setDate(today.getDate() - 30);
+      const future = new Date(today);
+      future.setDate(today.getDate() + 180);
+      query = query
+        .gte('date', past.toISOString().split('T')[0])
+        .lte('date', future.toISOString().split('T')[0]);
+    }
+
+    query = (query as any).order('date').order('start_time');
     const { data, error } = await query;
     if (error) throw new Error(error.message);
     return (data ?? []).map(toAppointment);
