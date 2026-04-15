@@ -519,18 +519,54 @@ export const supabaseService: AppService = {
         });
       }
 
+      // Pré-validação de conflitos para todas as datas a serem inseridas
+      for (const appToInsert of appointmentsToInsert) {
+        const { data: conflicts } = await supabase
+          .from('appointments')
+          .select('id')
+          .eq('psychologist_id', appToInsert.psychologist_id)
+          .eq('date', appToInsert.date)
+          .neq('status', 'canceled')
+          .not('id', 'eq', '00000000-0000-0000-0000-000000000000')
+          .or(`and(start_time.gte.${appToInsert.start_time},start_time.lt.${appToInsert.end_time}),and(end_time.gt.${appToInsert.start_time},end_time.lte.${appToInsert.end_time}),and(start_time.lte.${appToInsert.start_time},end_time.gte.${appToInsert.end_time})`)
+          .limit(1);
+          
+        if (conflicts && conflicts.length > 0) {
+          throw new Error(`O psicólogo selecionado já possui um agendamento na data ${appToInsert.date} neste horário.`);
+        }
+      }
+
       const { data, error } = await supabase.from('appointments').insert(appointmentsToInsert).select();
-      if (error) throw new Error(error.message);
+      if (error) {
+        if (error.code === 'P0001' || error.message.includes('conflitante') || error.code === '23505') {
+          throw new Error('O psicólogo selecionado já possui um agendamento neste horário.');
+        }
+        throw new Error(error.message);
+      }
       if (!data || data.length === 0) throw new Error('Falha ao criar agendamentos');
       
       return toAppointment(data[0]);
     } else {
+      // Pré-validação de conflito único
+      const { data: conflicts } = await supabase
+        .from('appointments')
+        .select('id')
+        .eq('psychologist_id', a.psychologistId)
+        .eq('date', a.date)
+        .neq('status', 'canceled')
+        .or(`and(start_time.gte.${a.startTime},start_time.lt.${a.endTime}),and(end_time.gt.${a.startTime},end_time.lte.${a.endTime}),and(start_time.lte.${a.startTime},end_time.gte.${a.endTime})`)
+        .limit(1);
+        
+      if (conflicts && conflicts.length > 0) {
+        throw new Error('O psicólogo selecionado já possui um agendamento neste horário.');
+      }
+
       const dateObj = new Date(a.date + 'T12:00:00');
-      const row = await throwOnError(
-        supabase
-          .from('appointments')
-          .insert({
-            customer_id: a.isInternal ? null : (a.customerId || null),
+      
+      const { data, error } = await supabase
+        .from('appointments')
+        .insert({
+          customer_id: a.isInternal ? null : (a.customerId || null),
             psychologist_id: a.psychologistId,
             room_id: a.roomId ?? null,
             mode: a.mode,
@@ -553,13 +589,22 @@ export const supabaseService: AppService = {
             cancellation_billing: a.cancellationBilling ?? null,
             is_internal: a.isInternal ?? false,
             internal_type: a.isInternal ? (a.internalType ?? null) : null,
-            internal_title: a.isInternal ? (a.internalTitle ?? null) : null,
-            internal_notes: a.isInternal ? (a.internalNotes ?? null) : null,
-          })
-          .select()
-          .single()
-      );
-      return toAppointment(row);
+          internal_title: a.isInternal ? (a.internalTitle ?? null) : null,
+          internal_notes: a.isInternal ? (a.internalNotes ?? null) : null,
+        })
+        .select()
+        .single();
+
+      if (error) {
+        if (error.code === 'P0001' || error.message.includes('conflitante') || error.code === '23505') {
+          throw new Error('O psicólogo selecionado já possui um agendamento neste horário.');
+        }
+        throw new Error(error.message);
+      }
+      
+      if (!data) throw new Error('No data returned from Supabase');
+      
+      return toAppointment(data);
     }
   },
 
@@ -601,10 +646,18 @@ export const supabaseService: AppService = {
     if (a.internalTitle !== undefined) updates.internal_title = a.internalTitle;
     if (a.internalNotes !== undefined) updates.internal_notes = a.internalNotes;
 
-    const row = await throwOnError(
-      supabase.from('appointments').update(updates).eq('id', id).select().single()
-    );
-    return toAppointment(row);
+    const { data, error } = await supabase.from('appointments').update(updates).eq('id', id).select().single();
+    
+    if (error) {
+      if (error.code === 'P0001' || error.message.includes('conflitante') || error.code === '23505') {
+        throw new Error('O psicólogo selecionado já possui um agendamento neste horário.');
+      }
+      throw new Error(error.message);
+    }
+    
+    if (!data) throw new Error('No data returned from Supabase');
+    
+    return toAppointment(data);
   },
 
   deleteAppointment: async (id) => {

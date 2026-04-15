@@ -231,6 +231,35 @@ export const SchedulePage = () => {
         throw new Error('O psicólogo selecionado já possui um agendamento neste horário.');
       }
 
+      // Se for recorrente, verifica as próximas semanas antes de enviar
+      if (formData.isRecurring && !editingId) {
+        const intervalDays = formData.recurrenceFrequency === RecurrenceFrequency.QUINZENAL ? 14 : 7;
+        const [startYear, startMonth, startDay] = formData.date.split('-').map(Number);
+        
+        for (let i = 1; i < 4; i++) { // pula a semana 0 que já foi verificada
+          const currentDate = new Date(startYear, startMonth - 1, startDay + (i * intervalDays));
+          const y = currentDate.getFullYear();
+          const m = String(currentDate.getMonth() + 1).padStart(2, '0');
+          const dayStr = String(currentDate.getDate()).padStart(2, '0');
+          const targetDate = `${y}-${m}-${dayStr}`;
+
+          const recurringConflicts = appointments.some(a => 
+            a.psychologistId === formData.psychologistId &&
+            a.date === targetDate &&
+            a.status !== AppointmentStatus.CANCELED &&
+            (
+              (formData.startTime >= a.startTime && formData.startTime < a.endTime) ||
+              (formData.endTime > a.startTime && formData.endTime <= a.endTime) ||
+              (formData.startTime <= a.startTime && formData.endTime >= a.endTime)
+            )
+          );
+
+          if (recurringConflicts) {
+            throw new Error(`O psicólogo já possui um agendamento conflitante na data futura da recorrência (${targetDate}). Por favor, libere este horário antes de criar o grupo.`);
+          }
+        }
+      }
+
       if (editingId) {
         const appointmentToEdit = appointments.find(a => a.id === editingId);
         
@@ -365,8 +394,35 @@ export const SchedulePage = () => {
     try {
       // Calculate next week's date
       const d = new Date(appointment.date + 'T12:00:00');
-      d.setDate(d.getDate() + 7);
+      d.setDate(d.getDate() + (appointment.recurrenceFrequency === RecurrenceFrequency.QUINZENAL ? 14 : 7));
       const nextDate = d.toISOString().split('T')[0];
+
+      // Verificar conflitos localmente primeiro
+      const intervalDays = appointment.recurrenceFrequency === RecurrenceFrequency.QUINZENAL ? 14 : 7;
+      const [startYear, startMonth, startDay] = nextDate.split('-').map(Number);
+      
+      for (let i = 0; i < 4; i++) {
+        const currentDate = new Date(startYear, startMonth - 1, startDay + (i * intervalDays));
+        const y = currentDate.getFullYear();
+        const m = String(currentDate.getMonth() + 1).padStart(2, '0');
+        const dayStr = String(currentDate.getDate()).padStart(2, '0');
+        const targetDate = `${y}-${m}-${dayStr}`;
+
+        const conflicts = appointments.some(a => 
+          a.psychologistId === appointment.psychologistId &&
+          a.date === targetDate &&
+          a.status !== AppointmentStatus.CANCELED &&
+          (
+            (appointment.startTime >= a.startTime && appointment.startTime < a.endTime) ||
+            (appointment.endTime > a.startTime && appointment.endTime <= a.endTime) ||
+            (appointment.startTime <= a.startTime && appointment.endTime >= a.endTime)
+          )
+        );
+
+        if (conflicts) {
+          throw new Error(`O psicólogo selecionado já possui um agendamento conflitante na data ${targetDate} neste horário. A renovação foi cancelada.`);
+        }
+      }
 
       await api.createAppointment({
         customerId: appointment.customerId,
