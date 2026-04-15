@@ -77,6 +77,10 @@ export const ExpensesPage = () => {
       setEditingExpense(null);
       setFormData({
         description: '',
+        beneficiary: '',
+        razaoSocial: '',
+        nomeFantasia: '',
+        productDescription: '',
         amount: 0,
         category: ExpenseCategory.OTHER,
         date: new Date().toISOString().split('T')[0],
@@ -432,6 +436,10 @@ export const ExpensesPage = () => {
             setAmountInput('');
             setFormData({
               description: '',
+              beneficiary: '',
+              razaoSocial: '',
+              nomeFantasia: '',
+              productDescription: '',
               amount: 0,
               category: ExpenseCategory.OTHER,
               date: new Date().toISOString().split('T')[0],

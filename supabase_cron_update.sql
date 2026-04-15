@@ -1,102 +1,3 @@
--- SCRIPT DE AGENDAMENTO COM ALTA CONFIABILIDADE (USAR SERVICE_ROLE)
--- ⚠️  SEGURANÇA: NUNCA commite este arquivo com a chave real!
--- Substitua 'SUA_SERVICE_ROLE_KEY' pela chave encontrada em: Settings > API > service_role (secret)
--- Após preencher, execute APENAS no SQL Editor do Supabase Dashboard (não versione com a chave real).
---
--- INSTRUÇÕES:
--- 1. Copie este arquivo
--- 2. Substitua SUA_SERVICE_ROLE_KEY pela chave real (começa com eyJhbGci...)
--- 3. Execute no Supabase Dashboard > SQL Editor
--- 4. NÃO salve o arquivo com a chave real no repositório
-
--- 1. Lembretes de WhatsApp (06:00 BRT / 09:00 UTC)
-DO $do$
-BEGIN
-  PERFORM cron.unschedule('whatsapp-reminder');
-EXCEPTION WHEN OTHERS THEN
-  NULL;
-END $do$;
-
-SELECT cron.schedule(
-  'whatsapp-reminder',
-  '0 9 * * *',
-  $body$
-    SELECT net.http_post(
-        url := 'https://ntqkrxtesuaeobxpmznr.supabase.co/functions/v1/whatsapp-reminder',
-        headers := '{"Content-Type": "application/json", "Authorization": "Bearer SUA_SERVICE_ROLE_KEY"}'::jsonb,
-        body := '{}'::jsonb
-    ) as request_id;
-  $body$
-);
-
--- 2. Agenda Diária Psicólogos (06:00 BRT / 09:00 UTC)
-DO $do$
-BEGIN
-  PERFORM cron.unschedule('daily-agenda-email');
-EXCEPTION WHEN OTHERS THEN
-  NULL;
-END $do$;
-
-SELECT cron.schedule(
-  'daily-agenda-email',
-  '0 9 * * *',
-  $body$
-    SELECT net.http_post(
-        url := 'https://ntqkrxtesuaeobxpmznr.supabase.co/functions/v1/daily-agenda-email',
-        headers := '{"Content-Type": "application/json", "Authorization": "Bearer SUA_SERVICE_ROLE_KEY"}'::jsonb,
-        body := '{}'::jsonb
-    ) as request_id;
-  $body$
-);
-
--- 3. Resumo Diário Coordenação (07:00 BRT / 10:00 UTC)
-DO $do$
-BEGIN
-  PERFORM cron.unschedule('clinic-daily-summary');
-EXCEPTION WHEN OTHERS THEN
-  NULL;
-END $do$;
-
-SELECT cron.schedule(
-  'clinic-daily-summary',
-  '0 10 * * *',
-  $body$
-    SELECT net.http_post(
-        url := 'https://ntqkrxtesuaeobxpmznr.supabase.co/functions/v1/clinic-daily-summary',
-        headers := '{"Content-Type": "application/json", "Authorization": "Bearer SUA_SERVICE_ROLE_KEY"}'::jsonb,
-        body := '{}'::jsonb
-    ) as request_id;
-  $body$
-);
-
--- 4. Confirmação de Atendimentos (A cada 1 hora entre 09:00 e 23:00 UTC -> 06:00 e 20:00 BRT)
-DO $do$
-BEGIN
-  PERFORM cron.unschedule('daily-confirmation-email');
-EXCEPTION WHEN OTHERS THEN
-  NULL;
-END $do$;
-
-SELECT cron.schedule(
-  'daily-confirmation-email',
-  '0 9-23 * * *',
-  $body$
-    SELECT net.http_post(
-        url := 'https://ntqkrxtesuaeobxpmznr.supabase.co/functions/v1/daily-confirmation-email',
-        headers := '{"Content-Type": "application/json", "Authorization": "Bearer SUA_SERVICE_ROLE_KEY"}'::jsonb,
-        body := '{}'::jsonb
-    ) as request_id;
-  $body$
-);
-
--- 5. Alerta de Senhas AMS Petrobras (Toda segunda-feira às 07:00 BRT / 10:00 UTC)
-DO $do$
-BEGIN
-  PERFORM cron.unschedule('ams-password-alert');
-EXCEPTION WHEN OTHERS THEN
-  NULL;
-END $do$;
-
 SELECT cron.schedule(
   'ams-password-alert',
   '0 10 * * 1',
@@ -105,7 +6,7 @@ SELECT cron.schedule(
         url := 'https://ntqkrxtesuaeobxpmznr.supabase.co/functions/v1/ams-password-alert',
         headers := '{"Content-Type": "application/json", "Authorization": "Bearer SUA_SERVICE_ROLE_KEY"}'::jsonb,
         body := '{}'::jsonb
-    ) as request_id;
+    ) as re
   $body$
 );
 

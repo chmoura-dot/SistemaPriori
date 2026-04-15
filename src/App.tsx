@@ -21,6 +21,7 @@ import { PendingConfirmationsPage } from './pages/PendingConfirmationsPage';
 import { AmsPasswordsPage } from './pages/AmsPasswordsPage';
 import { HolidaysPage } from './pages/HolidaysPage';
 import { RenewalAlert } from './components/RenewalAlert';
+import { DuplicateAppointmentAlert } from './components/DuplicateAppointmentAlert';
 import { api } from './services/api';
 import { cn } from './lib/utils';
 import { UserRole } from './services/types';
@@ -161,7 +162,12 @@ export default function App() {
         </div>
       </main>
 
-      {isAuthenticated && <RenewalAlert />}
+      {isAuthenticated && (
+        <>
+          <RenewalAlert />
+          <DuplicateAppointmentAlert onNavigate={navigate} />
+        </>
+      )}
     </div>
   );
 }

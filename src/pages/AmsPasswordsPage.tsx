@@ -232,7 +232,6 @@ export const AmsPasswordsPage = () => {
           <div className="space-y-4">
             <Input
               label="Senha do Portal"
-              icon={KeyRound}
               value={formData.amsPassword}
               onChange={(e) => setFormData({ ...formData, amsPassword: e.target.value })}
               placeholder="Digite a nova senha"
@@ -240,7 +239,6 @@ export const AmsPasswordsPage = () => {
             <Input
               label="Data de Vencimento"
               type="date"
-              icon={Calendar}
               value={formData.amsPasswordExpiry}
               onChange={(e) => setFormData({ ...formData, amsPasswordExpiry: e.target.value })}
             />

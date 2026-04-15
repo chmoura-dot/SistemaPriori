@@ -16,16 +16,22 @@ export function calcRepass(
   grossAmount: number,
   psychologist: Psychologist | undefined
 ): number {
+  // Guard: valor bruto inválido
+  if (!grossAmount || grossAmount <= 0) return 0;
+
   if (!psychologist) {
     return grossAmount * DEFAULT_REPASS_RATE;
   }
 
   // Se houver um valor fixo definido, ele tem prioridade
   if (psychologist.repassFixedAmount !== undefined && psychologist.repassFixedAmount !== null && psychologist.repassFixedAmount > 0) {
-    return psychologist.repassFixedAmount;
+    // Guard: repasse fixo não pode ser maior que o valor bruto
+    return Math.min(psychologist.repassFixedAmount, grossAmount);
   }
 
   // Caso contrário, usa o percentual (rate) definido ou o padrão
   const rate = psychologist.repassRate ?? DEFAULT_REPASS_RATE;
-  return grossAmount * rate;
+  // Guard: rate deve estar entre 0 e 1 (percentual decimal)
+  const safeRate = rate > 1 ? rate / 100 : rate;
+  return grossAmount * Math.max(0, Math.min(1, safeRate));
 }

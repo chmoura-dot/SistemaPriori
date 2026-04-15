@@ -35,6 +35,7 @@ export const CustomersPage = () => {
   // Form state
   const [formData, setFormData] = useState({
     name: '',
+    email: '',
     phone: '',
     healthPlan: HealthPlan.PARTICULAR,
     psychologistId: psychologists[0]?.id || '',
@@ -112,6 +113,7 @@ export const CustomersPage = () => {
       setEditingCustomer(customer);
       setFormData({
         name: customer.name || '',
+        email: customer.email || '',
         phone: customer.phone || '',
         healthPlan: customer.healthPlan || HealthPlan.PARTICULAR,
         psychologistId: customer.psychologistId || '',
@@ -127,6 +129,7 @@ export const CustomersPage = () => {
       setEditingCustomer(null);
       setFormData({
         name: '',
+        email: '',
         phone: '',
         healthPlan: HealthPlan.PARTICULAR,
         psychologistId: psychologists[0]?.id || '',
@@ -287,11 +290,11 @@ export const CustomersPage = () => {
     const submissionData = {
       ...formData,
       name: (formData.name || '').toUpperCase(),
-      birthDate: formData.birthDate || null,
-      amsPassword: formData.amsPassword || null,
-      amsPasswordExpiry: formData.amsPasswordExpiry || null,
-      customPrice: formData.customPrice !== undefined ? Number(formData.customPrice) : null,
-      customRepassAmount: formData.customRepassAmount !== undefined ? Number(formData.customRepassAmount) : null
+      birthDate: formData.birthDate || undefined,
+      amsPassword: formData.amsPassword || undefined,
+      amsPasswordExpiry: formData.amsPasswordExpiry || undefined,
+      customPrice: formData.customPrice !== undefined ? Number(formData.customPrice) : undefined,
+      customRepassAmount: formData.customRepassAmount !== undefined ? Number(formData.customRepassAmount) : undefined
     };
 
     try {
