@@ -41,7 +41,13 @@ export const ConfirmationPage = () => {
       try {
         // Chamada para a Edge Function que permite acesso sem login via ID
         const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
-        const response = await fetch(`${supabaseUrl}/functions/v1/confirm-appointment?appointmentId=${id}`);
+        const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+        const response = await fetch(`${supabaseUrl}/functions/v1/confirm-appointment?appointmentId=${id}`, {
+          headers: {
+            'apikey': supabaseAnonKey,
+            'Authorization': `Bearer ${supabaseAnonKey}`
+          }
+        });
         
         let data;
         try {
@@ -91,9 +97,14 @@ export const ConfirmationPage = () => {
     try {
       // Enviar resposta via Edge Function (evita problemas de RLS)
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
       const res = await fetch(`${supabaseUrl}/functions/v1/confirm-appointment`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'apikey': supabaseAnonKey,
+          'Authorization': `Bearer ${supabaseAnonKey}`
+        },
         body: JSON.stringify({
           appointmentId: id,
           patientResponse: response,

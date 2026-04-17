@@ -82,7 +82,13 @@ export const MagicConfirmationPage = () => {
     }
 
     try {
-      const response = await fetch(`${EDGE_FUNCTION_URL}?token=${token}`);
+      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+      const response = await fetch(`${EDGE_FUNCTION_URL}?token=${token}`, {
+        headers: {
+          'apikey': supabaseAnonKey,
+          'Authorization': `Bearer ${supabaseAnonKey}`
+        }
+      });
       
       let data;
       try {
@@ -126,9 +132,14 @@ export const MagicConfirmationPage = () => {
     ));
     
     try {
+      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
       const response = await fetch(EDGE_FUNCTION_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'apikey': supabaseAnonKey,
+          'Authorization': `Bearer ${supabaseAnonKey}`
+        },
         body: JSON.stringify({ token, appointmentId, action, billing })
       });
 

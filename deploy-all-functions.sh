@@ -43,6 +43,12 @@ supabase functions deploy clinic-daily-summary --no-verify-jwt
 echo "   ✅ clinic-daily-summary deployado!"
 echo ""
 
+# 6. Página de Confirmação (Links WhatsApp/E-mail)
+echo "🔗 [6/6] Deploy: confirm-appointment..."
+supabase functions deploy confirm-appointment --no-verify-jwt
+echo "   ✅ confirm-appointment deployado!"
+echo ""
+
 echo "============================================================"
 echo "✅ Todas as funções foram deployadas com sucesso!"
 echo ""
