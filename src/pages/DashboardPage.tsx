@@ -660,7 +660,10 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
                   </button>
                 )}
                 {inactivePatients.length > 0 && (
-                  <button onClick={() => onNavigate('/clientes')} className="flex items-center gap-3 p-3 bg-zinc-50 border border-zinc-200 rounded-xl hover:border-zinc-300 transition-all text-left">
+                  <button onClick={() => {
+                    localStorage.setItem('customers_filter', 'sem-consulta-30d');
+                    onNavigate('/clientes');
+                  }} className="flex items-center gap-3 p-3 bg-zinc-50 border border-zinc-200 rounded-xl hover:border-zinc-300 transition-all text-left">
                     <UserMinus size={18} className="text-zinc-500 shrink-0" />
                     <div>
                       <p className="text-xs font-bold text-zinc-700">{inactivePatients.length} paciente{inactivePatients.length > 1 ? 's' : ''} sem consulta há +30 dias</p>

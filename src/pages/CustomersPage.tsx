@@ -30,7 +30,7 @@ export const CustomersPage = () => {
   const [isInactivationModalOpen, setIsInactivationModalOpen] = useState(false);
   const [customerToInactivate, setCustomerToInactivate] = useState<Customer | null>(null);
   const [selectedInactivationReason, setSelectedInactivationReason] = useState<InactivationReason | null>(null);
-  const [statusFilter, setStatusFilter] = useState<'active' | 'inactive' | 'all'>('active');
+  const [statusFilter, setStatusFilter] = useState<'active' | 'inactive' | 'all' | 'inactive30'>('active');
 
   // Form state
   const [formData, setFormData] = useState({
@@ -94,6 +94,11 @@ export const CustomersPage = () => {
 
   useEffect(() => {
     loadData();
+    const filterFromDashboard = localStorage.getItem('customers_filter');
+    if (filterFromDashboard === 'sem-consulta-30d') {
+      setStatusFilter('inactive30');
+      localStorage.removeItem('customers_filter');
+    }
   }, []);
 
   // Calcular repasse automaticamente
@@ -362,9 +367,15 @@ export const CustomersPage = () => {
     const planMatch = String(c.healthPlan || '').toLowerCase().includes(searchLower);
     const matchesSearch = nameMatch || phoneMatch || planMatch;
     
+    const today = new Date();
+    const isInactive30 = c.status === CustomerStatus.ACTIVE && 
+                         c.lastAppointmentDate && 
+                         Math.ceil((today.getTime() - new Date(c.lastAppointmentDate + 'T12:00:00').getTime()) / (1000*60*60*24)) > 30;
+
     const matchesStatus = statusFilter === 'all' || 
                          (statusFilter === 'active' && c.status === CustomerStatus.ACTIVE) ||
-                         (statusFilter === 'inactive' && c.status === CustomerStatus.INACTIVE);
+                         (statusFilter === 'inactive' && c.status === CustomerStatus.INACTIVE) ||
+                         (statusFilter === 'inactive30' && isInactive30);
     
     return matchesSearch && matchesStatus;
   });
@@ -466,8 +477,32 @@ export const CustomersPage = () => {
           >
             Todos
           </button>
+          <button
+            onClick={() => setStatusFilter('inactive30')}
+            className={cn(
+              "px-4 py-1.5 text-xs font-bold uppercase tracking-wider rounded-lg transition-all flex items-center gap-1",
+              statusFilter === 'inactive30' ? "bg-white text-priori-navy shadow-sm" : "text-zinc-500 hover:text-priori-navy"
+            )}
+          >
+            Sem Consulta +30d <AlertCircle size={12} className="text-zinc-400" />
+          </button>
         </div>
       </div>
+
+      {statusFilter === 'inactive30' && (
+        <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded-xl flex items-center justify-between text-sm shadow-sm animate-in fade-in slide-in-from-top-2">
+          <div className="flex items-center gap-2">
+            <AlertCircle size={16} className="text-amber-500" />
+            <p><strong>Aviso:</strong> Exibindo <span className="font-bold">{filteredCustomers.length}</span> pacientes ativos que não possuem consulta há mais de 30 dias.</p>
+          </div>
+          <button 
+            onClick={() => setStatusFilter('active')}
+            className="text-amber-600 hover:text-amber-800 font-bold text-xs uppercase tracking-wider underline underline-offset-2"
+          >
+            Limpar Filtro
+          </button>
+        </div>
+      )}
 
       <div className="bg-white border border-zinc-100 rounded-2xl overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
