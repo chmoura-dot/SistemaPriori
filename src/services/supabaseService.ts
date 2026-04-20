@@ -113,6 +113,7 @@ function toAppointment(row: any): Appointment {
     customRepassAmount: row.custom_repass_amount ?? undefined,
     billingBatchId: row.billing_batch_id ?? undefined,
     billingStatus: row.billing_status ?? undefined,
+    billingIgnored: row.billing_ignored ?? undefined,
     denialReason: row.denial_reason ?? undefined,
     denialResolution: row.denial_resolution ?? undefined,
     createdAt: row.created_at,
@@ -634,6 +635,7 @@ export const supabaseService: AppService = {
     if (a.customRepassAmount !== undefined) updates.custom_repass_amount = a.customRepassAmount;
     if (a.billingBatchId !== undefined) updates.billing_batch_id = a.billingBatchId;
     if (a.billingStatus !== undefined) updates.billing_status = a.billingStatus;
+    if (a.billingIgnored !== undefined) updates.billing_ignored = a.billingIgnored;
     if (a.denialReason !== undefined) updates.denial_reason = a.denialReason;
     if (a.denialResolution !== undefined) updates.denial_resolution = a.denialResolution;
     if (a.cancellationBilling !== undefined) updates.cancellation_billing = a.cancellationBilling;
