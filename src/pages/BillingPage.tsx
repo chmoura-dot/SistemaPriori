@@ -15,6 +15,7 @@ import {
   BillingBatch, 
   BillingBatchStatus, 
   Appointment, 
+  AppointmentType,
   HealthPlan,
   Customer,
   Plan,
@@ -24,7 +25,7 @@ import { Button } from '../components/Button';
 import { Modal } from '../components/Modal';
 import { Input } from '../components/Input';
 import { cn } from '../lib/utils';
-import { format } from 'date-fns';
+import { format, differenceInMonths, differenceInDays } from 'date-fns';
 
 export const BillingPage = () => {
   const [batches, setBatches] = useState<BillingBatch[]>([]);
@@ -47,6 +48,9 @@ export const BillingPage = () => {
   const [selectedPlan, setSelectedPlan] = useState<HealthPlan>(HealthPlan.AMS_PETROBRAS);
   const [batchNumber, setBatchNumber] = useState('');
   const [selectedAppointmentIds, setSelectedAppointmentIds] = useState<string[]>([]);
+  
+  // Neuropsico manual decision state
+  const [neuropsicoDecisions, setNeuropsicoDecisions] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     fetchData();
@@ -74,8 +78,40 @@ export const BillingPage = () => {
     }
   };
 
+  // Helper: Verifica status da Avaliação Neuropsicológica
+  const getNeuropsicoStatus = (app: Appointment) => {
+    if (app.type !== AppointmentType.NEUROPSICOLOGICA) return { type: 'regular' as const };
+
+    // Encontrar agendamentos anteriores do mesmo paciente, ordenados do mais recente para o mais antigo
+    const pastApps = appointments
+      .filter(a => 
+        a.customerId === app.customerId && 
+        a.type === AppointmentType.NEUROPSICOLOGICA && 
+        a.date < app.date &&
+        a.id !== app.id
+      )
+      .sort((a, b) => b.date.localeCompare(a.date));
+
+    if (pastApps.length === 0) return { type: 'billable' as const };
+
+    const lastAppDate = new Date(pastApps[0].date + 'T12:00:00');
+    const currentAppDate = new Date(app.date + 'T12:00:00');
+    
+    const diffMonths = differenceInMonths(currentAppDate, lastAppDate);
+    const diffDays = differenceInDays(currentAppDate, lastAppDate);
+
+    if (diffMonths >= 11) return { type: 'billable' as const, diffDays };
+    if (diffDays <= 90) return { type: 'blocked' as const, diffDays };
+    return { type: 'ask' as const, diffDays };
+  };
+
   // Helper: busca o valor do atendimento considerando preço customizado, preço do paciente e preço do plano
   const getAppPrice = (app: Appointment): number => {
+    const status = getNeuropsicoStatus(app);
+    
+    if (status.type === 'blocked') return 0;
+    if (status.type === 'ask' && !neuropsicoDecisions[app.id]) return 0;
+
     const customer = customers.find(c => c.id === app.customerId);
     const plan = plans.find(p => p.name.toUpperCase() === (customer?.healthPlan ?? '').toUpperCase());
     const procedure = plan?.procedures?.find(proc => proc.type === app.type);
@@ -461,7 +497,7 @@ export const BillingPage = () => {
               </div>
             </div>
 
-            <div className="max-h-64 overflow-y-auto border border-zinc-100 rounded-xl divide-y divide-zinc-100">
+            <div className="max-h-[400px] overflow-y-auto border border-zinc-100 rounded-xl divide-y divide-zinc-100">
               {getEligibleAppointments().length === 0 ? (
                 <div className="p-8 text-center text-zinc-500 text-sm">
                   Nenhum atendimento confirmado encontrado para esta operadora.
@@ -470,37 +506,89 @@ export const BillingPage = () => {
                 getEligibleAppointments().map(app => {
                   const customer = customers.find(c => c.id === app.customerId);
                   const psychologist = psychologists.find(p => p.id === app.psychologistId);
+                  const neuropsicoStatus = getNeuropsicoStatus(app);
+                  const basePrice = getAppPrice(app);
+
                   return (
-                    <div 
-                      key={app.id}
-                      className={cn(
-                        "flex items-center gap-4 p-3 hover:bg-zinc-50 cursor-pointer transition-colors",
-                        selectedAppointmentIds.includes(app.id) && "bg-priori-navy/5"
-                      )}
-                      onClick={() => toggleAppointmentSelection(app.id)}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selectedAppointmentIds.includes(app.id)}
-                        onChange={() => {}} // Handled by div click
-                        className="rounded border-zinc-300 text-priori-navy focus:ring-priori-navy"
-                      />
-                      <div className="flex-1 min-w-0">
-                        <div className="font-medium text-priori-navy truncate">{customer?.name}</div>
-                        <div className="text-xs text-zinc-500 truncate">
-                          {psychologist?.name} • {format(new Date(app.date + 'T12:00:00'), 'dd/MM/yyyy')} • {app.startTime}
-                        </div>
-                      </div>
-                      <div className="text-sm font-medium text-priori-navy mr-2">
-                        {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(getAppPrice(app))}
-                      </div>
-                      <button
-                        onClick={(e) => handleIgnoreAppointment(app.id, e)}
-                        className="p-1.5 text-zinc-300 hover:text-red-400 hover:bg-red-50 rounded-lg transition-all flex-shrink-0"
-                        title="Ignorar para faturamento"
+                    <div key={app.id} className="flex flex-col border-b border-zinc-100 last:border-0">
+                      <div 
+                        className={cn(
+                          "flex items-center gap-4 p-3 hover:bg-zinc-50 cursor-pointer transition-colors",
+                          selectedAppointmentIds.includes(app.id) && "bg-priori-navy/5"
+                        )}
+                        onClick={() => toggleAppointmentSelection(app.id)}
                       >
-                        <Ban size={15} />
-                      </button>
+                        <input
+                          type="checkbox"
+                          checked={selectedAppointmentIds.includes(app.id)}
+                          onChange={() => {}} // Handled by div click
+                          className="rounded border-zinc-300 text-priori-navy focus:ring-priori-navy"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium text-priori-navy truncate flex items-center gap-2">
+                            {customer?.name}
+                            {neuropsicoStatus.type === 'blocked' && (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-zinc-100 text-zinc-600 border border-zinc-200">
+                                Neuropsico R$0 (último há {neuropsicoStatus.diffDays} dias)
+                              </span>
+                            )}
+                            {neuropsicoStatus.type === 'ask' && (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-amber-50 text-amber-600 border border-amber-200">
+                                ⚠️ Neuropsico (último há {neuropsicoStatus.diffDays} dias)
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-xs text-zinc-500 truncate">
+                            {psychologist?.name} • {format(new Date(app.date + 'T12:00:00'), 'dd/MM/yyyy')} • {app.startTime}
+                          </div>
+                        </div>
+                        <div className="text-sm font-medium text-priori-navy mr-2">
+                          {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(basePrice)}
+                        </div>
+                        <button
+                          onClick={(e) => handleIgnoreAppointment(app.id, e)}
+                          className="p-1.5 text-zinc-300 hover:text-red-400 hover:bg-red-50 rounded-lg transition-all flex-shrink-0"
+                          title="Ignorar para faturamento"
+                        >
+                          <Ban size={15} />
+                        </button>
+                      </div>
+                      
+                      {neuropsicoStatus.type === 'ask' && (
+                        <div className="bg-amber-50/50 px-11 py-2 flex items-center gap-3 text-xs border-t border-amber-100/50">
+                          <span className="text-amber-700 font-medium">Cobrar este atendimento?</span>
+                          <div className="flex bg-white rounded-lg border border-amber-200 p-0.5">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setNeuropsicoDecisions(prev => ({ ...prev, [app.id]: false }));
+                              }}
+                              className={cn(
+                                "px-3 py-1 font-semibold rounded-md transition-all",
+                                !neuropsicoDecisions[app.id] 
+                                  ? "bg-amber-100 text-amber-800 shadow-sm" 
+                                  : "text-zinc-500 hover:bg-zinc-50"
+                              )}
+                            >
+                              Não cobrar (R$ 0)
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setNeuropsicoDecisions(prev => ({ ...prev, [app.id]: true }));
+                              }}
+                              className={cn(
+                                "px-3 py-1 font-semibold rounded-md transition-all",
+                                neuropsicoDecisions[app.id] 
+                                  ? "bg-priori-navy text-white shadow-sm" 
+                                  : "text-zinc-500 hover:bg-zinc-50"
+                              )}
+                            >
+                              Cobrar normal
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })
