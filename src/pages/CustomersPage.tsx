@@ -44,9 +44,39 @@ export const CustomersPage = () => {
     customPrice: undefined as number | undefined,
     customRepassAmount: undefined as number | undefined,
     birthDate: '',
+    gender: null as 'M' | 'F' | null,
     amsPassword: '',
     amsPasswordExpiry: ''
   });
+
+  // Função para inferir gênero com base no nome
+  const inferGenderByName = (name: string): 'M' | 'F' | null => {
+    if (!name) return null;
+    const firstName = name.trim().split(' ')[0].toUpperCase();
+    
+    const commonFemaleNames = ['MARIA', 'ANA', 'JULIANA', 'FERNANDA', 'PATRICIA', 'ALINE', 'CAMILA', 'LETICIA', 'AMANDA', 'BEATRIZ', 'CAROLINA', 'MARCELA', 'VANESSA', 'MARIANA', 'LUANA', 'THAIZ', 'THAIS', 'GABRIELA', 'JULIA', 'ISABELA', 'ISADORA', 'LAURA', 'LUIZA', 'VITORIA', 'CLARA', 'RAFAELA', 'SOFIA', 'HELENA', 'ALICE', 'MANUELA', 'VALENTINA', 'HELOISA', 'LORENA', 'GIOVANNA', 'CECILIA', 'NICOLE', 'SARAH', 'ISABEL', 'ESTHER', 'YASMIN', 'EDUARDA', 'ALICIA', 'LIVIA', 'MELISSA', 'MARINA', 'CLARICE', 'MILENA', 'SOPHIA'];
+    const commonMaleNames = ['JOSE', 'JOAO', 'ANTONIO', 'FRANCISCO', 'CARLOS', 'PAULO', 'PEDRO', 'LUCAS', 'LUIZ', 'MARCOS', 'LUIS', 'GABRIEL', 'RAFAEL', 'DANIEL', 'MARCELO', 'BRUNO', 'EDUARDO', 'FELIPE', 'RAIMUNDO', 'RODRIGO', 'MATEUS', 'MATHEUS', 'THIAGO', 'GUILHERME', 'ENZO', 'ARTHUR', 'MIGUEL', 'DAVI', 'BERNARDO', 'HEITOR', 'SAMUEL', 'LORENZO', 'BENJAMIN', 'NICOLAS', 'GUSTAVO', 'ISAAC', 'CAUAN', 'CAUA', 'VITOR', 'VICTOR', 'LEONARDO', 'ENRICO', 'THOMAS', 'TOMAS'];
+
+    if (commonFemaleNames.includes(firstName)) return 'F';
+    if (commonMaleNames.includes(firstName)) return 'M';
+
+    if (firstName.endsWith('A') || firstName.endsWith('IA') || firstName.endsWith('LY') || firstName.endsWith('NY') || firstName.endsWith('IE') || firstName.endsWith('NA')) {
+      const maleExceptionsA = ['LUCAS', 'JOSIAS', 'THOMAS', 'NICOLLAS', 'MATTHIAS', 'OSIAS', 'ELIAS', 'JONAS', 'BARNABAS'];
+      let isMaleException = false;
+      for(let exc of maleExceptionsA){
+          if(firstName.includes(exc)) isMaleException = true;
+      }
+      if(firstName === 'ANDREA' || firstName === 'NICOLA' || firstName === 'GIANLUCA') isMaleException = true;
+      
+      return isMaleException ? 'M' : 'F';
+    } 
+    
+    if (firstName.endsWith('O') || firstName.endsWith('SON') || firstName.endsWith('EL') || firstName.endsWith('OS') || firstName.endsWith('OR') || firstName.endsWith('US')) {
+      return 'M';
+    }
+    
+    return null;
+  };
 
   // Autocomplete/Duplicate check state
   const similarCustomers = useMemo(() => {
@@ -127,6 +157,7 @@ export const CustomersPage = () => {
         customPrice: customer.customPrice,
         customRepassAmount: customer.customRepassAmount,
         birthDate: customer.birthDate || '',
+        gender: customer.gender || null,
         amsPassword: customer.amsPassword || '',
         amsPasswordExpiry: customer.amsPasswordExpiry || ''
       });
@@ -143,6 +174,7 @@ export const CustomersPage = () => {
         customPrice: undefined,
         customRepassAmount: undefined,
         birthDate: '',
+        gender: null,
         amsPassword: '',
         amsPasswordExpiry: ''
       });
@@ -296,6 +328,7 @@ export const CustomersPage = () => {
       ...formData,
       name: (formData.name || '').toUpperCase(),
       birthDate: formData.birthDate || undefined,
+      gender: formData.gender || undefined,
       amsPassword: formData.amsPassword || undefined,
       amsPasswordExpiry: formData.amsPasswordExpiry || undefined,
       customPrice: formData.customPrice !== undefined ? Number(formData.customPrice) : undefined,
@@ -688,12 +721,26 @@ export const CustomersPage = () => {
               required
               placeholder="(00) 00000-0000"
             />
-            <Input
-              label="Data de Nascimento"
-              type="date"
-              value={formData.birthDate}
-              onChange={(e) => setFormData({ ...formData, birthDate: e.target.value })}
-            />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Input
+                label="Data de Nascimento"
+                type="date"
+                value={formData.birthDate}
+                onChange={(e) => setFormData({ ...formData, birthDate: e.target.value })}
+              />
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Gênero</label>
+                <select
+                  className="w-full rounded-lg bg-white border border-zinc-100 px-4 py-2.5 text-sm text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/5 transition-all"
+                  value={formData.gender || ''}
+                  onChange={(e) => setFormData({ ...formData, gender: e.target.value ? (e.target.value as 'M' | 'F') : null })}
+                >
+                  <option value="">Não informado</option>
+                  <option value="F">Feminino</option>
+                  <option value="M">Masculino</option>
+                </select>
+              </div>
+            </div>
           </div>
           
           {(formData.healthPlan === HealthPlan.AMS_PETROBRAS || (formData.healthPlan && formData.healthPlan.toString().toUpperCase().includes('PETROBRAS'))) && (
@@ -702,10 +749,23 @@ export const CustomersPage = () => {
                 <h4 className="text-[10px] font-bold text-[#004b32] uppercase tracking-widest">Informações AMS Petrobras</h4>
               </div>
               <Input
-                label="Senha do Portal"
-                value={formData.amsPassword}
-                onChange={(e) => setFormData({ ...formData, amsPassword: e.target.value })}
-                placeholder="Digite a senha do portal"
+                label="Nome Completo"
+                value={formData.name}
+                onChange={(e) => {
+                  const newName = e.target.value.toUpperCase();
+                  setFormData(prev => {
+                    // Se não for edição e o gênero ainda não estiver preenchido (ou se preencheu agora pela auto-sugestão)
+                    const updates: any = { name: newName };
+                    if (!editingCustomer && newName.trim().length >= 3) {
+                       const estimated = inferGenderByName(newName);
+                       if (estimated && (!prev.gender || prev.gender === inferGenderByName(prev.name))) {
+                         updates.gender = estimated;
+                       }
+                    }
+                    return { ...prev, ...updates };
+                  });
+                }}
+                required
               />
               <Input
                 label="Vencimento da Senha"

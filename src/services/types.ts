@@ -84,6 +84,7 @@ export interface Customer {
   customPrice?: number;
   customRepassAmount?: number;
   birthDate?: string;
+  gender?: 'M' | 'F' | null;
   amsPassword?: string;
   amsPasswordExpiry?: string;
   createdAt: string;

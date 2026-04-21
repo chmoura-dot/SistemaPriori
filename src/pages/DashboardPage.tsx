@@ -446,12 +446,23 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
     let masculino = 0;
     let naoIdentificado = 0;
 
-    // Lista de terminações e nomes comuns para inferir gênero no Brasil
+    // Lista de terminações e nomes comuns para inferir gênero no Brasil (fallback)
     const commonFemaleNames = ['MARIA', 'ANA', 'JULIANA', 'FERNANDA', 'PATRICIA', 'ALINE', 'CAMILA', 'LETICIA', 'AMANDA', 'BEATRIZ', 'CAROLINA', 'MARCELA', 'VANESSA', 'MARIANA', 'LUANA', 'THAIZ', 'THAIS', 'GABRIELA', 'JULIA', 'ISABELA', 'ISADORA', 'LAURA', 'LUIZA', 'VITORIA', 'CLARA', 'RAFAELA', 'SOFIA', 'HELENA', 'ALICE', 'MANUELA', 'VALENTINA', 'HELOISA', 'LORENA', 'GIOVANNA', 'CECILIA', 'NICOLE', 'SARAH', 'ISABEL', 'ESTHER', 'YASMIN', 'EDUARDA', 'ALICIA', 'LIVIA', 'MELISSA', 'MARINA', 'CLARICE', 'MILENA', 'SOPHIA'];
     
     const commonMaleNames = ['JOSE', 'JOAO', 'ANTONIO', 'FRANCISCO', 'CARLOS', 'PAULO', 'PEDRO', 'LUCAS', 'LUIZ', 'MARCOS', 'LUIS', 'GABRIEL', 'RAFAEL', 'DANIEL', 'MARCELO', 'BRUNO', 'EDUARDO', 'FELIPE', 'RAIMUNDO', 'RODRIGO', 'MATEUS', 'MATHEUS', 'THIAGO', 'GUILHERME', 'ENZO', 'ARTHUR', 'MIGUEL', 'DAVI', 'BERNARDO', 'HEITOR', 'SAMUEL', 'LORENZO', 'BENJAMIN', 'NICOLAS', 'GUSTAVO', 'ISAAC', 'CAUAN', 'CAUA', 'VITOR', 'VICTOR', 'LEONARDO', 'ENRICO', 'THOMAS', 'TOMAS'];
 
     activeCustomers.forEach(c => {
+      // 1. Usa o gênero salvo no banco de dados se existir
+      if (c.gender === 'F') {
+        feminino++;
+        return;
+      }
+      if (c.gender === 'M') {
+        masculino++;
+        return;
+      }
+
+      // 2. Fallback: infere pelo nome (para pacientes antigos onde gender é null)
       const firstName = c.name.trim().split(' ')[0].toUpperCase();
       
       // Checa por nome exato

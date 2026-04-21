@@ -78,6 +78,7 @@ function toCustomer(row: any): Customer {
     customPrice: row.custom_price ?? undefined,
     customRepassAmount: row.custom_repass_amount ?? undefined,
     birthDate: row.birth_date ?? undefined,
+    gender: row.gender ?? undefined,
     amsPassword: row.ams_password ?? undefined,
     amsPasswordExpiry: row.ams_password_expiry ?? undefined,
     createdAt: row.created_at,
@@ -733,6 +734,7 @@ export const supabaseService: AppService = {
           custom_price: c.customPrice ?? null,
           custom_repass_amount: c.customRepassAmount ?? null,
           birth_date: c.birthDate ?? null,
+          gender: c.gender ?? null,
           ams_password: c.amsPassword ?? null,
           ams_password_expiry: c.amsPasswordExpiry ?? null,
         })
@@ -755,6 +757,7 @@ export const supabaseService: AppService = {
     if (c.customPrice !== undefined) updates.custom_price = c.customPrice;
     if (c.customRepassAmount !== undefined) updates.custom_repass_amount = c.customRepassAmount;
     if (c.birthDate !== undefined) updates.birth_date = c.birthDate;
+    if (c.gender !== undefined) updates.gender = c.gender;
     if (c.amsPassword !== undefined) updates.ams_password = c.amsPassword;
     if (c.amsPasswordExpiry !== undefined) updates.ams_password_expiry = c.amsPasswordExpiry;
 
