@@ -42,6 +42,11 @@ export const FinancialPage = () => {
   const [psychologists, setPsychologists] = useState<Psychologist[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isReady, setIsReady] = useState(false);
+  const [viewMode, setViewMode] = useState<'accumulated' | 'monthly'>('accumulated');
+  const [selectedMonth, setSelectedMonth] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  });
 
   useEffect(() => {
     const loadData = async () => {
@@ -109,20 +114,48 @@ export const FinancialPage = () => {
     return items;
   }, [appointments, customers, plans]);
 
+  // Itens filtrados de acordo com o viewMode
+  const filteredItems = useMemo(() => {
+    if (viewMode === 'accumulated') return billedItems;
+    return billedItems.filter(item => item.date.startsWith(selectedMonth));
+  }, [billedItems, viewMode, selectedMonth]);
+
+  // Itens do mês anterior (para comparação no modo mensal)
+  const prevMonthItems = useMemo(() => {
+    if (viewMode === 'accumulated') return [];
+    const [y, m] = selectedMonth.split('-');
+    const prevDate = new Date(parseInt(y), parseInt(m) - 1 - 1, 1);
+    const prevStr = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}`;
+    return billedItems.filter(item => item.date.startsWith(prevStr));
+  }, [billedItems, viewMode, selectedMonth]);
+
   const stats = useMemo(() => {
-    const totalGross = billedItems.reduce((acc, p) => acc + p.amount, 0);
-    const totalRepass = billedItems.reduce((acc, p) => acc + p.repass, 0);
+    const totalGross = filteredItems.reduce((acc, p) => acc + p.amount, 0);
+    const totalRepass = filteredItems.reduce((acc, p) => acc + p.repass, 0);
     const totalNet = totalGross - totalRepass;
-    return { totalGross, totalRepass, totalNet };
-  }, [billedItems]);
+
+    // Comparação mês anterior
+    let grossVariation = 0, repassVariation = 0, netVariation = 0;
+    if (viewMode === 'monthly') {
+      const prevGross = prevMonthItems.reduce((acc, p) => acc + p.amount, 0);
+      const prevRepass = prevMonthItems.reduce((acc, p) => acc + p.repass, 0);
+      const prevNet = prevGross - prevRepass;
+
+      grossVariation = prevGross ? ((totalGross - prevGross) / prevGross) * 100 : 0;
+      repassVariation = prevRepass ? ((totalRepass - prevRepass) / prevRepass) * 100 : 0;
+      netVariation = prevNet ? ((totalNet - prevNet) / prevNet) * 100 : 0;
+    }
+
+    return { totalGross, totalRepass, totalNet, grossVariation, repassVariation, netVariation };
+  }, [filteredItems, prevMonthItems, viewMode]);
 
   const chartData = useMemo(() => {
-    const monthlyData: { [key: string]: { month: string; gross: number; net: number; repass: number } } = {};
+    const monthlyData: { [key: string]: { monthKey: string; month: string; gross: number; net: number; repass: number } } = {};
     billedItems.forEach(item => {
       const date = new Date(item.date + 'T12:00:00');
       const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
       const monthLabel = date.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' });
-      if (!monthlyData[monthKey]) monthlyData[monthKey] = { month: monthLabel, gross: 0, net: 0, repass: 0 };
+      if (!monthlyData[monthKey]) monthlyData[monthKey] = { monthKey, month: monthLabel, gross: 0, net: 0, repass: 0 };
       monthlyData[monthKey].gross += item.amount;
       monthlyData[monthKey].repass += item.repass;
       monthlyData[monthKey].net += item.amount - item.repass;
@@ -134,7 +167,7 @@ export const FinancialPage = () => {
 
   const planDistribution = useMemo(() => {
     const dist: { [key: string]: number } = {};
-    billedItems.forEach(item => {
+    filteredItems.forEach(item => {
       const customer = customers.find(c => c.id === item.customerId);
       const plan = findPlan(customer?.healthPlan);
       const planName = plan?.name || 'Particular';
@@ -144,36 +177,29 @@ export const FinancialPage = () => {
       .map(([name, value]) => ({ name, value }))
       .filter(d => d.value > 0)
       .sort((a, b) => b.value - a.value);
-  }, [billedItems, customers, plans]);
+  }, [filteredItems, customers, plans]);
 
   const psyDistribution = useMemo(() => {
-    const grouped = appointments.reduce((acc: Record<string, Appointment[]>, app) => {
-      const key = `${app.customerId}-${app.type}`;
-      if (!acc[key]) acc[key] = [];
-      acc[key].push(app);
-      return acc;
-    }, {} as Record<string, Appointment[]>);
-
     const dist: { [key: string]: number } = {};
     
-    (Object.values(grouped) as Appointment[][]).forEach(group => {
-      const sorted = [...group].sort((a, b) => a.date.localeCompare(b.date));
-      sorted.forEach((app, idx) => {
-        const psy = psychologists.find(p => p.id === app.psychologistId);
-        const psyName = psy?.name || 'Não Atribuído';
-        const { repass } = getAppAmount(app, idx === 0);
-        dist[psyName] = (dist[psyName] || 0) + repass;
-      });
+    // Aproveitar filteredItems para repasse exato no mês/período
+    filteredItems.forEach(item => {
+      const app = appointments.find(a => a.id === item.id);
+      if (!app) return;
+      const psy = psychologists.find(p => p.id === app.psychologistId);
+      const psyName = psy?.name || 'Não Atribuído';
+      dist[psyName] = (dist[psyName] || 0) + item.repass;
     });
+
     return Object.entries(dist)
       .map(([name, value]) => ({ name, value }))
       .filter(d => d.value > 0)
       .sort((a, b) => b.value - a.value);
-  }, [appointments, customers, plans, psychologists]);
+  }, [filteredItems, appointments, psychologists]);
 
   // Últimos lançamentos ordenados
   const recentItems = useMemo(() => {
-    return [...billedItems]
+    return [...filteredItems]
       .sort((a, b) => b.date.localeCompare(a.date))
       .slice(0, 10)
       .map(item => ({
@@ -181,7 +207,7 @@ export const FinancialPage = () => {
         customerName: customers.find(c => c.id === item.customerId)?.name || 'N/A',
         planName: findPlan(customers.find(c => c.id === item.customerId)?.healthPlan)?.name || 'Particular'
       }));
-  }, [billedItems, customers, plans]);
+  }, [filteredItems, customers, plans]);
 
   if (isLoading) {
     return (
@@ -193,9 +219,42 @@ export const FinancialPage = () => {
 
   return (
     <div className="space-y-8">
-      <div>
-        <h2 className="text-2xl font-bold text-priori-navy">Financeiro</h2>
-        <p className="text-zinc-500">Visão detalhada da saúde financeira da clínica.</p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-bold text-priori-navy">Financeiro</h2>
+          <p className="text-zinc-500">Visão detalhada da saúde financeira da clínica.</p>
+        </div>
+        
+        <div className="flex flex-col sm:flex-row items-center gap-3">
+          {viewMode === 'monthly' && (
+            <input 
+              type="month" 
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+              className="px-3 py-1.5 rounded-lg border border-zinc-200 text-sm focus:ring-2 focus:ring-priori-navy outline-none"
+            />
+          )}
+          <div className="flex bg-zinc-100 p-1 rounded-xl">
+            <button
+              onClick={() => setViewMode('accumulated')}
+              className={cn(
+                "px-4 py-1.5 text-sm font-medium rounded-lg transition-colors",
+                viewMode === 'accumulated' ? "bg-white text-priori-navy shadow-sm" : "text-zinc-500 hover:text-priori-navy"
+              )}
+            >
+              Acumulado
+            </button>
+            <button
+              onClick={() => setViewMode('monthly')}
+              className={cn(
+                "px-4 py-1.5 text-sm font-medium rounded-lg transition-colors",
+                viewMode === 'monthly' ? "bg-white text-priori-navy shadow-sm" : "text-zinc-500 hover:text-priori-navy"
+              )}
+            >
+              Mensal
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Summary Cards */}
@@ -204,13 +263,22 @@ export const FinancialPage = () => {
           <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity text-priori-navy">
             <TrendingUp size={80} />
           </div>
-          <p className="text-[10px] font-bold text-priori-navy uppercase tracking-widest mb-1">Receita Bruta Total</p>
+          <p className="text-[10px] font-bold text-priori-navy uppercase tracking-widest mb-1">Receita Bruta {viewMode === 'monthly' ? 'Mensal' : 'Total'}</p>
           <p className="text-3xl font-bold text-priori-navy">
             R$ {stats.totalGross.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
           </p>
-          <div className="mt-4 flex items-center gap-2 text-xs text-priori-navy">
-            <ArrowUpRight size={14} />
-            <span>Total de consultas confirmadas</span>
+          <div className="mt-4 flex items-center gap-2 text-xs">
+            {viewMode === 'monthly' ? (
+              <span className={cn("flex items-center gap-1 font-medium", stats.grossVariation >= 0 ? "text-emerald-600" : "text-red-500")}>
+                {stats.grossVariation >= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
+                {Math.abs(stats.grossVariation).toFixed(1)}% vs. Mês Anterior
+              </span>
+            ) : (
+              <span className="flex items-center gap-2 text-priori-navy">
+                <ArrowUpRight size={14} />
+                Total de consultas confirmadas
+              </span>
+            )}
           </div>
         </div>
 
@@ -218,13 +286,22 @@ export const FinancialPage = () => {
           <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity text-priori-gold">
             <Users size={80} />
           </div>
-          <p className="text-[10px] font-bold text-priori-gold uppercase tracking-widest mb-1">Total de Repasses</p>
+          <p className="text-[10px] font-bold text-priori-gold uppercase tracking-widest mb-1">Repasses {viewMode === 'monthly' ? 'Mensais' : 'Totais'}</p>
           <p className="text-3xl font-bold text-priori-navy">
             R$ {stats.totalRepass.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
           </p>
-          <div className="mt-4 flex items-center gap-2 text-xs text-priori-gold">
-            <ArrowDownRight size={14} />
-            <span>Custo operacional de profissionais</span>
+          <div className="mt-4 flex items-center gap-2 text-xs">
+            {viewMode === 'monthly' ? (
+              <span className={cn("flex items-center gap-1 font-medium", stats.repassVariation <= 0 ? "text-emerald-600" : "text-amber-500")}>
+                {stats.repassVariation > 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
+                {Math.abs(stats.repassVariation).toFixed(1)}% vs. Mês Anterior
+              </span>
+            ) : (
+              <span className="flex items-center gap-2 text-priori-gold">
+                <ArrowDownRight size={14} />
+                Custo operacional de profissionais
+              </span>
+            )}
           </div>
         </div>
 
@@ -232,13 +309,19 @@ export const FinancialPage = () => {
           <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity text-priori-navy">
             <DollarSign size={80} />
           </div>
-          <p className="text-[10px] font-bold text-priori-navy uppercase tracking-widest mb-1">Lucro Líquido</p>
+          <p className="text-[10px] font-bold text-priori-navy uppercase tracking-widest mb-1">Lucro Líquido {viewMode === 'monthly' ? 'Mensal' : 'Total'}</p>
           <p className="text-3xl font-bold text-priori-navy">
             R$ {stats.totalNet.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
           </p>
-          <div className="mt-4 flex items-center gap-2 text-xs text-priori-navy">
-            <Activity size={14} />
-            <span>
+          <div className="mt-4 flex flex-col gap-1 text-xs">
+            {viewMode === 'monthly' && (
+              <span className={cn("flex items-center gap-1 font-medium", stats.netVariation >= 0 ? "text-emerald-600" : "text-red-500")}>
+                {stats.netVariation >= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
+                {Math.abs(stats.netVariation).toFixed(1)}% vs. Mês Anterior
+              </span>
+            )}
+            <span className="flex items-center gap-2 text-priori-navy">
+              <Activity size={14} />
               Margem de {stats.totalGross > 0 ? ((stats.totalNet / stats.totalGross) * 100).toFixed(1) : '0'}%
             </span>
           </div>
@@ -274,10 +357,20 @@ export const FinancialPage = () => {
                   <Tooltip
                     contentStyle={{ backgroundColor: '#ffffff', border: '1px solid #f1f5f9', borderRadius: '8px', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
                     itemStyle={{ fontSize: '12px' }}
-                    formatter={(value: number) => `R$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
+                    formatter={(value: any) => `R$ ${Number(value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
                   />
                   <Area type="monotone" dataKey="gross" name="Bruto" stroke="#1B365D" fillOpacity={1} fill="url(#colorGross)" />
                   <Area type="monotone" dataKey="net" name="Líquido" stroke="#C5A059" fillOpacity={1} fill="url(#colorNet)" />
+                  {viewMode === 'monthly' && chartData.find(d => d.monthKey === selectedMonth) && (
+                    <Area 
+                      type="monotone" 
+                      dataKey={(d) => d.monthKey === selectedMonth ? d.gross : null} 
+                      stroke="#ff0000" 
+                      fill="#ff0000" 
+                      fillOpacity={0.2} 
+                      name="Mês Sel." 
+                    />
+                  )}
                 </AreaChart>
               </ResponsiveContainer>
             ) : (
@@ -307,7 +400,7 @@ export const FinancialPage = () => {
                   <Tooltip
                     contentStyle={{ backgroundColor: '#ffffff', border: '1px solid #f1f5f9', borderRadius: '8px' }}
                     itemStyle={{ fontSize: '12px' }}
-                    formatter={(value: number) => `R$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
+                    formatter={(value: any) => `R$ ${Number(value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
                   />
                   <Legend verticalAlign="bottom" height={36}/>
                 </PieChart>
@@ -340,7 +433,7 @@ export const FinancialPage = () => {
                   <Tooltip
                     contentStyle={{ backgroundColor: '#ffffff', border: '1px solid #f1f5f9', borderRadius: '8px' }}
                     itemStyle={{ fontSize: '12px' }}
-                    formatter={(value: number) => `R$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
+                    formatter={(value: any) => `R$ ${Number(value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
                   />
                   <Bar dataKey="value" name="Total Repasse" fill="#C5A059" radius={[0, 4, 4, 0]} />
                 </BarChart>

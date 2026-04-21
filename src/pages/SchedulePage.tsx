@@ -77,7 +77,7 @@ export const SchedulePage = () => {
   const [cancellationModalAppId, setCancellationModalAppId] = useState<string | null>(null);
   const [updateFuture, setUpdateFuture] = useState(false);
 
-  const [formData, setFormData] = useState({
+  const defaultFormData = {
     customerId: '',
     psychologistId: '',
     roomId: '',
@@ -85,8 +85,8 @@ export const SchedulePage = () => {
     type: AppointmentType.ADULTO,
     procedureCode: '',
     date: date,
-    startTime: '08:00',
-    endTime: '09:00',
+    startTime: '',
+    endTime: '',
     customPrice: undefined as number | undefined,
     customRepassAmount: undefined as number | undefined,
     isRecurring: false,
@@ -95,7 +95,20 @@ export const SchedulePage = () => {
     internalType: 'SUPERVISAO' as 'SUPERVISAO' | 'RESPONSAVEIS' | 'REUNIAO' | 'ADMIN' | 'OUTRO',
     internalTitle: '',
     internalNotes: ''
-  });
+  };
+
+  const [formData, setFormData] = useState({ ...defaultFormData, startTime: '08:00', endTime: '09:00' });
+
+  const resetForm = () => {
+    setFormData({ ...defaultFormData, date: date, startTime: '08:00', endTime: '09:00' });
+    setCustomerSearch('');
+  };
+
+  const handleCloseModal = () => {
+    setIsModalOpen(false);
+    setEditingId(null);
+    resetForm();
+  };
 
   const [isManualEndTime, setIsManualEndTime] = useState(false);
 
@@ -587,8 +600,8 @@ export const SchedulePage = () => {
     });
   }, [date]);
 
-  const allTimeSlots = Array.from({ length: 16 * 6 + 1 }, (_, i) => {
-    const totalMinutes = 7 * 60 + i * 10;
+  const allTimeSlots = Array.from({ length: 14 * 6 + 1 }, (_, i) => {
+    const totalMinutes = 8 * 60 + i * 10;
     const hour = Math.floor(totalMinutes / 60);
     const minute = totalMinutes % 60;
     return `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
@@ -837,7 +850,8 @@ export const SchedulePage = () => {
                 {new Date(date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long' })}
               </div>
               <Button onClick={() => {
-                setFormData({ ...formData, date, mode: AttendanceMode.PRESENCIAL });
+                resetForm();
+                setFormData(prev => ({ ...prev, date, mode: AttendanceMode.PRESENCIAL }));
                 setIsManualEndTime(false);
                 setIsModalOpen(true);
               }} className="bg-priori-navy hover:bg-priori-navy/90 text-white">
@@ -1344,10 +1358,7 @@ export const SchedulePage = () => {
 
       <Modal
         isOpen={isModalOpen}
-        onClose={() => {
-          setIsModalOpen(false);
-          setEditingId(null);
-        }}
+        onClose={handleCloseModal}
         title={editingId ? "Editar Agendamento" : "Novo Agendamento"}
         className="max-w-xl h-[65vh]"
         footer={
@@ -1361,7 +1372,7 @@ export const SchedulePage = () => {
                   const appointmentToDelete = appointments.find(a => a.id === editingId);
                   if (appointmentToDelete) {
                     await handleDelete(appointmentToDelete);
-                    setIsModalOpen(false);
+                    handleCloseModal();
                   }
                 }}
               >
@@ -1373,7 +1384,7 @@ export const SchedulePage = () => {
               type="button" 
               variant="outline" 
               className="flex-1 border-zinc-200 text-priori-navy hover:bg-zinc-100" 
-              onClick={() => setIsModalOpen(false)}
+              onClick={handleCloseModal}
             >
               Cancelar
             </Button>
