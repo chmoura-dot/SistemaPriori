@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, Search, MoreVertical, Edit2, Trash2, Mail, Phone, User, UserX, UserCheck, TrendingUp, Check, AlertCircle, FileUp, Download } from 'lucide-react';
+import { Plus, Search, MoreVertical, Edit2, Trash2, Mail, Phone, User, UserX, UserCheck, TrendingUp, Check, AlertCircle, FileUp, Download, AlertTriangle } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { api } from '../services/api';
 import { Customer, CustomerStatus, HealthPlan, Psychologist, UserRole, InactivationReason } from '../services/types';
@@ -31,6 +31,7 @@ export const CustomersPage = () => {
   const [customerToInactivate, setCustomerToInactivate] = useState<Customer | null>(null);
   const [selectedInactivationReason, setSelectedInactivationReason] = useState<InactivationReason | null>(null);
   const [statusFilter, setStatusFilter] = useState<'active' | 'inactive' | 'all' | 'inactive30'>('active');
+  const [showIncompleteOnly, setShowIncompleteOnly] = useState(false);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -393,6 +394,26 @@ export const CustomersPage = () => {
     }
   };
 
+  const getIncompleteFields = (customer: Customer): string[] => {
+    if (customer.status !== CustomerStatus.ACTIVE) return [];
+    
+    const missing: string[] = [];
+    if (!customer.phone) missing.push('Telefone');
+    if (!customer.birthDate) missing.push('Data de Nasc.');
+    if (!customer.gender) missing.push('Gênero');
+    
+    if (customer.healthPlan === HealthPlan.PARTICULAR && !customer.customPrice) {
+      missing.push('Valor da Consulta');
+    }
+    
+    const planName = String(customer.healthPlan || '').toUpperCase();
+    if ((planName.includes('AMS') || planName.includes('PETROBRAS')) && !customer.amsPasswordExpiry) {
+      missing.push('Vencimento Senha');
+    }
+    
+    return missing;
+  };
+
   const filteredCustomers = customers.filter(c => {
     const searchLower = String(searchTerm || '').toLowerCase();
     const nameMatch = String(c.name || '').toLowerCase().includes(searchLower);
@@ -410,8 +431,22 @@ export const CustomersPage = () => {
                          (statusFilter === 'inactive' && c.status === CustomerStatus.INACTIVE) ||
                          (statusFilter === 'inactive30' && isInactive30);
     
+    if (showIncompleteOnly) {
+      return matchesSearch && matchesStatus && getIncompleteFields(c).length > 0;
+    }
+    
     return matchesSearch && matchesStatus;
+  }).sort((a, b) => {
+    const missingA = getIncompleteFields(a).length;
+    const missingB = getIncompleteFields(b).length;
+    
+    if (missingA > 0 && missingB === 0) return -1;
+    if (missingB > 0 && missingA === 0) return 1;
+    
+    return a.name.localeCompare(b.name);
   });
+
+  const activeIncompleteCount = customers.filter(c => c.status === CustomerStatus.ACTIVE && getIncompleteFields(c).length > 0).length;
 
   const formatDate = (dateStr?: string) => {
     if (!dateStr) return '-';
@@ -537,6 +572,36 @@ export const CustomersPage = () => {
         </div>
       )}
 
+      {statusFilter === 'active' && activeIncompleteCount > 0 && !showIncompleteOnly && (
+        <div className="bg-orange-50 border border-orange-200 text-orange-800 px-4 py-3 rounded-xl flex items-center justify-between text-sm shadow-sm animate-in fade-in slide-in-from-top-2">
+          <div className="flex items-center gap-2">
+            <AlertTriangle size={16} className="text-orange-500" />
+            <p>Há <span className="font-bold">{activeIncompleteCount}</span> pacientes ativos com cadastro incompleto priorizados no topo da lista.</p>
+          </div>
+          <button 
+            onClick={() => setShowIncompleteOnly(true)}
+            className="text-orange-600 hover:text-orange-800 font-bold text-xs uppercase tracking-wider underline underline-offset-2"
+          >
+            Ver Apenas Incompletos
+          </button>
+        </div>
+      )}
+      
+      {showIncompleteOnly && (
+        <div className="bg-orange-50 border border-orange-200 text-orange-800 px-4 py-3 rounded-xl flex items-center justify-between text-sm shadow-sm animate-in fade-in slide-in-from-top-2">
+          <div className="flex items-center gap-2">
+            <AlertTriangle size={16} className="text-orange-500" />
+            <p><strong>Filtro Ativo:</strong> Exibindo apenas pacientes com cadastro incompleto.</p>
+          </div>
+          <button 
+            onClick={() => setShowIncompleteOnly(false)}
+            className="text-orange-600 hover:text-orange-800 font-bold text-xs uppercase tracking-wider underline underline-offset-2"
+          >
+            Limpar Filtro
+          </button>
+        </div>
+      )}
+
       <div className="bg-white border border-zinc-100 rounded-2xl overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full text-left">
@@ -558,6 +623,7 @@ export const CustomersPage = () => {
                 </tr>
               ) : filteredCustomers.map((customer) => {
                 const psy = psychologists.find(p => p.id === customer.psychologistId);
+                const missingFields = getIncompleteFields(customer);
                 return (
                   <tr key={customer.id} className="hover:bg-zinc-50 transition-colors">
                     <td className="px-6 py-4">
@@ -566,7 +632,17 @@ export const CustomersPage = () => {
                           <User size={16} />
                         </div>
                         <div className="min-w-0">
-                          <p className="text-sm font-bold text-priori-navy truncate">{customer.name}</p>
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-bold text-priori-navy truncate">{customer.name}</p>
+                            {missingFields.length > 0 && (
+                              <div className="group relative flex items-center">
+                                <AlertTriangle size={14} className="text-orange-500 cursor-help" />
+                                <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover:block w-max bg-zinc-800 text-white text-xs p-2 rounded shadow-lg z-10">
+                                  Falta: {missingFields.join(', ')}
+                                </div>
+                              </div>
+                            )}
+                          </div>
                           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                             <span className="flex items-center gap-1 text-[10px] text-zinc-400">
                               <Phone size={10} />
