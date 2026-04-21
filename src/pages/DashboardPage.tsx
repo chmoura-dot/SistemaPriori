@@ -437,6 +437,51 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
   const MODALITY_COLORS = ['#1a365d', '#d4af37'];
   const CHART_COLORS = ['#1a365d', '#d4af37', '#10b981', '#f59e0b', '#ef4444', '#6366f1', '#8b5cf6'];
 
+  // ─── Perfil de Idade dos Pacientes ───────────────────────────────────────
+
+  const ageProfileData = useMemo(() => {
+    const activeCustomers = customers.filter(c => c.status === CustomerStatus.ACTIVE);
+    
+    let crianca = 0; // 0-12
+    let adolescente = 0; // 13-17
+    let adulto = 0; // 18-59
+    let idoso = 0; // 60+
+    let semIdade = 0;
+
+    activeCustomers.forEach(c => {
+      if (!c.birthDate) {
+        semIdade++;
+        return;
+      }
+      
+      const birth = new Date(c.birthDate + 'T12:00:00');
+      let age = today.getFullYear() - birth.getFullYear();
+      const m = today.getMonth() - birth.getMonth();
+      if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {
+        age--;
+      }
+
+      if (age <= 12) crianca++;
+      else if (age <= 17) adolescente++;
+      else if (age <= 59) adulto++;
+      else idoso++;
+    });
+
+    const totalComIdade = crianca + adolescente + adulto + idoso;
+    
+    return {
+      data: [
+        { name: 'Criança (0-12)', value: crianca, color: '#6366f1' },
+        { name: 'Adolescente (13-17)', value: adolescente, color: '#10b981' },
+        { name: 'Adulto (18-59)', value: adulto, color: '#1a365d' },
+        { name: 'Idoso (60+)', value: idoso, color: '#d4af37' }
+      ].filter(d => d.value > 0),
+      totalComIdade,
+      semIdade,
+      totalAtivos: activeCustomers.length
+    };
+  }, [customers]);
+
   const growthData = useMemo(() => {
     const months: Record<string, { month: string; patients: number; psychologists: number; timestamp: number }> = {};
     const getMonthKey = (dateStr?: string) => {
@@ -937,7 +982,7 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
                   <XAxis dataKey="month" fontSize={10} fontWeight="bold" tickLine={false} axisLine={false} />
                   <YAxis fontSize={10} fontWeight="bold" tickLine={false} axisLine={false} tickFormatter={v => `R$${(v/1000).toFixed(0)}k`} />
-                  <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} formatter={(v: number) => `R$ ${fmt(v)}`} />
+                  <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} formatter={(v: any) => `R$ ${fmt(Number(v))}`} />
                   <Legend verticalAlign="top" height={36} iconType="circle" />
                   <Area type="monotone" dataKey="receita" name="Receita" fill="#10b981" stroke="#10b981" fillOpacity={0.15} strokeWidth={2} animationDuration={1500} />
                   <Area type="monotone" dataKey="despesas" name="Despesas" fill="#ef4444" stroke="#ef4444" fillOpacity={0.15} strokeWidth={2} animationDuration={1500} />
@@ -945,6 +990,78 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
                 </ComposedChart>
               </ResponsiveContainer>
             </div>
+          </div>
+
+          {/* ── Perfil de Idade ── */}
+          <div className="bg-white border border-zinc-100 rounded-2xl p-6 shadow-sm">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="p-2.5 bg-blue-50 rounded-xl"><Users size={18} className="text-blue-500" /></div>
+              <h3 className="text-sm font-bold text-zinc-700 uppercase tracking-widest">Perfil de Idade dos Pacientes</h3>
+            </div>
+            
+            {ageProfileData.totalComIdade > 0 ? (
+              <div className="flex flex-col sm:flex-row items-center gap-6">
+                <div className="h-[200px] w-full sm:w-[200px] shrink-0">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={ageProfileData.data}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={50}
+                        outerRadius={80}
+                        paddingAngle={5}
+                        dataKey="value"
+                      >
+                        {ageProfileData.data.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip 
+                        contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                        formatter={(value: any) => {
+                          const num = Number(value);
+                          return [
+                            `${num} paciente${num !== 1 ? 's' : ''} (${((num / ageProfileData.totalComIdade) * 100).toFixed(1)}%)`,
+                            ''
+                          ];
+                        }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+                
+                <div className="flex-1 space-y-3 w-full">
+                  {ageProfileData.data.map(item => (
+                    <div key={item.name} className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+                        <span className="text-sm font-bold text-priori-navy">{item.name}</span>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-sm font-black text-priori-navy">{item.value}</span>
+                        <span className="text-[10px] text-zinc-400 ml-2">
+                          {((item.value / ageProfileData.totalComIdade) * 100).toFixed(1)}%
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                  
+                  {ageProfileData.semIdade > 0 && (
+                    <div className="pt-3 mt-3 border-t border-zinc-100">
+                      <p className="text-[10px] text-zinc-400 text-center">
+                        * {ageProfileData.semIdade} paciente{ageProfileData.semIdade !== 1 ? 's' : ''} ativo{ageProfileData.semIdade !== 1 ? 's' : ''} sem data de nascimento cadastrada.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-10 text-zinc-400">
+                <Users size={32} className="mx-auto mb-2 opacity-30" />
+                <p className="text-sm">Nenhum paciente com data de nascimento preenchida.</p>
+              </div>
+            )}
           </div>
 
           {/* ── Ranking de Psicólogos ── */}
@@ -1078,7 +1195,7 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
                       <Pie data={modalityData} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value" animationBegin={0} animationDuration={1500}>
                         {modalityData.map((_entry, index) => <Cell key={`cell-${index}`} fill={MODALITY_COLORS[index % MODALITY_COLORS.length]} />)}
                       </Pie>
-                      <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} formatter={(value: number) => [`${value} atendimentos`, 'Quantidade']} />
+                      <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} formatter={(value: any) => [`${Number(value)} atendimentos`, 'Quantidade']} />
                       <Legend verticalAlign="bottom" height={36} iconType="circle" />
                     </PieChart>
                   </ResponsiveContainer>
