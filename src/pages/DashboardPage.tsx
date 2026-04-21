@@ -437,6 +437,67 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
   const MODALITY_COLORS = ['#1a365d', '#d4af37'];
   const CHART_COLORS = ['#1a365d', '#d4af37', '#10b981', '#f59e0b', '#ef4444', '#6366f1', '#8b5cf6'];
 
+  // ─── Perfil de Gênero dos Pacientes ───────────────────────────────────────
+
+  const genderProfileData = useMemo(() => {
+    const activeCustomers = customers.filter(c => c.status === CustomerStatus.ACTIVE);
+    
+    let feminino = 0;
+    let masculino = 0;
+    let naoIdentificado = 0;
+
+    // Lista de terminações e nomes comuns para inferir gênero no Brasil
+    const commonFemaleNames = ['MARIA', 'ANA', 'JULIANA', 'FERNANDA', 'PATRICIA', 'ALINE', 'CAMILA', 'LETICIA', 'AMANDA', 'BEATRIZ', 'CAROLINA', 'MARCELA', 'VANESSA', 'MARIANA', 'LUANA', 'THAIZ', 'THAIS', 'GABRIELA', 'JULIA', 'ISABELA', 'ISADORA', 'LAURA', 'LUIZA', 'VITORIA', 'CLARA', 'RAFAELA', 'SOFIA', 'HELENA', 'ALICE', 'MANUELA', 'VALENTINA', 'HELOISA', 'LORENA', 'GIOVANNA', 'CECILIA', 'NICOLE', 'SARAH', 'ISABEL', 'ESTHER', 'YASMIN', 'EDUARDA', 'ALICIA', 'LIVIA', 'MELISSA', 'MARINA', 'CLARICE', 'MILENA', 'SOPHIA'];
+    
+    const commonMaleNames = ['JOSE', 'JOAO', 'ANTONIO', 'FRANCISCO', 'CARLOS', 'PAULO', 'PEDRO', 'LUCAS', 'LUIZ', 'MARCOS', 'LUIS', 'GABRIEL', 'RAFAEL', 'DANIEL', 'MARCELO', 'BRUNO', 'EDUARDO', 'FELIPE', 'RAIMUNDO', 'RODRIGO', 'MATEUS', 'MATHEUS', 'THIAGO', 'GUILHERME', 'ENZO', 'ARTHUR', 'MIGUEL', 'DAVI', 'BERNARDO', 'HEITOR', 'SAMUEL', 'LORENZO', 'BENJAMIN', 'NICOLAS', 'GUSTAVO', 'ISAAC', 'CAUAN', 'CAUA', 'VITOR', 'VICTOR', 'LEONARDO', 'ENRICO', 'THOMAS', 'TOMAS'];
+
+    activeCustomers.forEach(c => {
+      const firstName = c.name.trim().split(' ')[0].toUpperCase();
+      
+      // Checa por nome exato
+      if (commonFemaleNames.includes(firstName)) {
+        feminino++;
+      } else if (commonMaleNames.includes(firstName)) {
+        masculino++;
+      } 
+      // Se não encontrou na lista, tenta por terminação
+      else if (firstName.endsWith('A') || firstName.endsWith('IA') || firstName.endsWith('LY') || firstName.endsWith('NY') || firstName.endsWith('IE') || firstName.endsWith('NA')) {
+        // Exceções de masculinos terminados em A
+        const maleExceptionsA = ['LUCAS', 'JOSIAS', 'THOMAS', 'NICOLLAS', 'MATTHIAS', 'OSIAS', 'ELIAS', 'JONAS', 'BARNABAS'];
+        // Tenta contornar as exceções
+        let isMaleException = false;
+        for(let exc of maleExceptionsA){
+            if(firstName.includes(exc)) isMaleException = true;
+        }
+
+        if(firstName === 'ANDREA' || firstName === 'NICOLA' || firstName === 'GIANLUCA') isMaleException = true;
+
+        if(!isMaleException){
+            feminino++;
+        } else {
+            masculino++;
+        }
+
+      } else if (firstName.endsWith('O') || firstName.endsWith('SON') || firstName.endsWith('EL') || firstName.endsWith('OS') || firstName.endsWith('OR') || firstName.endsWith('US')) {
+        masculino++;
+      } else {
+        naoIdentificado++;
+      }
+    });
+
+    const totalIdentificado = feminino + masculino;
+    
+    return {
+      data: [
+        { name: 'Feminino', value: feminino, color: '#ec4899' }, // pink-500
+        { name: 'Masculino', value: masculino, color: '#3b82f6' }  // blue-500
+      ].filter(d => d.value > 0),
+      totalIdentificado,
+      naoIdentificado,
+      totalAtivos: activeCustomers.length
+    };
+  }, [customers]);
+
   // ─── Perfil de Idade dos Pacientes ───────────────────────────────────────
 
   const ageProfileData = useMemo(() => {
@@ -992,14 +1053,16 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
             </div>
           </div>
 
-          {/* ── Perfil de Idade ── */}
-          <div className="bg-white border border-zinc-100 rounded-2xl p-6 shadow-sm">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="p-2.5 bg-blue-50 rounded-xl"><Users size={18} className="text-blue-500" /></div>
-              <h3 className="text-sm font-bold text-zinc-700 uppercase tracking-widest">Perfil de Idade dos Pacientes</h3>
-            </div>
-            
-            {ageProfileData.totalComIdade > 0 ? (
+          {/* ── Perfil Demográfico (Idade e Gênero) ── */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Perfil de Idade */}
+            <div className="bg-white border border-zinc-100 rounded-2xl p-6 shadow-sm">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="p-2.5 bg-blue-50 rounded-xl"><Users size={18} className="text-blue-500" /></div>
+                <h3 className="text-sm font-bold text-zinc-700 uppercase tracking-widest">Perfil de Idade</h3>
+              </div>
+              
+              {ageProfileData.totalComIdade > 0 ? (
               <div className="flex flex-col sm:flex-row items-center gap-6">
                 <div className="h-[200px] w-full sm:w-[200px] shrink-0">
                   <ResponsiveContainer width="100%" height="100%">
@@ -1056,12 +1119,85 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
                   )}
                 </div>
               </div>
-            ) : (
-              <div className="text-center py-10 text-zinc-400">
-                <Users size={32} className="mx-auto mb-2 opacity-30" />
-                <p className="text-sm">Nenhum paciente com data de nascimento preenchida.</p>
+              ) : (
+                <div className="text-center py-10 text-zinc-400">
+                  <Users size={32} className="mx-auto mb-2 opacity-30" />
+                  <p className="text-sm">Nenhum paciente com data de nascimento preenchida.</p>
+                </div>
+              )}
+            </div>
+
+            {/* Perfil de Gênero */}
+            <div className="bg-white border border-zinc-100 rounded-2xl p-6 shadow-sm">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="p-2.5 bg-pink-50 rounded-xl"><Users size={18} className="text-pink-500" /></div>
+                <h3 className="text-sm font-bold text-zinc-700 uppercase tracking-widest">Perfil de Gênero (Estimado)</h3>
               </div>
-            )}
+              
+              {genderProfileData.totalIdentificado > 0 ? (
+                <div className="flex flex-col sm:flex-row items-center gap-6">
+                  <div className="h-[200px] w-full sm:w-[200px] shrink-0">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={genderProfileData.data}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={50}
+                          outerRadius={80}
+                          paddingAngle={5}
+                          dataKey="value"
+                        >
+                          {genderProfileData.data.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.color} />
+                          ))}
+                        </Pie>
+                        <Tooltip 
+                          contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                          formatter={(value: any) => {
+                            const num = Number(value);
+                            return [
+                              `${num} paciente${num !== 1 ? 's' : ''} (${((num / genderProfileData.totalIdentificado) * 100).toFixed(1)}%)`,
+                              ''
+                            ];
+                          }}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                  
+                  <div className="flex-1 space-y-3 w-full">
+                    {genderProfileData.data.map(item => (
+                      <div key={item.name} className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+                          <span className="text-sm font-bold text-priori-navy">{item.name}</span>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-sm font-black text-priori-navy">{item.value}</span>
+                          <span className="text-[10px] text-zinc-400 ml-2">
+                            {((item.value / genderProfileData.totalIdentificado) * 100).toFixed(1)}%
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                    
+                    {genderProfileData.naoIdentificado > 0 && (
+                      <div className="pt-3 mt-3 border-t border-zinc-100">
+                        <p className="text-[10px] text-zinc-400 text-center">
+                          * {genderProfileData.naoIdentificado} paciente{genderProfileData.naoIdentificado !== 1 ? 's' : ''} ativo{genderProfileData.naoIdentificado !== 1 ? 's' : ''} sem gênero identificado pelo nome.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-10 text-zinc-400">
+                  <Users size={32} className="mx-auto mb-2 opacity-30" />
+                  <p className="text-sm">Nenhum paciente com gênero identificado.</p>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* ── Ranking de Psicólogos ── */}
