@@ -394,11 +394,22 @@ export const CustomersPage = () => {
     }
   };
 
+  const isPhoneValid = (phone: string | undefined): boolean => {
+    if (!phone) return false;
+    const digitsOnly = phone.replace(/\D/g, '');
+    return digitsOnly.length === 10 || digitsOnly.length === 11;
+  };
+
   const getIncompleteFields = (customer: Customer): string[] => {
     if (customer.status !== CustomerStatus.ACTIVE) return [];
     
     const missing: string[] = [];
-    if (!customer.phone) missing.push('Telefone');
+    if (!customer.phone) {
+      missing.push('Telefone');
+    } else if (!isPhoneValid(customer.phone)) {
+      missing.push('Telefone Inválido');
+    }
+    
     if (!customer.birthDate) missing.push('Data de Nasc.');
     if (!customer.gender) missing.push('Gênero');
     
