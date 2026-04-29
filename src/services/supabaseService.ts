@@ -452,11 +452,13 @@ export const supabaseService: AppService = {
   },
 
   getAppointmentsNeedingRenewal: async () => {
+    const sixtyDaysAgo = new Date(Date.now() - 60 * 86400000).toISOString().split('T')[0];
     const { data, error } = await supabase
       .from('appointments')
       .select('*')
       .eq('needs_renewal', true)
       .eq('status', 'active')
+      .gte('date', sixtyDaysAgo)
       .order('date');
     if (error) throw new Error(error.message);
     return (data ?? []).map(toAppointment);

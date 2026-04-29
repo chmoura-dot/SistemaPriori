@@ -95,7 +95,8 @@ export const RenewalAlert = () => {
     setIsProcessing(true);
     try {
       const d = new Date(appointment.date + 'T12:00:00');
-      d.setDate(d.getDate() + 7);
+      const intervalDays = appointment.recurrenceFrequency === RecurrenceFrequency.QUINZENAL ? 14 : 7;
+      d.setDate(d.getDate() + intervalDays);
       const nextDate = d.toISOString().split('T')[0];
 
       await api.createAppointment({

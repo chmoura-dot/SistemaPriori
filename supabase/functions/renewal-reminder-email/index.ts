@@ -28,6 +28,11 @@ Deno.serve(async (_req) => {
 
     console.log(`[RenewalReminder] Buscando renovações entre hoje (${todayStr}) e ${limitStr}`);
 
+    // Calcular data limite inferior: hoje - 7 dias (para não arrastar alertas muito antigos)
+    const minDateObj = new Date(todayStr + 'T12:00:00');
+    minDateObj.setDate(minDateObj.getDate() - 7);
+    const minStr = minDateObj.toISOString().split('T')[0];
+
     // Buscar agendamentos que precisam de renovação e vencem em até 3 dias
     const { data: appointments, error } = await supabase
       .from('appointments')
@@ -42,6 +47,7 @@ Deno.serve(async (_req) => {
       .eq('needs_renewal', true)
       .eq('status', 'active')
       .lte('date', limitStr)
+      .gte('date', minStr)
       .order('date', { ascending: true });
 
     if (error) throw error;
