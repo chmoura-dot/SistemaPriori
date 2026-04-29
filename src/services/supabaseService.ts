@@ -457,7 +457,7 @@ export const supabaseService: AppService = {
       .from('appointments')
       .select('*')
       .eq('needs_renewal', true)
-      .eq('status', 'active')
+      .in('status', ['active', 'canceled'])
       .gte('date', sixtyDaysAgo)
       .order('date');
     if (error) throw new Error(error.message);
