@@ -461,7 +461,37 @@ export const supabaseService: AppService = {
       .gte('date', sixtyDaysAgo)
       .order('date');
     if (error) throw new Error(error.message);
-    return (data ?? []).map(toAppointment);
+
+    const candidates = (data ?? []).map(toAppointment);
+    const validCandidates: Appointment[] = [];
+
+    // Verificação de falsos positivos:
+    // Se o agendamento precisa de renovação, mas já existem agendamentos ativos futuros
+    // para o mesmo paciente/psicólogo/horário, significa que já foi renovado.
+    for (const app of candidates) {
+      if (!app.customerId) continue;
+
+      const { count } = await supabase
+        .from('appointments')
+        .select('*', { count: 'exact', head: true })
+        .eq('customer_id', app.customerId)
+        .eq('psychologist_id', app.psychologistId)
+        .eq('start_time', app.startTime)
+        .eq('status', 'active')
+        .gt('date', app.date);
+
+      if (count && count > 0) {
+        // Auto-correção silenciosa no banco: tira o needs_renewal
+        await supabase
+          .from('appointments')
+          .update({ needs_renewal: false })
+          .eq('id', app.id);
+      } else {
+        validCandidates.push(app);
+      }
+    }
+
+    return validCandidates;
   },
 
   createAppointment: async (a) => {
