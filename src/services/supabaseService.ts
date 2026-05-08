@@ -438,6 +438,18 @@ export const supabaseService: AppService = {
     return (data ?? []).map(toAppointment);
   },
 
+  getAppointmentsForBilling: async () => {
+    // Para faturamento, trazemos todos os atendimentos, sem limite de data
+    const { data, error } = await supabase
+      .from('appointments')
+      .select('*')
+      .order('date', { ascending: false })
+      .limit(10000); // Aumentando o limite para evitar o limite padrão de 1000 registros
+
+    if (error) throw new Error(error.message);
+    return (data || []).map(toAppointment);
+  },
+
   getAppointmentsByRange: async (startDate: string, endDate: string) => {
     const { data, error } = await supabase
       .from('appointments')
