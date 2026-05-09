@@ -229,15 +229,27 @@ export const BillingPage = () => {
   };
 
   const getEligibleAppointments = () => {
+    const today = new Date().toISOString().split('T')[0];
     return appointments.filter(a => {
       const customer = customers.find(c => c.id === a.customerId);
       return (
         customer?.healthPlan === selectedPlan &&
         !a.billingBatchId &&
         !a.billingIgnored &&
-        a.confirmedPsychologist !== false // Only bill confirmed ones (allow historical nulls)
+        a.status !== 'canceled' &&
+        a.date <= today
       );
     }).sort((a, b) => a.date.localeCompare(b.date));
+  };
+
+  const handleConfirmAppointment = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await api.updateAppointment(id, { confirmedPsychologist: true, status: 'active' });
+      setAppointments(prev => prev.map(a => a.id === id ? { ...a, confirmedPsychologist: true, status: 'active' } : a));
+    } catch (error) {
+      console.error('Error confirming appointment:', error);
+    }
   };
 
   const calculateTotalSelectedAmount = (): number => {
@@ -509,20 +521,24 @@ export const BillingPage = () => {
                   const neuropsicoStatus = getNeuropsicoStatus(app);
                   const basePrice = getAppPrice(app);
 
+                  const isConfirmed = app.confirmedPsychologist === true;
+
                   return (
                     <div key={app.id} className="flex flex-col border-b border-zinc-100 last:border-0">
                       <div 
                         className={cn(
-                          "flex items-center gap-4 p-3 hover:bg-zinc-50 cursor-pointer transition-colors",
-                          selectedAppointmentIds.includes(app.id) && "bg-priori-navy/5"
+                          "flex items-center gap-4 p-3 hover:bg-zinc-50 transition-colors",
+                          selectedAppointmentIds.includes(app.id) && "bg-priori-navy/5",
+                          isConfirmed ? "cursor-pointer" : "opacity-75 cursor-not-allowed bg-zinc-50/50"
                         )}
-                        onClick={() => toggleAppointmentSelection(app.id)}
+                        onClick={() => isConfirmed && toggleAppointmentSelection(app.id)}
                       >
                         <input
                           type="checkbox"
                           checked={selectedAppointmentIds.includes(app.id)}
+                          disabled={!isConfirmed}
                           onChange={() => {}} // Handled by div click
-                          className="rounded border-zinc-300 text-priori-navy focus:ring-priori-navy"
+                          className="rounded border-zinc-300 text-priori-navy focus:ring-priori-navy disabled:opacity-50"
                         />
                         <div className="flex-1 min-w-0">
                           <div className="font-medium text-priori-navy truncate flex items-center gap-2">
@@ -537,6 +553,11 @@ export const BillingPage = () => {
                                 ⚠️ Neuropsico (último há {neuropsicoStatus.diffDays} dias)
                               </span>
                             )}
+                            {!isConfirmed && (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-amber-50 text-amber-600 border border-amber-200">
+                                Aguardando confirmação
+                              </span>
+                            )}
                           </div>
                           <div className="text-xs text-zinc-500 truncate">
                             {psychologist?.name} • {format(new Date(app.date + 'T12:00:00'), 'dd/MM/yyyy')} • {app.startTime}
@@ -545,6 +566,15 @@ export const BillingPage = () => {
                         <div className="text-sm font-medium text-priori-navy mr-2">
                           {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(basePrice)}
                         </div>
+                        {!isConfirmed && (
+                          <Button
+                            size="sm"
+                            onClick={(e) => handleConfirmAppointment(app.id, e)}
+                            className="bg-emerald-600 hover:bg-emerald-700 text-xs px-3 h-8 mr-2"
+                          >
+                            Confirmar
+                          </Button>
+                        )}
                         <button
                           onClick={(e) => handleIgnoreAppointment(app.id, e)}
                           className="p-1.5 text-zinc-300 hover:text-red-400 hover:bg-red-50 rounded-lg transition-all flex-shrink-0"
