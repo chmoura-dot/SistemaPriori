@@ -61,7 +61,7 @@ export const BillingPage = () => {
     try {
       const [batchesData, appsData, customersData, plansData, psyData] = await Promise.all([
         api.getBillingBatches(),
-        api.getAppointments(),
+        api.getAppointmentsForBilling(),
         api.getCustomers(),
         api.getPlans(),
         api.getPsychologists()
@@ -235,7 +235,7 @@ export const BillingPage = () => {
         customer?.healthPlan === selectedPlan &&
         !a.billingBatchId &&
         !a.billingIgnored &&
-        a.confirmedPsychologist // Only bill confirmed ones
+        a.confirmedPsychologist !== false // Only bill confirmed ones (allow historical nulls)
       );
     }).sort((a, b) => a.date.localeCompare(b.date));
   };
