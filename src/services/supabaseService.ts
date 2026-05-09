@@ -439,12 +439,17 @@ export const supabaseService: AppService = {
   },
 
   getAppointmentsForBilling: async () => {
-    // Para faturamento, trazemos todos os atendimentos, sem limite de data
+    const today = new Date().toISOString().split('T')[0];
+    
+    // Para faturamento, trazemos todos os atendimentos até a data de hoje,
+    // pois o PostgREST limita o retorno a 1000 linhas. Trazer datas futuras
+    // empurraria os dados históricos para fora do limite.
     const { data, error } = await supabase
       .from('appointments')
       .select('*')
+      .lte('date', today)
       .order('date', { ascending: false })
-      .limit(10000); // Aumentando o limite para evitar o limite padrão de 1000 registros
+      .limit(10000); // O supabase limita em 1000 de qualquer forma por configuração
 
     if (error) throw new Error(error.message);
     return (data || []).map(toAppointment);
