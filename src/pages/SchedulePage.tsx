@@ -75,7 +75,19 @@ export const SchedulePage = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [cancellationModalAppId, setCancellationModalAppId] = useState<string | null>(null);
+  const [cancellationReason, setCancellationReason] = useState<string>('');
+  const [cancellationStep, setCancellationStep] = useState<'reason' | 'billing'>('reason');
+  const [deleteModalAppId, setDeleteModalAppId] = useState<string | null>(null);
   const [updateFuture, setUpdateFuture] = useState(false);
+
+  const CANCELLATION_REASONS = [
+    'Solicitação do paciente',
+    'Imprevisto / emergência do paciente',
+    'Psicólogo indisponível',
+    'Necessidade de remarcação pela clínica',
+    'Falta sem aviso (no-show)',
+    'Outro'
+  ];
 
   const defaultFormData = {
     customerId: '',
@@ -347,26 +359,61 @@ export const SchedulePage = () => {
   };
 
   const handleDelete = async (appointment: Appointment) => {
+    setDeleteModalAppId(appointment.id);
+    setCancellationReason('');
+    
     if (appointment.isRecurring && appointment.recurrenceGroupId) {
       const choice = confirm('Este é um agendamento recorrente.\n\nClique em OK para excluir TODOS os agendamentos FUTUROS deste grupo.\nClique em CANCELAR para excluir APENAS este horário específico.');
-      
       if (choice) {
-        // Delete all future
-        try {
-          await api.deleteFutureAppointments(appointment.recurrenceGroupId, appointment.date);
-          await loadData();
-          return;
-        } catch (error) {
-          alert('Erro ao excluir recorrências');
-          return;
-        }
+        setUpdateFuture(true);
+      } else {
+        setUpdateFuture(false);
       }
+    } else {
+      setUpdateFuture(false);
     }
+  };
 
-    // Single delete logic (default or if specifically chosen)
-    if (confirm('Deseja realmente desmarcar este horário específico?')) {
-      await api.deleteAppointment(appointment.id);
+  const confirmDelete = async () => {
+    if (!deleteModalAppId || !cancellationReason) return;
+    setIsSaving(true);
+    try {
+      const appointment = appointments.find(a => a.id === deleteModalAppId);
+      if (!appointment) return;
+
+      // 1. Enviar notificação antes de excluir
+      try {
+        const customer = customers.find(c => c.id === appointment.customerId);
+        const psychologist = psychologists.find(p => p.id === appointment.psychologistId);
+        
+        await supabase.functions.invoke('cancel-appointment-notify', {
+          body: {
+            reason: cancellationReason,
+            appointmentData: {
+              ...appointment,
+              customer,
+              psychologist
+            }
+          }
+        });
+      } catch (notifyError) {
+        console.error('Erro ao notificar cancelamento:', notifyError);
+      }
+
+      // 2. Excluir no banco
+      if (appointment.isRecurring && appointment.recurrenceGroupId && updateFuture) {
+        await api.deleteFutureAppointments(appointment.recurrenceGroupId, appointment.date);
+      } else {
+        await api.deleteAppointment(appointment.id);
+      }
+      
       await loadData(date, true);
+    } catch (error) {
+      alert('Erro ao excluir agendamento');
+    } finally {
+      setIsSaving(false);
+      setDeleteModalAppId(null);
+      setCancellationReason('');
     }
   };
 
@@ -387,7 +434,21 @@ export const SchedulePage = () => {
 
   const handleCancelBillingChoice = async (billingMode: 'none' | 'plan' | 'particular') => {
     if (!cancellationModalAppId) return;
+    setIsSaving(true);
     try {
+      // 1. Enviar notificação
+      try {
+        await supabase.functions.invoke('cancel-appointment-notify', {
+          body: {
+            appointmentId: cancellationModalAppId,
+            reason: cancellationReason
+          }
+        });
+      } catch (notifyError) {
+        console.error('Erro ao notificar cancelamento:', notifyError);
+      }
+
+      // 2. Atualizar status no banco
       await api.updateAppointment(cancellationModalAppId, {
         status: AppointmentStatus.CANCELED,
         cancellationBilling: billingMode
@@ -396,7 +457,10 @@ export const SchedulePage = () => {
     } catch (error) {
       alert('Erro ao cancelar agendamento');
     } finally {
+      setIsSaving(false);
       setCancellationModalAppId(null);
+      setCancellationStep('reason');
+      setCancellationReason('');
     }
   };
 
@@ -587,8 +651,8 @@ export const SchedulePage = () => {
     const isSaturday = dayOfWeek === 6;
     const limitHour = isSaturday ? 14 : 20;
 
-    return Array.from({ length: 12 * 2 + 1 }, (_, i) => {
-      const totalMinutes = 8 * 60 + i * 30;
+    return Array.from({ length: 13 * 2 + 1 }, (_, i) => {
+      const totalMinutes = 7 * 60 + i * 30;
       const hour = Math.floor(totalMinutes / 60);
       const minute = totalMinutes % 60;
       return `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
@@ -600,8 +664,8 @@ export const SchedulePage = () => {
     });
   }, [date]);
 
-  const allTimeSlots = Array.from({ length: 14 * 6 + 1 }, (_, i) => {
-    const totalMinutes = 8 * 60 + i * 10;
+  const allTimeSlots = Array.from({ length: 15 * 6 + 1 }, (_, i) => {
+    const totalMinutes = 7 * 60 + i * 10;
     const hour = Math.floor(totalMinutes / 60);
     const minute = totalMinutes % 60;
     return `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
@@ -1821,43 +1885,140 @@ export const SchedulePage = () => {
 
       <Modal 
         isOpen={!!cancellationModalAppId} 
-        onClose={() => setCancellationModalAppId(null)}
+        onClose={() => {
+          setCancellationModalAppId(null);
+          setCancellationStep('reason');
+          setCancellationReason('');
+        }}
         title="Cancelar Sessão"
       >
         <div className="space-y-4">
+          {cancellationStep === 'reason' ? (
+            <>
+              <p className="text-sm text-zinc-600">
+                Selecione o motivo do cancelamento. Esta informação será enviada ao paciente e ao psicólogo.
+              </p>
+              <div className="space-y-2">
+                {CANCELLATION_REASONS.map((reason) => (
+                  <label key={reason} className="flex items-center space-x-3 p-3 border border-zinc-200 rounded-lg cursor-pointer hover:bg-zinc-50">
+                    <input
+                      type="radio"
+                      name="cancel_reason"
+                      value={reason}
+                      checked={cancellationReason === reason}
+                      onChange={(e) => setCancellationReason(e.target.value)}
+                      className="text-priori-navy focus:ring-priori-navy"
+                    />
+                    <span className="text-sm text-zinc-700">{reason}</span>
+                  </label>
+                ))}
+              </div>
+              <div className="flex justify-end pt-4">
+                <Button 
+                  onClick={() => setCancellationStep('billing')}
+                  disabled={!cancellationReason}
+                >
+                  Próximo <ChevronRight size={16} className="ml-2" />
+                </Button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-zinc-600">
+                O paciente faltou ou cancelou esta sessão. Como deseja registrar o faturamento?
+              </p>
+              <div className="grid grid-cols-1 gap-3">
+                <button
+                  onClick={() => handleCancelBillingChoice('none')}
+                  disabled={isSaving}
+                  className="flex items-center justify-center p-3 border border-zinc-200 rounded-xl hover:bg-zinc-50 transition-colors disabled:opacity-50"
+                >
+                  <div className="text-center">
+                    <span className="block font-bold text-zinc-700 text-sm">Não Cobrar</span>
+                    <span className="block text-xs text-zinc-500 mt-1">Sessão cancelada sem custo</span>
+                  </div>
+                </button>
+                
+                <button
+                  onClick={() => handleCancelBillingChoice('plan')}
+                  disabled={isSaving}
+                  className="flex items-center justify-center p-3 border border-priori-navy/20 bg-priori-navy/5 rounded-xl hover:bg-priori-navy/10 transition-colors disabled:opacity-50"
+                >
+                  <div className="text-center">
+                    <span className="block font-bold text-priori-navy text-sm">Cobrar no Convênio</span>
+                    <span className="block text-xs text-priori-navy/70 mt-1">Sessão será faturada via convênio normalmente</span>
+                  </div>
+                </button>
+                
+                <button
+                  onClick={() => handleCancelBillingChoice('particular')}
+                  disabled={isSaving}
+                  className="flex items-center justify-center p-3 border border-emerald-200 bg-emerald-50 rounded-xl hover:bg-emerald-100 transition-colors disabled:opacity-50"
+                >
+                  <div className="text-center">
+                    <span className="block font-bold text-emerald-700 text-sm">Cobrar Particular</span>
+                    <span className="block text-xs text-emerald-600/70 mt-1">Sessão será faturada do particular</span>
+                  </div>
+                </button>
+              </div>
+              <div className="flex justify-start pt-2">
+                <button 
+                  onClick={() => setCancellationStep('reason')}
+                  className="text-sm text-zinc-500 hover:text-zinc-700 flex items-center"
+                >
+                  <ChevronLeft size={16} className="mr-1" /> Voltar
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={!!deleteModalAppId}
+        onClose={() => {
+          setDeleteModalAppId(null);
+          setCancellationReason('');
+        }}
+        title="Excluir Agendamento"
+      >
+        <div className="space-y-4">
           <p className="text-sm text-zinc-600">
-            O paciente faltou ou cancelou esta sessão. Como deseja registrar o faturamento?
+            Selecione o motivo da exclusão. Esta informação será enviada ao paciente e ao psicólogo antes de o horário ser removido.
           </p>
-          <div className="grid grid-cols-1 gap-3">
-            <button
-              onClick={() => handleCancelBillingChoice('none')}
-              className="flex items-center justify-center p-3 border border-zinc-200 rounded-xl hover:bg-zinc-50 transition-colors"
+          <div className="space-y-2">
+            {CANCELLATION_REASONS.map((reason) => (
+              <label key={reason} className="flex items-center space-x-3 p-3 border border-zinc-200 rounded-lg cursor-pointer hover:bg-zinc-50">
+                <input
+                  type="radio"
+                  name="delete_reason"
+                  value={reason}
+                  checked={cancellationReason === reason}
+                  onChange={(e) => setCancellationReason(e.target.value)}
+                  className="text-priori-navy focus:ring-priori-navy"
+                />
+                <span className="text-sm text-zinc-700">{reason}</span>
+              </label>
+            ))}
+          </div>
+          <div className="flex justify-end space-x-2 pt-4">
+            <Button 
+              variant="outline"
+              onClick={() => {
+                setDeleteModalAppId(null);
+                setCancellationReason('');
+              }}
+              disabled={isSaving}
             >
-              <div className="text-center">
-                <span className="block font-bold text-zinc-700 text-sm">Não Cobrar</span>
-                <span className="block text-xs text-zinc-500 mt-1">Sessão cancelada sem custo</span>
-              </div>
-            </button>
-            
-            <button
-              onClick={() => handleCancelBillingChoice('plan')}
-              className="flex items-center justify-center p-3 border border-priori-navy/20 bg-priori-navy/5 rounded-xl hover:bg-priori-navy/10 transition-colors"
+              Cancelar
+            </Button>
+            <Button 
+              onClick={confirmDelete}
+              disabled={!cancellationReason || isSaving}
+              className="bg-red-600 hover:bg-red-700 text-white"
             >
-              <div className="text-center">
-                <span className="block font-bold text-priori-navy text-sm">Cobrar no Convênio</span>
-                <span className="block text-xs text-priori-navy/70 mt-1">Sessão será faturada via convênio normalmente</span>
-              </div>
-            </button>
-            
-            <button
-              onClick={() => handleCancelBillingChoice('particular')}
-              className="flex items-center justify-center p-3 border border-emerald-200 bg-emerald-50 rounded-xl hover:bg-emerald-100 transition-colors"
-            >
-              <div className="text-center">
-                <span className="block font-bold text-emerald-700 text-sm">Cobrar Particular</span>
-                <span className="block text-xs text-emerald-600/70 mt-1">Sessão será faturada do particular</span>
-              </div>
-            </button>
+              {isSaving ? 'Excluindo...' : 'Confirmar Exclusão'}
+            </Button>
           </div>
         </div>
       </Modal>
