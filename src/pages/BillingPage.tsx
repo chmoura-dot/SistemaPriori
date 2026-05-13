@@ -16,6 +16,7 @@ import {
   BillingBatchStatus, 
   Appointment, 
   AppointmentType,
+  AppointmentStatus,
   HealthPlan,
   Customer,
   Plan,
@@ -51,6 +52,8 @@ export const BillingPage = () => {
   
   // Neuropsico manual decision state
   const [neuropsicoDecisions, setNeuropsicoDecisions] = useState<Record<string, boolean>>({});
+  // Filtro por paciente no modal de novo lote
+  const [patientFilter, setPatientFilter] = useState('');
 
   useEffect(() => {
     fetchData();
@@ -236,7 +239,6 @@ export const BillingPage = () => {
         customer?.healthPlan === selectedPlan &&
         !a.billingBatchId &&
         !a.billingIgnored &&
-        a.status !== 'canceled' &&
         a.date <= today
       );
     }).sort((a, b) => a.date.localeCompare(b.date));
@@ -245,8 +247,8 @@ export const BillingPage = () => {
   const handleConfirmAppointment = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     try {
-      await api.updateAppointment(id, { confirmedPsychologist: true, status: 'active' });
-      setAppointments(prev => prev.map(a => a.id === id ? { ...a, confirmedPsychologist: true, status: 'active' } : a));
+      await api.updateAppointment(id, { confirmedPsychologist: true, status: AppointmentStatus.ACTIVE });
+      setAppointments(prev => prev.map(a => a.id === id ? { ...a, confirmedPsychologist: true, status: AppointmentStatus.ACTIVE } : a));
     } catch (error) {
       console.error('Error confirming appointment:', error);
     }
@@ -459,7 +461,7 @@ export const BillingPage = () => {
       {/* Create Batch Modal */}
       <Modal
         isOpen={isCreateModalOpen}
-        onClose={() => setIsCreateModalOpen(false)}
+        onClose={() => { setIsCreateModalOpen(false); setPatientFilter(''); }}
         title="Novo Lote de Faturamento"
         className="max-w-4xl"
       >
@@ -472,6 +474,7 @@ export const BillingPage = () => {
                 onChange={(e) => {
                   setSelectedPlan(e.target.value as HealthPlan);
                   setSelectedAppointmentIds([]);
+                  setPatientFilter('');
                 }}
                 className="w-full rounded-xl border-zinc-200 bg-zinc-50 text-sm focus:ring-priori-navy focus:border-priori-navy"
               >
@@ -483,6 +486,17 @@ export const BillingPage = () => {
           </div>
 
           <div className="border-t border-zinc-100 pt-4">
+            {/* Filtro por paciente */}
+            <div className="mb-3">
+              <input
+                type="text"
+                placeholder="Filtrar por paciente..."
+                value={patientFilter}
+                onChange={(e) => setPatientFilter(e.target.value)}
+                className="w-full rounded-xl border border-zinc-200 bg-zinc-50 text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-priori-navy/30 focus:border-priori-navy"
+              />
+            </div>
+
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
               <h4 className="font-semibold text-priori-navy">Atendimentos Disponíveis</h4>
               <div className="flex items-center gap-4 text-sm">
@@ -510,12 +524,22 @@ export const BillingPage = () => {
             </div>
 
             <div className="max-h-[400px] overflow-y-auto border border-zinc-100 rounded-xl divide-y divide-zinc-100">
-              {getEligibleAppointments().length === 0 ? (
+              {getEligibleAppointments().filter(app => {
+                if (!patientFilter.trim()) return true;
+                const customer = customers.find(c => c.id === app.customerId);
+                return customer?.name?.toLowerCase().includes(patientFilter.toLowerCase());
+              }).length === 0 ? (
                 <div className="p-8 text-center text-zinc-500 text-sm">
-                  Nenhum atendimento confirmado encontrado para esta operadora.
+                  {patientFilter.trim()
+                    ? 'Nenhum atendimento encontrado para este paciente.'
+                    : 'Nenhum atendimento confirmado encontrado para esta operadora.'}
                 </div>
               ) : (
-                getEligibleAppointments().map(app => {
+                getEligibleAppointments().filter(app => {
+                  if (!patientFilter.trim()) return true;
+                  const customer = customers.find(c => c.id === app.customerId);
+                  return customer?.name?.toLowerCase().includes(patientFilter.toLowerCase());
+                }).map(app => {
                   const customer = customers.find(c => c.id === app.customerId);
                   const psychologist = psychologists.find(p => p.id === app.psychologistId);
                   const neuropsicoStatus = getNeuropsicoStatus(app);
