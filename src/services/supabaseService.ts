@@ -440,19 +440,50 @@ export const supabaseService: AppService = {
 
   getAppointmentsForBilling: async () => {
     const today = new Date().toISOString().split('T')[0];
-    
-    // Para faturamento, trazemos todos os atendimentos até a data de hoje,
-    // pois o PostgREST limita o retorno a 1000 linhas. Trazer datas futuras
-    // empurraria os dados históricos para fora do limite.
-    const { data, error } = await supabase
-      .from('appointments')
-      .select('*')
-      .lte('date', today)
-      .order('date', { ascending: false })
-      .limit(10000); // O supabase limita em 1000 de qualquer forma por configuração
 
-    if (error) throw new Error(error.message);
-    return (data || []).map(toAppointment);
+    // ESTRATÉGIA DE DUAS QUERIES para contornar o limite de 1000 linhas do PostgREST:
+    //
+    // Query 1: Atendimentos NÃO faturados e NÃO ignorados (elegíveis para novos lotes).
+    //   - Sem limite inferior de data: garante que atendimentos antigos ainda não
+    //     faturados apareçam na lista, independente de quantos meses atrás ocorreram.
+    //   - Esse conjunto é naturalmente pequeno (só o que ainda está pendente).
+    //
+    // Query 2: Atendimentos JÁ vinculados a um lote (necessários para modais de
+    //   detalhes, pagamento e exportação).
+    //   - Também pequeno, pois lotes antigos tendem a ter poucos registros ativos.
+    //
+    // Combinando as duas, nunca ultrapassamos o limite de 1000 por query e
+    // garantimos que TODOS os atendimentos elegíveis estejam disponíveis.
+
+    const [unbilledResult, billedResult] = await Promise.all([
+      supabase
+        .from('appointments')
+        .select('*')
+        .is('billing_batch_id', null)
+        .or('billing_ignored.is.null,billing_ignored.eq.false')
+        .lte('date', today)
+        .order('date', { ascending: true })
+        .limit(5000),
+      supabase
+        .from('appointments')
+        .select('*')
+        .not('billing_batch_id', 'is', null)
+        .order('date', { ascending: false })
+        .limit(5000),
+    ]);
+
+    if (unbilledResult.error) throw new Error(unbilledResult.error.message);
+    if (billedResult.error) throw new Error(billedResult.error.message);
+
+    // Combina e deduplica por id (segurança caso algum registro apareça nas duas queries)
+    const seen = new Set<string>();
+    const combined = [...(unbilledResult.data || []), ...(billedResult.data || [])].filter(row => {
+      if (seen.has(row.id)) return false;
+      seen.add(row.id);
+      return true;
+    });
+
+    return combined.map(toAppointment);
   },
 
   getAppointmentsByRange: async (startDate: string, endDate: string) => {
@@ -595,7 +626,17 @@ export const supabaseService: AppService = {
         throw new Error(error.message);
       }
       if (!data || data.length === 0) throw new Error('Falha ao criar agendamentos');
-      
+
+      // Notificar psicólogo se o primeiro agendamento for hoje
+      const firstApp = data[0];
+      const todayISO = new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })
+        .split('/').reverse().join('-');
+      if (firstApp.date === todayISO) {
+        supabase.functions.invoke('agenda-change-notify', {
+          body: { appointmentId: firstApp.id, changeType: 'new' }
+        }).catch((e: any) => console.warn('[AgendaChangeNotify] Erro ao notificar:', e));
+      }
+
       return toAppointment(data[0]);
     } else {
       // Pré-validação de conflito único
@@ -654,7 +695,16 @@ export const supabaseService: AppService = {
       }
       
       if (!data) throw new Error('No data returned from Supabase');
-      
+
+      // Notificar psicólogo se o agendamento avulso criado for hoje
+      const todayISOSingle = new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })
+        .split('/').reverse().join('-');
+      if (data.date === todayISOSingle) {
+        supabase.functions.invoke('agenda-change-notify', {
+          body: { appointmentId: data.id, changeType: 'new' }
+        }).catch((e: any) => console.warn('[AgendaChangeNotify] Erro ao notificar:', e));
+      }
+
       return toAppointment(data);
     }
   },
@@ -708,7 +758,20 @@ export const supabaseService: AppService = {
     }
     
     if (!data) throw new Error('No data returned from Supabase');
-    
+
+    // Notificar psicólogo se o agendamento atualizado for hoje e houver mudança relevante
+    const relevantFields = ['date', 'start_time', 'end_time', 'status', 'customer_id', 'room_id'];
+    const hasRelevantChange = relevantFields.some(f => updates[f] !== undefined);
+    if (hasRelevantChange) {
+      const todayISO = new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })
+        .split('/').reverse().join('-');
+      if (data.date === todayISO) {
+        supabase.functions.invoke('agenda-change-notify', {
+          body: { appointmentId: data.id, changeType: 'updated' }
+        }).catch((e: any) => console.warn('[AgendaChangeNotify] Erro ao notificar:', e));
+      }
+    }
+
     return toAppointment(data);
   },
 
