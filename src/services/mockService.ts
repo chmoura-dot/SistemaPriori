@@ -625,6 +625,12 @@ export const mockService: AppService = {
     return appointments;
   },
 
+  getAppointmentsForBilling: async () => {
+    await delay(300);
+    const appointments = getFromStorage<Appointment>(STORAGE_KEYS.APPOINTMENTS);
+    return appointments.sort((a, b) => b.date.localeCompare(a.date));
+  },
+
   createAppointment: async (data) => {
     await delay(500);
     const appointments = getFromStorage<Appointment>(STORAGE_KEYS.APPOINTMENTS);

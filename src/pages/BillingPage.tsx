@@ -54,6 +54,8 @@ export const BillingPage = () => {
   const [neuropsicoDecisions, setNeuropsicoDecisions] = useState<Record<string, boolean>>({});
   // Filtro por paciente no modal de novo lote
   const [patientFilter, setPatientFilter] = useState('');
+  // Filtro por mês no modal de novo lote (formato: 'YYYY-MM' ou '' para todos)
+  const [monthFilter, setMonthFilter] = useState('');
 
   useEffect(() => {
     fetchData();
@@ -461,7 +463,7 @@ export const BillingPage = () => {
       {/* Create Batch Modal */}
       <Modal
         isOpen={isCreateModalOpen}
-        onClose={() => { setIsCreateModalOpen(false); setPatientFilter(''); }}
+        onClose={() => { setIsCreateModalOpen(false); setPatientFilter(''); setMonthFilter(''); }}
         title="Novo Lote de Faturamento"
         className="max-w-4xl"
       >
@@ -475,9 +477,7 @@ export const BillingPage = () => {
                   setSelectedPlan(e.target.value as HealthPlan);
                   setSelectedAppointmentIds([]);
                   setPatientFilter('');
-                }}
-                className="w-full rounded-xl border-zinc-200 bg-zinc-50 text-sm focus:ring-priori-navy focus:border-priori-navy"
-              >
+     
                 {Object.values(HealthPlan).map(plan => (
                   <option key={plan} value={plan}>{plan}</option>
                 ))}

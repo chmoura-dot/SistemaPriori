@@ -352,6 +352,7 @@ export interface AppService {
 
   // Appointments
   getAppointments: (date?: string) => Promise<Appointment[]>;
+  getAppointmentsForBilling: () => Promise<Appointment[]>;
   getAppointmentsByRange: (startDate: string, endDate: string) => Promise<Appointment[]>;
   getAppointmentsNeedingRenewal: () => Promise<Appointment[]>;
   createAppointment: (appointment: Omit<Appointment, 'id' | 'createdAt' | 'confirmedPatient' | 'confirmedPsychologist'>) => Promise<Appointment>;
