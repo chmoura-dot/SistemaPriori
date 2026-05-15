@@ -148,6 +148,7 @@ export interface Appointment {
 }
 
 export enum BillingBatchStatus {
+  DRAFT = 'draft',
   SENT = 'sent',
   PAID = 'paid'
 }

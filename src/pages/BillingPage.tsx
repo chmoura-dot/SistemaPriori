@@ -19,6 +19,8 @@ export const BillingPage = () => {
     );
   }
 
+  const eligibleAppointments = billing.getEligibleAppointments();
+
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
       {/* Header */}
@@ -28,7 +30,7 @@ export const BillingPage = () => {
           <p className="text-zinc-500 mt-1">Gerencie lotes e envios para operadoras</p>
         </div>
         <Button
-          onClick={billing.openCreateModal}
+          onClick={() => billing.openCreateModal()}
           className="bg-priori-navy hover:bg-priori-navy/90 shadow-sm"
         >
           <Plus size={20} className="mr-2" />
@@ -42,6 +44,8 @@ export const BillingPage = () => {
         totalPendingAmount={billing.totalPendingAmount}
         totalPaidAmount={billing.totalPaidAmount}
         totalDenied={billing.totalDenied}
+        draftCount={billing.draftBatches.length}
+        totalDraftAmount={billing.totalDraftAmount}
       />
 
       {/* Tabela de Lotes */}
@@ -52,9 +56,10 @@ export const BillingPage = () => {
         onMarkAsPaid={billing.handleMarkAsPaid}
         onExport={billing.handleExportBatch}
         onDelete={billing.handleDeleteBatch}
+        onEditDraft={(batch) => billing.openCreateModal(batch)}
       />
 
-      {/* Modal: Novo Lote */}
+      {/* Modal: Novo Lote / Editar Rascunho */}
       <CreateBatchModal
         isOpen={billing.isCreateModalOpen}
         selectedPlan={billing.selectedPlan}
@@ -66,8 +71,10 @@ export const BillingPage = () => {
         customers={billing.customers}
         psychologists={billing.psychologists}
         plans={billing.plans}
-        eligibleAppointments={billing.getEligibleAppointments()}
+        eligibleAppointments={eligibleAppointments}
         totalSelectedAmount={billing.calculateTotalSelectedAmount()}
+        editingDraftBatch={billing.editingDraftBatch}
+        includePrevMonth={billing.includePrevMonth}
         getNeuropsicoStatus={billing.getNeuropsicoStatus}
         getAppPrice={billing.getAppPrice}
         onClose={billing.closeCreateModal}
@@ -77,17 +84,20 @@ export const BillingPage = () => {
         onMonthFilterChange={billing.handleMonthFilterChange}
         onToggleSelection={billing.toggleAppointmentSelection}
         onSelectAll={() => {
-          const eligibleIds = billing.getEligibleAppointments().map(a => a.id);
-          if (billing.selectedAppointmentIds.length === eligibleIds.length) {
+          if (billing.selectedAppointmentIds.length === eligibleAppointments.length) {
             billing.setSelectedAppointmentIds([]);
           } else {
-            billing.setSelectedAppointmentIds(eligibleIds);
+            billing.setSelectedAppointmentIds(eligibleAppointments.map(a => a.id));
           }
         }}
         onConfirmAppointment={billing.handleConfirmAppointment}
         onIgnoreAppointment={billing.handleIgnoreAppointment}
         onToggleNeuropsico={billing.toggleNeuropsicoDecision}
+        onIncludePrevMonthChange={billing.setIncludePrevMonth}
+        onSaveAsDraft={billing.handleSaveAsDraft}
+        onQuickAddToDraft={billing.handleQuickAddToDraft}
         onSubmit={billing.handleCreateBatch}
+        onFinalizeDraft={billing.handleFinalizeBatch}
       />
 
       {/* Modal: Detalhes do Lote */}

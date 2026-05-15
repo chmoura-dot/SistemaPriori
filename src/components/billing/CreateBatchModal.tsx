@@ -1,7 +1,13 @@
 import React, { useMemo, useState } from 'react';
-import { Ban, AlertTriangle, Calendar, ChevronRight, Users, FileText } from 'lucide-react';
+import {
+  Ban, AlertTriangle, Calendar, ChevronRight, Users, FileText,
+  BookmarkPlus, Save, Send, CheckCircle2, Info
+} from 'lucide-react';
 import { format } from 'date-fns';
-import { HealthPlan, Appointment, Customer, Psychologist, Plan, AppointmentType } from '../../services/types';
+import {
+  HealthPlan, Appointment, Customer, Psychologist, Plan,
+  AppointmentType, BillingBatch
+} from '../../services/types';
 import { Modal } from '../Modal';
 import { Button } from '../Button';
 import { Input } from '../Input';
@@ -36,6 +42,9 @@ interface Props {
   plans: Plan[];
   eligibleAppointments: Appointment[];
   totalSelectedAmount: number;
+  // Rascunho
+  editingDraftBatch?: BillingBatch | null;
+  includePrevMonth: boolean;
   getNeuropsicoStatus: (app: Appointment) => NeuropsicoStatus;
   getAppPrice: (app: Appointment) => number;
   onClose: () => void;
@@ -48,7 +57,15 @@ interface Props {
   onConfirmAppointment: (id: string, e: React.MouseEvent) => void;
   onIgnoreAppointment: (id: string, e: React.MouseEvent) => void;
   onToggleNeuropsico: (id: string, value: boolean) => void;
+  onIncludePrevMonthChange: (value: boolean) => void;
+  /** Salvar como rascunho sem passar pela etapa de confirmação */
+  onSaveAsDraft: () => void;
+  /** Adicionar UM atendimento rapidamente ao rascunho (botão por linha) */
+  onQuickAddToDraft: (id: string, e: React.MouseEvent) => void;
+  /** Criar lote como ENVIADO (após confirmação) */
   onSubmit: () => void;
+  /** Finalizar rascunho existente → ENVIADO (após confirmação) */
+  onFinalizeDraft?: () => void;
 }
 
 // ── Helper: parse monthFilter safely ─────────────────────────────────────────
@@ -75,6 +92,8 @@ export const CreateBatchModal: React.FC<Props> = ({
   plans,
   eligibleAppointments,
   totalSelectedAmount,
+  editingDraftBatch,
+  includePrevMonth,
   getNeuropsicoStatus,
   getAppPrice,
   onClose,
@@ -87,9 +106,16 @@ export const CreateBatchModal: React.FC<Props> = ({
   onConfirmAppointment,
   onIgnoreAppointment,
   onToggleNeuropsico,
+  onIncludePrevMonthChange,
+  onSaveAsDraft,
+  onQuickAddToDraft,
   onSubmit,
+  onFinalizeDraft,
 }) => {
-  const [showConfirm, setShowConfirm] = useState(false);
+  // showConfirm: 'send' para gerar lote, 'finalize' para finalizar rascunho
+  const [showConfirm, setShowConfirm] = useState<false | 'send' | 'finalize'>(false);
+
+  const isDraftMode = !!editingDraftBatch;
 
   // ── Month/Year picker state ────────────────────────────────────────────────
   const { month: filterMonth, year: filterYear } = parseMonthFilter(monthFilter);
@@ -97,6 +123,14 @@ export const CreateBatchModal: React.FC<Props> = ({
   const monthLabel = monthFilter
     ? `${MONTH_NAMES[filterMonth - 1]}/${filterYear}`
     : '—';
+
+  // Mês anterior (para exibição no toggle)
+  const prevMonthLabel = useMemo(() => {
+    if (!monthFilter) return '';
+    const [y, m] = monthFilter.split('-').map(Number);
+    const d = new Date(y, m - 2, 1);
+    return `${MONTH_NAMES[d.getMonth()]}/${d.getFullYear()}`;
+  }, [monthFilter]);
 
   const handleMonthSelectChange = (newMonth: number) => {
     const mm = String(newMonth).padStart(2, '0');
@@ -195,13 +229,25 @@ export const CreateBatchModal: React.FC<Props> = ({
     eligibleAppointments.filter(a => selectedAppointmentIds.includes(a.id)).map(a => a.customerId)
   ).size;
 
+  // ── Título do modal ───────────────────────────────────────────────────────
+  const modalTitle = isDraftMode
+    ? `✏️ Editar Rascunho — ${editingDraftBatch!.healthPlan}`
+    : 'Novo Lote de Faturamento';
+
   // ── Confirmation Step ─────────────────────────────────────────────────────
   if (showConfirm) {
+    const isFinalize = showConfirm === 'finalize';
+    const confirmTitle = isFinalize ? 'Finalizar e Enviar Rascunho' : 'Confirmar Criação do Lote';
+    const confirmAction = isFinalize ? onFinalizeDraft : onSubmit;
+    const confirmLabel = sessionWarnings.length > 0
+      ? isFinalize ? 'Finalizar Assim Mesmo' : 'Criar Assim Mesmo'
+      : isFinalize ? '🚀 Finalizar e Enviar' : 'Confirmar e Criar';
+
     return (
       <Modal
         isOpen={isOpen}
         onClose={onClose}
-        title="Confirmar Criação do Lote"
+        title={confirmTitle}
         className="max-w-lg"
       >
         <div className="space-y-5">
@@ -220,6 +266,16 @@ export const CreateBatchModal: React.FC<Props> = ({
                   ))}
                 </ul>
               </div>
+            </div>
+          )}
+
+          {isFinalize && (
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 flex items-start gap-2">
+              <Info className="text-blue-500 flex-shrink-0 mt-0.5" size={15} />
+              <p className="text-xs text-blue-700">
+                Ao finalizar, o rascunho será convertido em um lote oficial enviado à operadora.
+                O número do lote será gerado automaticamente.
+              </p>
             </div>
           )}
 
@@ -245,8 +301,10 @@ export const CreateBatchModal: React.FC<Props> = ({
 
           <p className="text-sm text-zinc-500">
             {sessionWarnings.length > 0
-              ? 'Deseja criar o lote mesmo com as advertências acima?'
-              : 'Tudo certo! Confirmar criação do lote?'}
+              ? 'Deseja prosseguir mesmo com as advertências acima?'
+              : isFinalize
+                ? 'Tudo certo! Confirmar finalização e envio do lote?'
+                : 'Tudo certo! Confirmar criação do lote?'}
           </p>
 
           <div className="flex justify-end gap-3">
@@ -254,10 +312,11 @@ export const CreateBatchModal: React.FC<Props> = ({
               Voltar e Revisar
             </Button>
             <Button
-              onClick={() => { setShowConfirm(false); onSubmit(); }}
-              className="bg-priori-navy hover:bg-priori-navy/90"
+              onClick={() => { setShowConfirm(false); confirmAction?.(); }}
+              className="bg-priori-navy hover:bg-priori-navy/90 flex items-center gap-2"
             >
-              {sessionWarnings.length > 0 ? 'Criar Assim Mesmo' : 'Confirmar e Criar'}
+              {isFinalize && <Send size={15} />}
+              {confirmLabel}
             </Button>
           </div>
         </div>
@@ -270,10 +329,26 @@ export const CreateBatchModal: React.FC<Props> = ({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="Novo Lote de Faturamento"
+      title={modalTitle}
       className="max-w-4xl"
     >
       <div className="space-y-4">
+
+        {/* Banner: modo edição de rascunho */}
+        {isDraftMode && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-center gap-3">
+            <div className="p-1.5 bg-amber-100 rounded-lg">
+              <Save size={14} className="text-amber-700" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-semibold text-amber-800">Editando rascunho</p>
+              <p className="text-xs text-amber-700 truncate">
+                {editingDraftBatch!.appointmentIds.length} atendimento(s) já no rascunho •{' '}
+                {formatCurrency(editingDraftBatch!.totalAmount)} previstos
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Row 1: Operadora + Competência */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -283,7 +358,8 @@ export const CreateBatchModal: React.FC<Props> = ({
             <select
               value={selectedPlan}
               onChange={(e) => onPlanChange(e.target.value as HealthPlan)}
-              className="w-full rounded-xl border border-zinc-200 bg-zinc-50 text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-priori-navy/30 focus:border-priori-navy"
+              disabled={isDraftMode}
+              className="w-full rounded-xl border border-zinc-200 bg-zinc-50 text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-priori-navy/30 focus:border-priori-navy disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {Object.values(HealthPlan).map(plan => (
                 <option key={plan} value={plan}>{plan}</option>
@@ -302,7 +378,8 @@ export const CreateBatchModal: React.FC<Props> = ({
               <select
                 value={filterMonth}
                 onChange={(e) => handleMonthSelectChange(Number(e.target.value))}
-                className="flex-1 rounded-xl border border-zinc-200 bg-zinc-50 text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-priori-navy/30 focus:border-priori-navy"
+                disabled={isDraftMode}
+                className="flex-1 rounded-xl border border-zinc-200 bg-zinc-50 text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-priori-navy/30 focus:border-priori-navy disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 {MONTH_NAMES.map((name, idx) => (
                   <option key={idx + 1} value={idx + 1}>{name}</option>
@@ -312,17 +389,42 @@ export const CreateBatchModal: React.FC<Props> = ({
               <select
                 value={filterYear}
                 onChange={(e) => handleYearSelectChange(Number(e.target.value))}
-                className="w-28 rounded-xl border border-zinc-200 bg-zinc-50 text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-priori-navy/30 focus:border-priori-navy"
+                disabled={isDraftMode}
+                className="w-28 rounded-xl border border-zinc-200 bg-zinc-50 text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-priori-navy/30 focus:border-priori-navy disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 {YEAR_OPTIONS.map(y => (
                   <option key={y} value={y}>{y}</option>
                 ))}
               </select>
             </div>
-            {/* Label de competência selecionada */}
-            <p className="text-xs text-zinc-400 mt-1 ml-1">
-              Exibindo: <span className="font-medium text-priori-navy capitalize">{monthLabel}</span>
-            </p>
+
+            {/* Label de competência + toggle mês anterior */}
+            <div className="flex items-center justify-between mt-1.5 ml-1">
+              <p className="text-xs text-zinc-400">
+                Exibindo: <span className="font-medium text-priori-navy capitalize">{monthLabel}</span>
+                {includePrevMonth && prevMonthLabel && (
+                  <span className="ml-1 text-amber-600">+ {prevMonthLabel}</span>
+                )}
+              </p>
+              <label className="flex items-center gap-1.5 cursor-pointer group">
+                <input
+                  type="checkbox"
+                  checked={includePrevMonth}
+                  onChange={(e) => onIncludePrevMonthChange(e.target.checked)}
+                  className="rounded border-zinc-300 text-amber-600 focus:ring-amber-500"
+                />
+                <span className="text-xs text-zinc-500 group-hover:text-amber-700 font-medium">
+                  Incluir mês anterior
+                </span>
+              </label>
+            </div>
+
+            {includePrevMonth && prevMonthLabel && (
+              <div className="mt-1.5 ml-1 flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-2 py-1">
+                <Info size={11} className="flex-shrink-0" />
+                Mostrando atendimentos de <strong>{prevMonthLabel}</strong> e <strong>{monthLabel}</strong> — use para incluir atendimentos esquecidos no lote anterior.
+              </div>
+            )}
           </div>
         </div>
 
@@ -359,7 +461,7 @@ export const CreateBatchModal: React.FC<Props> = ({
               <div className="p-8 text-center text-zinc-500 text-sm">
                 {patientFilter.trim()
                   ? 'Nenhum atendimento encontrado para este paciente.'
-                  : `Nenhum atendimento disponível em ${monthLabel}.`}
+                  : `Nenhum atendimento disponível em ${monthLabel}${includePrevMonth && prevMonthLabel ? ` / ${prevMonthLabel}` : ''}.`}
               </div>
             ) : (
               grouped.map(({ customer, appointments: apps }) => {
@@ -418,6 +520,13 @@ export const CreateBatchModal: React.FC<Props> = ({
                       const isConfirmed = app.confirmedPsychologist === true;
                       const tussCode = getTussCode(app);
                       const duplic = isDuplicate(app);
+                      // Indica se este atendimento já estava no rascunho antes de abrir o modal
+                      const isAlreadyInDraft =
+                        isDraftMode &&
+                        editingDraftBatch!.appointmentIds.includes(app.id);
+                      // Indica se é de mês anterior (label informativo)
+                      const appMonth = app.date.substring(0, 7);
+                      const isFromPrevMonth = includePrevMonth && appMonth !== monthFilter;
 
                       return (
                         <div key={app.id} className="flex flex-col last:border-0">
@@ -425,6 +534,7 @@ export const CreateBatchModal: React.FC<Props> = ({
                             className={cn(
                               'flex items-center gap-2 px-4 py-2.5 hover:bg-zinc-50 transition-colors',
                               selectedAppointmentIds.includes(app.id) && 'bg-priori-navy/5',
+                              isAlreadyInDraft && !selectedAppointmentIds.includes(app.id) && 'bg-zinc-50/80',
                               isConfirmed ? 'cursor-pointer' : 'opacity-70 cursor-not-allowed bg-zinc-50/50'
                             )}
                             onClick={() => isConfirmed && onToggleSelection(app.id)}
@@ -451,6 +561,25 @@ export const CreateBatchModal: React.FC<Props> = ({
                               </span>
                             )}
                             <div className="flex items-center gap-1 flex-shrink-0">
+                              {/* Badge: mês anterior */}
+                              {isFromPrevMonth && (
+                                <span
+                                  title="Atendimento do mês anterior"
+                                  className="text-[10px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 font-semibold"
+                                >
+                                  {appMonth.substring(5, 7)}/{appMonth.substring(0, 4)}
+                                </span>
+                              )}
+                              {/* Badge: já estava no rascunho */}
+                              {isAlreadyInDraft && (
+                                <span
+                                  title="Já estava neste rascunho"
+                                  className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 border border-blue-200 flex items-center gap-0.5"
+                                >
+                                  <CheckCircle2 size={9} />
+                                  Rascunho
+                                </span>
+                              )}
                               {duplic && selectedAppointmentIds.includes(app.id) && (
                                 <span
                                   title="Possível duplicata: mesmo paciente com sessão na mesma data"
@@ -486,6 +615,16 @@ export const CreateBatchModal: React.FC<Props> = ({
                               >
                                 Confirmar
                               </Button>
+                            )}
+                            {/* Botão rápido: adicionar ao rascunho (só para atendimentos confirmados e não editando draft) */}
+                            {isConfirmed && !isDraftMode && (
+                              <button
+                                onClick={(e) => onQuickAddToDraft(app.id, e)}
+                                className="p-1 text-zinc-300 hover:text-amber-500 hover:bg-amber-50 rounded-lg transition-all flex-shrink-0"
+                                title="Adicionar ao rascunho agora (sem fechar o modal)"
+                              >
+                                <BookmarkPlus size={14} />
+                              </button>
                             )}
                             <button
                               onClick={(e) => onIgnoreAppointment(app.id, e)}
@@ -578,20 +717,51 @@ export const CreateBatchModal: React.FC<Props> = ({
                 value={batchNumber}
                 onChange={(e) => onBatchNumberChange(e.target.value)}
               />
-              <p className="text-xs text-zinc-400 mt-1">Gerado automaticamente. Pode editar se necessário.</p>
+              <p className="text-xs text-zinc-400 mt-1">
+                {batchNumber.startsWith('RASCUNHO-')
+                  ? 'Número provisório. Será gerado o número final ao finalizar o lote.'
+                  : 'Gerado automaticamente. Pode editar se necessário.'}
+              </p>
             </div>
-            <div className="flex justify-end gap-3">
+
+            {/* Botões de ação */}
+            <div className="flex flex-wrap justify-end gap-2">
               <Button variant="outline" onClick={onClose}>
                 Cancelar
               </Button>
+
+              {/* Salvar como Rascunho */}
               <Button
-                onClick={() => setShowConfirm(true)}
-                disabled={!batchNumber || selectedAppointmentIds.length === 0}
-                className="bg-priori-navy hover:bg-priori-navy/90 flex items-center gap-2"
+                variant="outline"
+                onClick={onSaveAsDraft}
+                disabled={selectedAppointmentIds.length === 0}
+                className="border-amber-300 text-amber-700 hover:bg-amber-50 hover:border-amber-400 flex items-center gap-1.5"
               >
-                Revisar e Gerar Lote
-                <ChevronRight size={16} />
+                <Save size={15} />
+                {isDraftMode ? 'Atualizar Rascunho' : 'Salvar Rascunho'}
               </Button>
+
+              {/* Revisar e Gerar / Finalizar */}
+              {isDraftMode ? (
+                <Button
+                  onClick={() => setShowConfirm('finalize')}
+                  disabled={!batchNumber || selectedAppointmentIds.length === 0}
+                  className="bg-priori-navy hover:bg-priori-navy/90 flex items-center gap-2"
+                >
+                  <Send size={15} />
+                  Finalizar e Enviar
+                  <ChevronRight size={16} />
+                </Button>
+              ) : (
+                <Button
+                  onClick={() => setShowConfirm('send')}
+                  disabled={!batchNumber || selectedAppointmentIds.length === 0}
+                  className="bg-priori-navy hover:bg-priori-navy/90 flex items-center gap-2"
+                >
+                  Revisar e Gerar Lote
+                  <ChevronRight size={16} />
+                </Button>
+              )}
             </div>
           </div>
         </div>

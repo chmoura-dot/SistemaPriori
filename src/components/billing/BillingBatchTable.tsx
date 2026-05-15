@@ -1,5 +1,5 @@
 import React from 'react';
-import { CheckCircle2, Clock, AlertCircle, Download, Trash2, Ban } from 'lucide-react';
+import { CheckCircle2, Clock, AlertCircle, Download, Trash2, Ban, Edit2, Send, FileText } from 'lucide-react';
 import { format } from 'date-fns';
 import { BillingBatch, BillingBatchStatus, Appointment } from '../../services/types';
 import { Button } from '../Button';
@@ -12,7 +12,33 @@ interface Props {
   onMarkAsPaid: (batch: BillingBatch) => void;
   onExport: (batch: BillingBatch) => void;
   onDelete: (id: string) => void;
+  onEditDraft: (batch: BillingBatch) => void;
 }
+
+const StatusBadge: React.FC<{ status: BillingBatchStatus }> = ({ status }) => {
+  if (status === BillingBatchStatus.DRAFT) {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
+        <Edit2 size={10} />
+        Rascunho
+      </span>
+    );
+  }
+  if (status === BillingBatchStatus.SENT) {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+        <Clock size={10} />
+        Enviado
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+      <CheckCircle2 size={10} />
+      Pago
+    </span>
+  );
+};
 
 export const BillingBatchTable: React.FC<Props> = ({
   batches,
@@ -21,118 +47,180 @@ export const BillingBatchTable: React.FC<Props> = ({
   onMarkAsPaid,
   onExport,
   onDelete,
-}) => (
-  <div className="bg-white rounded-2xl border border-zinc-100 shadow-sm overflow-hidden">
-    <div className="overflow-x-auto">
-      <table className="w-full text-left border-collapse">
-        <thead>
-          <tr className="bg-zinc-50/50 border-b border-zinc-100">
-            <th className="px-6 py-5 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Lote</th>
-            <th className="px-6 py-5 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Operadora</th>
-            <th className="px-6 py-5 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Envio</th>
-            <th className="px-6 py-5 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Atendimentos</th>
-            <th className="px-6 py-5 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Valor Total</th>
-            <th className="px-6 py-5 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Status</th>
-            <th className="px-6 py-5 text-xs font-semibold text-zinc-500 uppercase tracking-wider text-right">Ações</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-zinc-100">
-          {batches.length === 0 ? (
-            <tr>
-              <td colSpan={7} className="px-6 py-16 text-center">
-                <div className="flex flex-col items-center justify-center text-zinc-400">
-                  <div className="w-16 h-16 bg-zinc-50 rounded-full flex items-center justify-center mb-4">
-                    <Ban size={32} className="text-zinc-300" />
-                  </div>
-                  <p className="text-lg font-medium text-zinc-600">Nenhum lote encontrado</p>
-                  <p className="text-sm mt-1">Crie um novo lote para faturar os atendimentos.</p>
-                </div>
-              </td>
+  onEditDraft,
+}) => {
+  // Separar rascunhos dos demais (rascunhos aparecem primeiro, com destaque)
+  const drafts = batches.filter(b => b.status === BillingBatchStatus.DRAFT);
+  const others = batches.filter(b => b.status !== BillingBatchStatus.DRAFT);
+  const sortedBatches = [...drafts, ...others];
+
+  // Formata a competência para exibição (YYYY-MM → Mês/Ano)
+  const formatCompetencia = (batch: BillingBatch): string => {
+    if (batch.status === BillingBatchStatus.DRAFT) {
+      // Para rascunhos, sentAt guarda a competência: YYYY-MM-01T...
+      const month = batch.sentAt.substring(0, 7); // YYYY-MM
+      if (/^\d{4}-\d{2}$/.test(month)) {
+        const [y, m] = month.split('-').map(Number);
+        const MONTH_NAMES = [
+          'Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun',
+          'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez',
+        ];
+        return `${MONTH_NAMES[m - 1]}/${y}`;
+      }
+    }
+    return format(new Date(batch.sentAt), 'dd/MM/yyyy');
+  };
+
+  if (sortedBatches.length === 0) {
+    return (
+      <div className="bg-white rounded-2xl border border-zinc-100 shadow-sm p-12 text-center">
+        <div className="text-zinc-400 mb-3">
+          <FileText size={32} className="mx-auto opacity-40" />
+        </div>
+        <p className="text-sm text-zinc-500 font-medium">Nenhum lote criado ainda.</p>
+        <p className="text-xs text-zinc-400 mt-1">Clique em "Novo Lote" para começar a faturar.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-zinc-100 shadow-sm overflow-hidden">
+      <div className="overflow-x-auto">
+        <table className="w-full text-left border-collapse">
+          <thead>
+            <tr className="bg-zinc-50/50 border-b border-zinc-100">
+              <th className="px-6 py-5 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Lote</th>
+              <th className="px-6 py-5 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Operadora</th>
+              <th className="px-6 py-5 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Competência</th>
+              <th className="px-6 py-5 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Atendimentos</th>
+              <th className="px-6 py-5 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Total</th>
+              <th className="px-6 py-5 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Status</th>
+              <th className="px-6 py-5 text-xs font-semibold text-zinc-500 uppercase tracking-wider text-right">Ações</th>
             </tr>
-          ) : (
-            batches.map((batch) => {
-              const deniedCount = appointments.filter(
-                a => batch.appointmentIds.includes(a.id) && a.billingStatus === 'denied'
-              ).length;
+          </thead>
+          <tbody className="divide-y divide-zinc-50">
+            {sortedBatches.map((batch) => {
+              const isDraft = batch.status === BillingBatchStatus.DRAFT;
+              const batchAppointments = appointments.filter(a => batch.appointmentIds.includes(a.id));
+              const deniedCount = batchAppointments.filter(a => a.billingStatus === 'denied').length;
 
               return (
-                <tr key={batch.id} className="hover:bg-zinc-50/80 transition-colors group">
+                <tr
+                  key={batch.id}
+                  className={`transition-colors ${isDraft ? 'bg-amber-50/30 hover:bg-amber-50/60' : 'hover:bg-zinc-50/50'}`}
+                >
                   <td className="px-6 py-4">
-                    <div className="font-medium text-priori-navy">#{batch.batchNumber}</div>
-                  </td>
-                  <td className="px-6 py-4 text-zinc-600">{batch.healthPlan}</td>
-                  <td className="px-6 py-4 text-zinc-600">
-                    {format(new Date(batch.sentAt), 'dd/MM/yyyy')}
-                  </td>
-                  <td className="px-6 py-4 text-zinc-600">
-                    {batch.appointmentIds.length} sessões
-                  </td>
-                  <td className="px-6 py-4 font-medium text-priori-navy">
-                    {formatCurrency(batch.totalAmount)}
+                    <span className="font-mono text-sm font-semibold text-priori-navy">
+                      #{batch.batchNumber}
+                    </span>
+                    {isDraft && (
+                      <p className="text-[10px] text-amber-600 mt-0.5">Em construção</p>
+                    )}
                   </td>
                   <td className="px-6 py-4">
-                    {batch.status === BillingBatchStatus.PAID ? (
-                      <div className="space-y-1">
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-600 border border-emerald-100">
-                          <CheckCircle2 size={12} className="mr-1" />
-                          Pago em {format(new Date(batch.paidAt!), 'dd/MM/yyyy')}
-                        </span>
-                        {deniedCount > 0 && (
-                          <div className="text-[10px] text-red-500 font-medium flex items-center gap-1">
-                            <AlertCircle size={10} />
-                            {deniedCount} glosa(s)
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-600 border border-amber-100">
-                        <Clock size={12} className="mr-1" />
-                        Enviado
+                    <span className="text-sm text-zinc-700">{batch.healthPlan}</span>
+                  </td>
+                  <td className="px-6 py-4">
+                    <span className="text-sm text-zinc-600">{formatCompetencia(batch)}</span>
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-zinc-700">
+                        {batch.appointmentIds.length}
                       </span>
+                      {deniedCount > 0 && (
+                        <span className="flex items-center gap-1 text-xs text-red-500">
+                          <AlertCircle size={12} />
+                          {deniedCount} glosa{deniedCount > 1 ? 's' : ''}
+                        </span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <span className="text-sm font-semibold text-priori-navy">
+                      {formatCurrency(batch.totalAmount)}
+                    </span>
+                    {isDraft && (
+                      <p className="text-[10px] text-amber-600 mt-0.5">Previsão</p>
                     )}
                   </td>
-                  <td className="px-6 py-4 text-right space-x-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => onDetails(batch)}
-                      className="text-priori-navy border-zinc-200"
-                    >
-                      Detalhes
-                    </Button>
-                    {batch.status === BillingBatchStatus.SENT && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => onMarkAsPaid(batch)}
-                        className="text-emerald-600 border-emerald-200 hover:bg-emerald-50"
-                      >
-                        Registrar Pagamento
-                      </Button>
-                    )}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => onExport(batch)}
-                      className="text-priori-gold border-priori-gold/30 hover:bg-priori-gold/5"
-                      title="Exportar Excel"
-                    >
-                      <Download size={16} />
-                    </Button>
-                    <button
-                      onClick={() => onDelete(batch.id)}
-                      className="p-2 text-zinc-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
-                      title="Excluir Lote"
-                    >
-                      <Trash2 size={18} />
-                    </button>
+                  <td className="px-6 py-4">
+                    <StatusBadge status={batch.status} />
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-1.5 justify-end flex-wrap">
+                      {isDraft ? (
+                        // ── Ações para RASCUNHO ──────────────────────────────
+                        <>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => onEditDraft(batch)}
+                            className="text-xs flex items-center gap-1 border-amber-300 text-amber-700 hover:bg-amber-50"
+                          >
+                            <Edit2 size={12} />
+                            Editar
+                          </Button>
+                          <Button
+                            size="sm"
+                            onClick={() => onEditDraft(batch)}
+                            className="text-xs flex items-center gap-1 bg-priori-navy hover:bg-priori-navy/90"
+                          >
+                            <Send size={12} />
+                            Finalizar
+                          </Button>
+                          <button
+                            onClick={() => onDelete(batch.id)}
+                            className="p-1.5 text-zinc-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                            title="Excluir rascunho"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </>
+                      ) : (
+                        // ── Ações para SENT / PAID ───────────────────────────
+                        <>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => onDetails(batch)}
+                            className="text-xs"
+                          >
+                            Detalhes
+                          </Button>
+                          {batch.status === BillingBatchStatus.SENT && (
+                            <Button
+                              size="sm"
+                              onClick={() => onMarkAsPaid(batch)}
+                              className="text-xs bg-emerald-600 hover:bg-emerald-700"
+                            >
+                              Registrar Pagamento
+                            </Button>
+                          )}
+                          <button
+                            onClick={() => onExport(batch)}
+                            className="p-1.5 text-zinc-400 hover:text-priori-navy hover:bg-zinc-100 rounded-lg transition-all"
+                            title="Exportar Excel"
+                          >
+                            <Download size={15} />
+                          </button>
+                          <button
+                            onClick={() => onDelete(batch.id)}
+                            className="p-1.5 text-zinc-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                            title="Excluir lote"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </td>
                 </tr>
               );
-            })
-          )}
-        </tbody>
-      </table>
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
-  </div>
-);
+  );
+};
