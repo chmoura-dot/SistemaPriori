@@ -79,23 +79,28 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
 
   useEffect(() => {
     const loadData = async () => {
-      const [c, s, p, a, psy, exp, wl] = await Promise.all([
-        api.getCustomers(),
-        api.getSubscriptions(),
-        api.getPlans(),
-        api.getAppointments(),
-        api.getPsychologists(),
-        api.getExpenses(),
-        api.getWaitingList()
-      ]);
-      setCustomers(c);
-      setSubscriptions(s);
-      setPlans(p);
-      setAppointments(a);
-      setPsychologists(psy);
-      setExpenses(exp);
-      setWaitingList(wl);
-      setIsLoading(false);
+      try {
+        const [c, s, p, a, psy, exp, wl] = await Promise.all([
+          api.getCustomers(),
+          api.getSubscriptions(),
+          api.getPlans(),
+          api.getAppointments(),
+          api.getPsychologists(),
+          api.getExpenses(),
+          api.getWaitingList()
+        ]);
+        setCustomers(c);
+        setSubscriptions(s);
+        setPlans(p);
+        setAppointments(a);
+        setPsychologists(psy);
+        setExpenses(exp);
+        setWaitingList(wl);
+      } catch (err) {
+        console.error('[Dashboard] Erro ao carregar dados:', err);
+      } finally {
+        setIsLoading(false);
+      }
     };
     loadData();
   }, []);

@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { Toaster } from 'react-hot-toast';
 import { Sidebar } from './components/Sidebar';
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
@@ -23,6 +24,7 @@ import { HolidaysPage } from './pages/HolidaysPage';
 import { RenewalAlert } from './components/RenewalAlert';
 import { DuplicateAppointmentAlert } from './components/DuplicateAppointmentAlert';
 import { api } from './services/api';
+import { supabase } from './lib/supabase';
 import { cn } from './lib/utils';
 import { UserRole } from './services/types';
 
@@ -62,6 +64,58 @@ export default function App() {
     setCurrentPath(path);
     setIsAuthenticated(api.isAuthenticated());
   };
+
+  // ── Validação de sessão real (LGPD / Segurança) ──────────────────────────
+  // Garante que o estado de autenticação seja baseado na sessão real do Supabase,
+  // não apenas no localStorage (que pode ser manipulado via DevTools).
+  useEffect(() => {
+    // Verifica sessão real ao iniciar o app
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session) {
+        localStorage.removeItem('nucleo_user_v2');
+        setIsAuthenticated(false);
+      }
+    });
+
+    // Escuta mudanças de estado (logout em outra aba, expiração de token, etc.)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_OUT') {
+        localStorage.removeItem('nucleo_user_v2');
+        setIsAuthenticated(false);
+      } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        setIsAuthenticated(api.isAuthenticated());
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // ── Timeout de sessão por inatividade (30 min) — LGPD / CFP ─────────────
+  // Protege dados de pacientes caso o computador fique desbloqueado sem uso.
+  const inactivityTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const SESSION_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutos
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const resetTimer = () => {
+      if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
+      inactivityTimer.current = setTimeout(async () => {
+        await api.logout();
+        setIsAuthenticated(false);
+        navigate('/login');
+      }, SESSION_TIMEOUT_MS);
+    };
+
+    const events = ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart'];
+    events.forEach(e => window.addEventListener(e, resetTimer, { passive: true }));
+    resetTimer();
+
+    return () => {
+      if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
+      events.forEach(e => window.removeEventListener(e, resetTimer));
+    };
+  }, [isAuthenticated]);
 
   // Auth Guard Effect
   useEffect(() => {
@@ -113,13 +167,13 @@ export default function App() {
       case '/planos':
         return <PlansPage />;
       case '/financeiro':
-        return <FinancialPage key="financeiro-page" />;
+        return isAdmin ? <FinancialPage key="financeiro-page" /> : <SchedulePage />;
       case '/faturamento':
-        return <BillingPage />;
-      case '/nfse': // Rota para a página de NFS-e
-        return <NfsePage />;
-      case '/repasse': // Rota para a página de Repasse
-        return <RepassePage />;
+        return isAdmin ? <BillingPage /> : <SchedulePage />;
+      case '/nfse':
+        return isAdmin ? <NfsePage /> : <SchedulePage />;
+      case '/repasse':
+        return isAdmin ? <RepassePage /> : <SchedulePage />;
       case '/despesas':
         return isAdmin ? <ExpensesPage /> : <SchedulePage />;
       case '/psicologos':
@@ -168,6 +222,14 @@ export default function App() {
           <DuplicateAppointmentAlert onNavigate={navigate} />
         </>
       )}
+
+      {/* Toast notifications — substitui alert() nativo em todo o app */}
+      <Toaster
+        position="top-right"
+        toastOptions={{
+          style: { fontFamily: 'inherit' },
+        }}
+      />
     </div>
   );
 }

@@ -50,25 +50,30 @@ export const FinancialPage = () => {
 
   useEffect(() => {
     const loadData = async () => {
-      const [apps, cust, pl, psy] = await Promise.all([
-        api.getAppointments(),
-        api.getCustomers(),
-        api.getPlans(),
-        api.getPsychologists()
-      ]);
+      try {
+        const [apps, cust, pl, psy] = await Promise.all([
+          api.getAppointments(),
+          api.getCustomers(),
+          api.getPlans(),
+          api.getPsychologists()
+        ]);
 
-      // Apenas conferências confirmadas pelo psicólogo, ou cancelamentos com cobrança
-      const billed = apps.filter(a => 
-        a.confirmedPsychologist || 
-        (a.status === AppointmentStatus.CANCELED && (a.cancellationBilling === 'plan' || a.cancellationBilling === 'particular'))
-      );
+        // Apenas conferências confirmadas pelo psicólogo, ou cancelamentos com cobrança
+        const billed = apps.filter(a => 
+          a.confirmedPsychologist || 
+          (a.status === AppointmentStatus.CANCELED && (a.cancellationBilling === 'plan' || a.cancellationBilling === 'particular'))
+        );
 
-      setAppointments(billed);
-      setCustomers(cust);
-      setPlans(pl);
-      setPsychologists(psy);
-      setIsLoading(false);
-      setTimeout(() => setIsReady(true), 100);
+        setAppointments(billed);
+        setCustomers(cust);
+        setPlans(pl);
+        setPsychologists(psy);
+        setTimeout(() => setIsReady(true), 100);
+      } catch (err) {
+        console.error('[Financeiro] Erro ao carregar dados:', err);
+      } finally {
+        setIsLoading(false);
+      }
     };
     loadData();
   }, []);

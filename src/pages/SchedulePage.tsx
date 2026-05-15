@@ -174,26 +174,31 @@ export const SchedulePage = () => {
     }
 
     setIsLoading(true);
-    const [a, r, p, c, plansData, h, cl] = await Promise.all([
-      api.getAppointmentsByRange(startDate, endDate),
-      api.getRooms(),
-      api.getPsychologists(),
-      api.getCustomers(),
-      api.getPlans(),
-      api.getHolidays(),
-      api.getClinicClosures(),
-    ]);
-    setAppointments(a);
-    setLoadedRange({ start: startDate, end: endDate });
-    setRooms(r);
-    if (r.length > 0 && !selectedRoom) setSelectedRoom(r[0].id);
-    setPsychologists(p);
-    if (p.length > 0 && !selectedPsychologistId) setSelectedPsychologistId(p[0].id);
-    setCustomers(c.filter(cust => cust.status === 'active'));
-    setPlans(plansData);
-    setHolidays(h);
-    setClosures(cl);
-    setIsLoading(false);
+    try {
+      const [a, r, p, c, plansData, h, cl] = await Promise.all([
+        api.getAppointmentsByRange(startDate, endDate),
+        api.getRooms(),
+        api.getPsychologists(),
+        api.getCustomers(),
+        api.getPlans(),
+        api.getHolidays(),
+        api.getClinicClosures(),
+      ]);
+      setAppointments(a);
+      setLoadedRange({ start: startDate, end: endDate });
+      setRooms(r);
+      if (r.length > 0 && !selectedRoom) setSelectedRoom(r[0].id);
+      setPsychologists(p);
+      if (p.length > 0 && !selectedPsychologistId) setSelectedPsychologistId(p[0].id);
+      setCustomers(c.filter(cust => cust.status === 'active'));
+      setPlans(plansData);
+      setHolidays(h);
+      setClosures(cl);
+    } catch (err) {
+      console.error('[Agenda] Erro ao carregar dados:', err);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   useEffect(() => {

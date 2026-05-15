@@ -511,32 +511,42 @@ export const supabaseService: AppService = {
     if (error) throw new Error(error.message);
 
     const candidates = (data ?? []).map(toAppointment);
-    const validCandidates: Appointment[] = [];
+    if (candidates.length === 0) return [];
 
-    // Verificação de falsos positivos:
-    // Se o agendamento precisa de renovação, mas já existem agendamentos ativos futuros
-    // para o mesmo paciente/psicólogo/horário, significa que já foi renovado.
+    // ── Fix N+1: uma única query ao invés de 1 query por candidato ────────
+    const customerIds = [...new Set(candidates.map(a => a.customerId).filter(Boolean))];
+    const minDate = candidates.reduce((min, a) => a.date < min ? a.date : min, candidates[0].date);
+
+    const { data: futureApps, error: futureError } = await supabase
+      .from('appointments')
+      .select('id, customer_id, psychologist_id, start_time, date')
+      .in('customer_id', customerIds as string[])
+      .eq('status', 'active')
+      .gte('date', minDate);
+
+    if (futureError) throw new Error(futureError.message);
+
+    const validCandidates: Appointment[] = [];
+    const toAutoFix: string[] = [];
+
     for (const app of candidates) {
       if (!app.customerId) continue;
-
-      const { count } = await supabase
-        .from('appointments')
-        .select('*', { count: 'exact', head: true })
-        .eq('customer_id', app.customerId)
-        .eq('psychologist_id', app.psychologistId)
-        .eq('start_time', app.startTime)
-        .eq('status', 'active')
-        .gt('date', app.date);
-
-      if (count && count > 0) {
-        // Auto-correção silenciosa no banco: tira o needs_renewal
-        await supabase
-          .from('appointments')
-          .update({ needs_renewal: false })
-          .eq('id', app.id);
+      const hasFuture = (futureApps ?? []).some(
+        fa => fa.customer_id === app.customerId &&
+              fa.psychologist_id === app.psychologistId &&
+              fa.start_time === app.startTime &&
+              fa.date > app.date
+      );
+      if (hasFuture) {
+        toAutoFix.push(app.id);
       } else {
         validCandidates.push(app);
       }
+    }
+
+    // Auto-correção em batch (uma operação no lugar de N)
+    if (toAutoFix.length > 0) {
+      await supabase.from('appointments').update({ needs_renewal: false }).in('id', toAutoFix);
     }
 
     return validCandidates;

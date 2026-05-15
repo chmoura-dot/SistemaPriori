@@ -15,7 +15,8 @@ import {
 } from 'lucide-react';
 import { api } from '../services/api';
 import * as pdfjsLib from 'pdfjs-dist';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { supabase } from '../lib/supabase';
+import { toastError, toastSuccess } from '../lib/toast';
 
 // Configuração do worker do PDF.js
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
@@ -87,7 +88,7 @@ export const ExpensesPage = () => {
         isRecurring: false
       });
     } catch (error) {
-      alert('Erro ao salvar despesa');
+      toastError('Erro ao salvar despesa');
     } finally {
       setIsSaving(false);
     }
@@ -143,36 +144,21 @@ export const ExpensesPage = () => {
         await api.deleteExpense(id);
         await loadExpenses();
       } catch (error) {
-        alert('Erro ao excluir despesa');
+        toastError('Erro ao excluir despesa');
       }
     }
   };
 
+  // Chamada segura via Edge Function — a chave Gemini fica no servidor
   const extractWithAI = async (text: string) => {
-    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-    if (!apiKey) return null;
-
     try {
-      const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-
-      const prompt = `Analise o texto extraído de um PDF de boleto ou nota fiscal e extraia exatamente estas 4 informações em formato JSON (não inclua marcações de markdown, apenas o json puro):
-      {
-        "cnpj": "CNPJ do emissor formatado (ex: 00.000.000/0000-00)",
-        "emissao": "Data de emissão no formato DD/MM/AAAA",
-        "vencimento": "Data de vencimento no formato AAAA-MM-DD",
-        "valor": número decimal representando o valor total (ex: 150.00)
-      }
-
-      Texto extraído:
-      ${text}`;
-
-      const result = await model.generateContent(prompt);
-      const response = result.response;
-      const jsonText = response.text().replace(/```json/g, '').replace(/```/g, '').trim();
-      return JSON.parse(jsonText);
+      const { data, error } = await supabase.functions.invoke('extract-expense-ai', {
+        body: { text }
+      });
+      if (error || !data?.data) return null;
+      return data.data;
     } catch (error) {
-      console.error('Erro na extração com IA:', error);
+      console.error('Erro na extração com IA (Edge Function):', error);
       return null;
     }
   };

@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { CheckCircle2, XCircle, Clock, AlertCircle, MessageCircle } from 'lucide-react';
-import { supabaseService } from '../services/supabaseService';
 import { Appointment, Customer, Psychologist } from '../services/types';
 import { Button } from '../components/Button';
 import { cn } from '../lib/utils';
