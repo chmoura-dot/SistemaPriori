@@ -1,14 +1,12 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { 
-  Users, 
-  Activity, 
+import React, { useState } from 'react';
+import {
+  Users,
+  Activity,
   TrendingUp,
-  TrendingDown,
   ArrowUpRight,
   ShieldCheck,
   AlertTriangle,
   ChevronRight,
-  Lock,
   Calendar,
   Clock,
   Target,
@@ -21,753 +19,266 @@ import {
   ArrowDown,
   Minus,
   Bell,
-  CheckCircle2,
-  XCircle,
   AlertCircle,
-  Flame
+  Flame,
+  RefreshCw,
 } from 'lucide-react';
-import { 
-  PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, 
-  LineChart, Line, XAxis, YAxis, CartesianGrid, AreaChart, Area, 
-  BarChart, Bar,
-  ComposedChart
+import {
+  PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend,
+  LineChart, Line, XAxis, YAxis, CartesianGrid, AreaChart, Area,
+  BarChart, Bar, ComposedChart,
 } from 'recharts';
-import { api } from '../services/api';
-import { Appointment, Subscription, HealthPlan, Psychologist, Customer, CustomerStatus, SubscriptionStatus, AppointmentStatus, AppointmentType, Plan, Expense, ExpenseCategory, InactivationReason, WaitingListEntry } from '../services/types';
+import { useDashboardData } from '../hooks/useDashboardData';
+import { ExpenseCategory } from '../services/types';
 import { cn } from '../lib/utils';
-import { calcRepass } from '../lib/repassRules';
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
+// ─── Helpers de formatação ───────────────────────────────────────────────────
 
-const fmt = (v: number) => v.toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+const fmt      = (v: number) => v.toLocaleString('pt-BR', { minimumFractionDigits: 2 });
 const fmtShort = (v: number) => v.toLocaleString('pt-BR');
 
 function getTrendIcon(current: number, previous: number) {
   if (previous === 0) return <Minus size={12} className="text-zinc-400" />;
   const pct = ((current - previous) / previous) * 100;
-  if (pct > 0) return <ArrowUp size={12} className="text-emerald-500" />;
+  if (pct > 0) return <ArrowUp   size={12} className="text-emerald-500" />;
   if (pct < 0) return <ArrowDown size={12} className="text-red-500" />;
   return <Minus size={12} className="text-zinc-400" />;
 }
 
 function getTrendText(current: number, previous: number) {
   if (previous === 0) return null;
-  const pct = ((current - previous) / previous) * 100;
+  const pct   = ((current - previous) / previous) * 100;
   const color = pct > 0 ? 'text-emerald-500' : pct < 0 ? 'text-red-500' : 'text-zinc-400';
-  return <span className={cn('text-[10px] font-bold', color)}>{pct > 0 ? '+' : ''}{pct.toFixed(1)}% vs mês ant.</span>;
+  return (
+    <span className={cn('text-[10px] font-bold', color)}>
+      {pct > 0 ? '+' : ''}{pct.toFixed(1)}% vs mês ant.
+    </span>
+  );
 }
+
+// ─── Constantes de cores ──────────────────────────────────────────────────────
+
+const MODALITY_COLORS = ['#1a365d', '#d4af37'];
+const CHART_COLORS    = ['#1a365d', '#d4af37', '#10b981', '#f59e0b', '#ef4444', '#6366f1', '#8b5cf6'];
+
+// ─── Tipos de abas ────────────────────────────────────────────────────────────
+
+type TabId = 'resumo' | 'clinico' | 'financeiro' | 'equipe';
+
+const TABS: { id: TabId; label: string }[] = [
+  { id: 'resumo',     label: 'Resumo'     },
+  { id: 'clinico',    label: 'Clínico'    },
+  { id: 'financeiro', label: 'Financeiro' },
+  { id: 'equipe',     label: 'Equipe'     },
+];
 
 // ─── Componente Principal ────────────────────────────────────────────────────
 
 export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => void }) => {
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
-  const [plans, setPlans] = useState<Plan[]>([]);
-  const [appointments, setAppointments] = useState<Appointment[]>([]);
-  const [expenses, setExpenses] = useState<Expense[]>([]);
-  const [psychologists, setPsychologists] = useState<any[]>([]);
-  const [waitingList, setWaitingList] = useState<WaitingListEntry[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-
-  // Filtro de período
-  const today = new Date();
-  const [filterMode, setFilterMode] = useState<'month' | 'year' | 'all'>('month');
-  const [selectedMonth, setSelectedMonth] = useState(today.getMonth()); // 0-11
-  const [selectedYear, setSelectedYear] = useState(today.getFullYear());
-
-  const user = api.getCurrentUser();
-
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        const [c, s, p, a, psy, exp, wl] = await Promise.all([
-          api.getCustomers(),
-          api.getSubscriptions(),
-          api.getPlans(),
-          api.getAppointments(),
-          api.getPsychologists(),
-          api.getExpenses(),
-          api.getWaitingList()
-        ]);
-        setCustomers(c);
-        setSubscriptions(s);
-        setPlans(p);
-        setAppointments(a);
-        setPsychologists(psy);
-        setExpenses(exp);
-        setWaitingList(wl);
-      } catch (err) {
-        console.error('[Dashboard] Erro ao carregar dados:', err);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    loadData();
-  }, []);
-
-  // ─── Filtro de período ───────────────────────────────────────────────────
-
-  const isInSelectedPeriod = (dateStr: string) => {
-    if (filterMode === 'all') return true;
-    const d = new Date(dateStr + 'T12:00:00');
-    if (filterMode === 'year') return d.getFullYear() === selectedYear;
-    return d.getMonth() === selectedMonth && d.getFullYear() === selectedYear;
-  };
-
-  const isInPrevPeriod = (dateStr: string) => {
-    if (filterMode === 'all') return false;
-    const d = new Date(dateStr + 'T12:00:00');
-    if (filterMode === 'year') return d.getFullYear() === selectedYear - 1;
-    const prevMonth = selectedMonth === 0 ? 11 : selectedMonth - 1;
-    const prevYear = selectedMonth === 0 ? selectedYear - 1 : selectedYear;
-    return d.getMonth() === prevMonth && d.getFullYear() === prevYear;
-  };
-
-  const appointmentsFiltered = appointments.filter(a => isInSelectedPeriod(a.date));
-  const appointmentsPrevMonth = appointments.filter(a => isInPrevPeriod(a.date));
-
-  const expensesFiltered = expenses.filter(e => isInSelectedPeriod(e.date));
-  const expensesPrevMonth = expenses.filter(e => isInPrevPeriod(e.date));
-
-  // Meses disponíveis para o seletor
-  const availableMonths = useMemo(() => {
-    const months = new Set<string>();
-    appointments.forEach(a => {
-      const d = new Date(a.date + 'T12:00:00');
-      months.add(`${d.getFullYear()}-${d.getMonth()}`);
-    });
-    months.add(`${today.getFullYear()}-${today.getMonth()}`);
-    return Array.from(months)
-      .map(m => {
-        const [y, mo] = m.split('-').map(Number);
-        return { year: y, month: mo, label: new Date(y, mo, 1).toLocaleString('pt-BR', { month: 'long', year: 'numeric' }) };
-      })
-      .sort((a, b) => a.year !== b.year ? a.year - b.year : a.month - b.month);
-  }, [appointments]);
-
-  // Anos disponíveis para o seletor
-  const availableYears = useMemo(() => {
-    const years = new Set<number>();
-    appointments.forEach(a => years.add(new Date(a.date + 'T12:00:00').getFullYear()));
-    expenses.forEach(e => years.add(new Date(e.date + 'T12:00:00').getFullYear()));
-    years.add(today.getFullYear());
-    return Array.from(years).sort((a, b) => a - b);
-  }, [appointments, expenses]);
-
-  // ─── Helpers de cálculo ──────────────────────────────────────────────────
-
-  const activeSubs = subscriptions.filter(s => s.status === SubscriptionStatus.ACTIVE);
-
-  const subscriptionRevenue = activeSubs.reduce((acc, sub) => {
-    const plan = plans.find(p => p.id === sub.planId);
-    const price = plan?.procedures?.[0]?.price || 0;
-    return acc + price;
-  }, 0);
-
-  const findPlan = (healthPlan?: string) =>
-    plans.find(p => p.name.toUpperCase() === (healthPlan ?? '').toUpperCase());
-
-  const isCanceledButBilled = (app: Appointment) =>
-    app.status === AppointmentStatus.CANCELED &&
-    (app.cancellationBilling === 'plan' || app.cancellationBilling === 'particular');
-
-  const calculateRevenue = (apps: Appointment[]) => {
-    const grouped = apps.reduce((acc: Record<string, Appointment[]>, app) => {
-      const key = `${app.customerId}-${app.type}`;
-      if (!acc[key]) acc[key] = [];
-      acc[key].push(app);
-      return acc;
-    }, {});
-
-    return Object.values(grouped).reduce((total, customerApps) => {
-      const firstApp = customerApps[0];
-      const customer = customers.find(c => c.id === firstApp.customerId);
-      const plan = findPlan(customer?.healthPlan);
-      const procedure = plan?.procedures?.find(proc => proc.type === firstApp.type);
-      const isOneTime = procedure?.isOneTimeCharge || (customer?.healthPlan === HealthPlan.PARTICULAR && firstApp.type === AppointmentType.NEUROPSICOLOGICA);
-
-      if (isOneTime) {
-        const amount = firstApp.customPrice ?? customer?.customPrice ?? (procedure?.price || 0);
-        return total + amount;
-      } else {
-        const appTotal = customerApps.reduce((sum, app) => {
-          const amount = app.customPrice ?? customer?.customPrice ?? (procedure?.price || 0);
-          return sum + amount;
-        }, 0);
-        return total + appTotal;
-      }
-    }, 0);
-  };
-
-  // ─── KPIs do mês selecionado ─────────────────────────────────────────────
-
-  const appsRealizados = appointmentsFiltered.filter(app => app.confirmedPsychologist || isCanceledButBilled(app));
-  const appsPrevistos = appointmentsFiltered.filter(app => !app.confirmedPsychologist && app.status !== AppointmentStatus.CANCELED);
-  const appsRealizadosPrev = appointmentsPrevMonth.filter(app => app.confirmedPsychologist || isCanceledButBilled(app));
-
-  const totalAppsScheduled = appointmentsFiltered.length;
-  const totalAppsCanceled = appointmentsFiltered.filter(app => app.status === AppointmentStatus.CANCELED).length;
-  const cancelationRate = totalAppsScheduled > 0 ? (totalAppsCanceled / totalAppsScheduled) * 100 : 0;
-  const attendanceRate = totalAppsScheduled > 0 ? (appsRealizados.length / totalAppsScheduled) * 100 : 0;
-
-  const cancelationRatePrev = appointmentsPrevMonth.length > 0
-    ? (appointmentsPrevMonth.filter(a => a.status === AppointmentStatus.CANCELED).length / appointmentsPrevMonth.length) * 100
-    : 0;
-  const attendanceRatePrev = appointmentsPrevMonth.length > 0
-    ? (appsRealizadosPrev.length / appointmentsPrevMonth.length) * 100
-    : 0;
-
-  const revenueRealizado = calculateRevenue(appsRealizados) + subscriptionRevenue;
-  const revenuePrevisto = calculateRevenue(appsPrevistos);
-  const revenueRealizadoPrev = calculateRevenue(appsRealizadosPrev);
-
-  const totalRepasseRealizado = useMemo(() => {
-    return appsRealizados.reduce((total, app) => {
-      const customer = customers.find(c => c.id === app.customerId);
-      const psychologist = psychologists.find(p => p.id === app.psychologistId);
-      const plan = findPlan(customer?.healthPlan);
-      const procedure = plan?.procedures?.find(proc => proc.type === app.type);
-      const appPrice = app.customPrice ?? customer?.customPrice ?? procedure?.price ?? 0;
-      const repassAmount = app.customRepassAmount ?? customer?.customRepassAmount ?? calcRepass(appPrice, psychologist);
-      return total + repassAmount;
-    }, 0);
-  }, [appsRealizados, customers, psychologists, plans]);
-
-  const totalExpenses = expensesFiltered.reduce((acc, exp) => acc + exp.amount, 0);
-  const totalExpensesPrev = expensesPrevMonth.reduce((acc, exp) => acc + exp.amount, 0);
-  const netProfit = revenueRealizado - totalRepasseRealizado - totalExpenses;
-
-  // ─── Ticket Médio ────────────────────────────────────────────────────────
-
-  // Usa todos os agendamentos não-cancelados do mês (realizados + previstos) para não zerar no início do mês
-  const appsNaoCancelados = appointmentsFiltered.filter(a => a.status !== AppointmentStatus.CANCELED);
-  const appsNaoCanceladosPrev = appointmentsPrevMonth.filter(a => a.status !== AppointmentStatus.CANCELED);
-  const revenueTotal = calculateRevenue(appsNaoCancelados) + subscriptionRevenue;
-  const revenueTotalPrev = calculateRevenue(appsNaoCanceladosPrev);
-
-  const ticketMedioConsulta = appsNaoCancelados.length > 0 ? revenueTotal / appsNaoCancelados.length : 0;
-  const activeCustomersCount = customers.filter(c => c.status === CustomerStatus.ACTIVE).length;
-  const ticketMedioPaciente = activeCustomersCount > 0 ? revenueTotal / activeCustomersCount : 0;
-  const ticketMedioConsultaPrev = appsNaoCanceladosPrev.length > 0 ? revenueTotalPrev / appsNaoCanceladosPrev.length : 0;
-
-  // ─── Churn / Retenção ────────────────────────────────────────────────────
-
-  const inactivatedThisMonth = customers.filter(c => {
-    if (c.status !== CustomerStatus.INACTIVE) return false;
-    // Usa lastAppointmentDate como proxy de quando ficou inativo
-    const ref = c.lastAppointmentDate || c.createdAt;
-    return isInSelectedPeriod(ref);
-  });
-
-  const churnByReason = Object.values(InactivationReason).map(reason => ({
-    reason,
-    count: inactivatedThisMonth.filter(c => c.inactivationReason === reason).length
-  })).filter(r => r.count > 0);
-
-  const retentionRate = (activeCustomersCount + inactivatedThisMonth.length) > 0
-    ? (activeCustomersCount / (activeCustomersCount + inactivatedThisMonth.length)) * 100
-    : 100;
-
-  // ─── Forecast de Receita ─────────────────────────────────────────────────
-
-  const forecastRevenue = revenueRealizado + revenuePrevisto;
-  const forecastProgress = forecastRevenue > 0 ? (revenueRealizado / forecastRevenue) * 100 : 0;
-
-  // ─── Agenda do Dia ───────────────────────────────────────────────────────
-
-  const todayStr = today.toISOString().split('T')[0];
-  const todayApps = appointments.filter(a => a.date === todayStr && !a.isInternal);
-  const todayConfirmed = todayApps.filter(a => a.confirmedPsychologist || a.confirmedPatient);
-  const todayPending = todayApps.filter(a => !a.confirmedPsychologist && !a.confirmedPatient && a.status !== AppointmentStatus.CANCELED);
-  const todayCanceled = todayApps.filter(a => a.status === AppointmentStatus.CANCELED);
-
-  const upcomingToday = todayApps
-    .filter(a => a.status !== AppointmentStatus.CANCELED)
-    .sort((a, b) => a.startTime.localeCompare(b.startTime))
-    .slice(0, 5);
-
-  // ─── Taxa de Ocupação ────────────────────────────────────────────────────
-
-  // Capacidade: psicólogos ativos × dias úteis no mês × slots por dia (estimativa: 8h/dia, 1h/consulta)
-  const workingDaysInMonth = (() => {
-    const year = selectedYear;
-    const month = selectedMonth;
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
-    let count = 0;
-    for (let d = 1; d <= daysInMonth; d++) {
-      const day = new Date(year, month, d).getDay();
-      if (day !== 0 && day !== 6) count++;
-    }
-    return count;
-  })();
-
-  const activePsychologists = psychologists.filter(p => p.active);
-  const estimatedCapacity = activePsychologists.length * workingDaysInMonth * 6; // ~6 consultas/dia/psicólogo
-  // Usa todos os agendamentos não-cancelados (realizados + previstos) para refletir ocupação real da agenda
-  const occupancyRate = estimatedCapacity > 0 ? Math.min((appsNaoCancelados.length / estimatedCapacity) * 100, 100) : 0;
-
-  // ─── Heatmap de Horários ─────────────────────────────────────────────────
-
-  const heatmapData = useMemo(() => {
-    const dayNames = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex'];
-    const hours = ['08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00'];
-    const grid: Record<string, Record<string, number>> = {};
-
-    hours.forEach(h => {
-      grid[h] = {};
-      dayNames.forEach(d => { grid[h][d] = 0; });
-    });
-
-    appointments.forEach(app => {
-      if (app.status === AppointmentStatus.CANCELED || app.isInternal) return;
-      const date = new Date(app.date + 'T12:00:00');
-      const dayIdx = date.getDay(); // 0=Dom, 1=Seg...
-      if (dayIdx === 0 || dayIdx === 6) return;
-      const dayName = dayNames[dayIdx - 1];
-      const hour = app.startTime?.substring(0, 5);
-      if (grid[hour] && grid[hour][dayName] !== undefined) {
-        grid[hour][dayName]++;
-      }
-    });
-
-    return { grid, hours, dayNames };
-  }, [appointments]);
-
-  const maxHeatmapValue = useMemo(() => {
-    let max = 0;
-    Object.values(heatmapData.grid).forEach(row => {
-      Object.values(row).forEach(v => { if (v > max) max = v; });
-    });
-    return max || 1;
-  }, [heatmapData]);
-
-  // ─── Ranking de Psicólogos ───────────────────────────────────────────────
-
-  const psychologistRanking = useMemo(() => {
-    return psychologists.map(psy => {
-      const psyApps = appsRealizados.filter(a => a.psychologistId === psy.id);
-      const revenue = calculateRevenue(psyApps);
-      const confirmationRate = psyApps.length > 0
-        ? (psyApps.filter(a => a.confirmedPsychologist).length / psyApps.length) * 100
-        : 0;
-      return {
-        name: psy.name,
-        appointments: psyApps.length,
-        revenue,
-        confirmationRate
-      };
-    }).filter(p => p.appointments > 0).sort((a, b) => b.revenue - a.revenue);
-  }, [appsRealizados, psychologists, customers, plans]);
-
-  // ─── Gráfico Receita vs Despesas ─────────────────────────────────────────
-
-  const revenueVsExpensesData = useMemo(() => {
-    const data: Record<string, { month: string; sortKey: number; receita: number; despesas: number; lucro: number }> = {};
-
-    appointments.forEach(app => {
-      if (!app.confirmedPsychologist && !isCanceledButBilled(app)) return;
-      const d = new Date(app.date + 'T12:00:00');
-      const key = d.toLocaleString('pt-BR', { month: 'short', year: '2-digit' });
-      const sortKey = d.getFullYear() * 100 + d.getMonth();
-      if (!data[key]) data[key] = { month: key, sortKey, receita: 0, despesas: 0, lucro: 0 };
-
-      const customer = customers.find(c => c.id === app.customerId);
-      const plan = findPlan(customer?.healthPlan);
-      const procedure = plan?.procedures?.find(proc => proc.type === app.type);
-      const amount = app.customPrice ?? customer?.customPrice ?? procedure?.price ?? 0;
-      data[key].receita += amount;
-    });
-
-    expenses.forEach(exp => {
-      const d = new Date(exp.date + 'T12:00:00');
-      const key = d.toLocaleString('pt-BR', { month: 'short', year: '2-digit' });
-      const sortKey = d.getFullYear() * 100 + d.getMonth();
-      if (!data[key]) data[key] = { month: key, sortKey, receita: 0, despesas: 0, lucro: 0 };
-      data[key].despesas += exp.amount;
-    });
-
-    return Object.values(data)
-      .sort((a, b) => a.sortKey - b.sortKey)
-      .map(d => ({ ...d, lucro: d.receita - d.despesas }));
-  }, [appointments, expenses, customers, plans]);
-
-  // ─── Dados existentes ────────────────────────────────────────────────────
-
-  const revenueByPlan = plans.map(plan => {
-    const planApps = appsRealizados.filter(app => {
-      const customer = customers.find(c => c.id === app.customerId);
-      return (customer?.healthPlan ?? '').toUpperCase() === plan.name.toUpperCase();
-    });
-    const appRevenue = calculateRevenue(planApps);
-    return { name: plan.name, total: appRevenue };
-  }).filter(p => p.total > 0).sort((a, b) => b.total - a.total);
-
-  const revenueByPsychologist = psychologists.map(psy => {
-    const psyApps = appsRealizados.filter(app => app.psychologistId === psy.id);
-    return { name: psy.name, total: calculateRevenue(psyApps) };
-  }).filter(p => p.total > 0).sort((a, b) => b.total - a.total);
-
-  const monthlyRevenue = appointments
-    .filter(app => app.status !== AppointmentStatus.CANCELED || isCanceledButBilled(app))
-    .reduce((acc: any, app) => {
-      const month = new Date(app.date + 'T12:00:00').toLocaleString('pt-BR', { month: 'long', year: 'numeric' });
-      if (!acc[month]) acc[month] = { realizado: 0, previsto: 0 };
-      const customer = customers.find(c => c.id === app.customerId);
-      const plan = findPlan(customer?.healthPlan);
-      const procedure = plan?.procedures?.find(proc => proc.type === app.type);
-      const isOneTime = procedure?.isOneTimeCharge || (customer?.healthPlan === HealthPlan.PARTICULAR && app.type === AppointmentType.NEUROPSICOLOGICA);
-      let amount = 0;
-      if (isOneTime) {
-        const firstApp = appointments
-          .filter(a => a.customerId === app.customerId && a.type === app.type && (a.status !== AppointmentStatus.CANCELED || isCanceledButBilled(a)))
-          .sort((a, b) => a.date.localeCompare(b.date))[0];
-        if (firstApp.id === app.id) amount = app.customPrice ?? customer?.customPrice ?? (procedure?.price || 0);
-      } else {
-        amount = app.customPrice ?? customer?.customPrice ?? (procedure?.price || 0);
-      }
-      if (app.confirmedPsychologist || isCanceledButBilled(app)) acc[month].realizado += amount;
-      else acc[month].previsto += amount;
-      return acc;
-    }, {});
-
-  const monthlyData = Object.entries(monthlyRevenue).map(([month, data]: [string, any]) => ({
-    month, realizado: data.realizado, previsto: data.previsto, total: data.realizado + data.previsto
-  }));
-
-  const modalityData = [
-    { name: 'Presencial', value: appsRealizados.filter(app => app.mode === 'Presencial').length },
-    { name: 'On-line', value: appsRealizados.filter(app => app.mode === 'On-line').length },
-  ].filter(d => d.value > 0);
-
-  const MODALITY_COLORS = ['#1a365d', '#d4af37'];
-  const CHART_COLORS = ['#1a365d', '#d4af37', '#10b981', '#f59e0b', '#ef4444', '#6366f1', '#8b5cf6'];
-
-  // ─── Perfil de Gênero dos Pacientes ───────────────────────────────────────
-
-  const genderProfileData = useMemo(() => {
-    const activeCustomers = customers.filter(c => c.status === CustomerStatus.ACTIVE);
-    
-    let feminino = 0;
-    let masculino = 0;
-    let naoIdentificado = 0;
-
-    // Lista de terminações e nomes comuns para inferir gênero no Brasil (fallback)
-    const commonFemaleNames = ['MARIA', 'ANA', 'JULIANA', 'FERNANDA', 'PATRICIA', 'ALINE', 'CAMILA', 'LETICIA', 'AMANDA', 'BEATRIZ', 'CAROLINA', 'MARCELA', 'VANESSA', 'MARIANA', 'LUANA', 'THAIZ', 'THAIS', 'GABRIELA', 'JULIA', 'ISABELA', 'ISADORA', 'LAURA', 'LUIZA', 'VITORIA', 'CLARA', 'RAFAELA', 'SOFIA', 'HELENA', 'ALICE', 'MANUELA', 'VALENTINA', 'HELOISA', 'LORENA', 'GIOVANNA', 'CECILIA', 'NICOLE', 'SARAH', 'ISABEL', 'ESTHER', 'YASMIN', 'EDUARDA', 'ALICIA', 'LIVIA', 'MELISSA', 'MARINA', 'CLARICE', 'MILENA', 'SOPHIA'];
-    
-    const commonMaleNames = ['JOSE', 'JOAO', 'ANTONIO', 'FRANCISCO', 'CARLOS', 'PAULO', 'PEDRO', 'LUCAS', 'LUIZ', 'MARCOS', 'LUIS', 'GABRIEL', 'RAFAEL', 'DANIEL', 'MARCELO', 'BRUNO', 'EDUARDO', 'FELIPE', 'RAIMUNDO', 'RODRIGO', 'MATEUS', 'MATHEUS', 'THIAGO', 'GUILHERME', 'ENZO', 'ARTHUR', 'MIGUEL', 'DAVI', 'BERNARDO', 'HEITOR', 'SAMUEL', 'LORENZO', 'BENJAMIN', 'NICOLAS', 'GUSTAVO', 'ISAAC', 'CAUAN', 'CAUA', 'VITOR', 'VICTOR', 'LEONARDO', 'ENRICO', 'THOMAS', 'TOMAS'];
-
-    activeCustomers.forEach(c => {
-      // 1. Usa o gênero salvo no banco de dados se existir
-      if (c.gender === 'F') {
-        feminino++;
-        return;
-      }
-      if (c.gender === 'M') {
-        masculino++;
-        return;
-      }
-
-      // 2. Fallback: infere pelo nome (para pacientes antigos onde gender é null)
-      const firstName = c.name.trim().split(' ')[0].toUpperCase();
-      
-      // Checa por nome exato
-      if (commonFemaleNames.includes(firstName)) {
-        feminino++;
-      } else if (commonMaleNames.includes(firstName)) {
-        masculino++;
-      } 
-      // Se não encontrou na lista, tenta por terminação
-      else if (firstName.endsWith('A') || firstName.endsWith('IA') || firstName.endsWith('LY') || firstName.endsWith('NY') || firstName.endsWith('IE') || firstName.endsWith('NA')) {
-        // Exceções de masculinos terminados em A
-        const maleExceptionsA = ['LUCAS', 'JOSIAS', 'THOMAS', 'NICOLLAS', 'MATTHIAS', 'OSIAS', 'ELIAS', 'JONAS', 'BARNABAS'];
-        // Tenta contornar as exceções
-        let isMaleException = false;
-        for(let exc of maleExceptionsA){
-            if(firstName.includes(exc)) isMaleException = true;
-        }
-
-        if(firstName === 'ANDREA' || firstName === 'NICOLA' || firstName === 'GIANLUCA') isMaleException = true;
-
-        if(!isMaleException){
-            feminino++;
-        } else {
-            masculino++;
-        }
-
-      } else if (firstName.endsWith('O') || firstName.endsWith('SON') || firstName.endsWith('EL') || firstName.endsWith('OS') || firstName.endsWith('OR') || firstName.endsWith('US')) {
-        masculino++;
-      } else {
-        naoIdentificado++;
-      }
-    });
-
-    const totalIdentificado = feminino + masculino;
-    
-    return {
-      data: [
-        { name: 'Feminino', value: feminino, color: '#ec4899' }, // pink-500
-        { name: 'Masculino', value: masculino, color: '#3b82f6' }  // blue-500
-      ].filter(d => d.value > 0),
-      totalIdentificado,
-      naoIdentificado,
-      totalAtivos: activeCustomers.length
-    };
-  }, [customers]);
-
-  // ─── Perfil de Idade dos Pacientes ───────────────────────────────────────
-
-  const ageProfileData = useMemo(() => {
-    const activeCustomers = customers.filter(c => c.status === CustomerStatus.ACTIVE);
-    
-    let crianca = 0; // 0-12
-    let adolescente = 0; // 13-17
-    let adulto = 0; // 18-59
-    let idoso = 0; // 60+
-    let semIdade = 0;
-
-    activeCustomers.forEach(c => {
-      if (!c.birthDate) {
-        semIdade++;
-        return;
-      }
-      
-      const birth = new Date(c.birthDate + 'T12:00:00');
-      let age = today.getFullYear() - birth.getFullYear();
-      const m = today.getMonth() - birth.getMonth();
-      if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {
-        age--;
-      }
-
-      if (age <= 12) crianca++;
-      else if (age <= 17) adolescente++;
-      else if (age <= 59) adulto++;
-      else idoso++;
-    });
-
-    const totalComIdade = crianca + adolescente + adulto + idoso;
-    
-    return {
-      data: [
-        { name: 'Criança (0-12)', value: crianca, color: '#6366f1' },
-        { name: 'Adolescente (13-17)', value: adolescente, color: '#10b981' },
-        { name: 'Adulto (18-59)', value: adulto, color: '#1a365d' },
-        { name: 'Idoso (60+)', value: idoso, color: '#d4af37' }
-      ].filter(d => d.value > 0),
-      totalComIdade,
-      semIdade,
-      totalAtivos: activeCustomers.length
-    };
-  }, [customers]);
-
-  const growthData = useMemo(() => {
-    const months: Record<string, { month: string; patients: number; psychologists: number; timestamp: number }> = {};
-    const getMonthKey = (dateStr?: string) => {
-      if (!dateStr) return null;
-      const d = new Date(dateStr);
-      return { key: d.toLocaleString('pt-BR', { month: 'short', year: '2-digit' }), sortKey: d.getFullYear() * 100 + d.getMonth() };
-    };
-    [...customers, ...psychologists].forEach(item => {
-      const info = getMonthKey(item.createdAt);
-      if (info && !months[info.key]) months[info.key] = { month: info.key, patients: 0, psychologists: 0, timestamp: info.sortKey };
-    });
-    customers.forEach(c => { const info = getMonthKey(c.createdAt); if (info) months[info.key].patients++; });
-    psychologists.forEach(p => { const info = getMonthKey(p.createdAt); if (info) months[info.key].psychologists++; });
-    const sorted = Object.values(months).sort((a, b) => a.timestamp - b.timestamp);
-    let accPatients = 0, accPsys = 0;
-    return sorted.map(m => { accPatients += m.patients; accPsys += m.psychologists; return { ...m, patients: accPatients, psychologists: accPsys }; });
-  }, [customers, psychologists]);
-
-  const planGrowthData = useMemo(() => {
-    const data: Record<string, Record<string, any>> = {};
-    const planNames = Array.from(new Set(plans.map(p => p.name)));
-    appointments.forEach(app => {
-      const date = new Date(app.date + 'T12:00:00');
-      const monthKey = date.toLocaleString('pt-BR', { month: 'short', year: '2-digit' });
-      const sortKey = date.getFullYear() * 100 + date.getMonth();
-      const customer = customers.find(c => c.id === app.customerId);
-      const planName = (customer?.healthPlan as string) || 'Não Identificado';
-      if (!data[monthKey]) { data[monthKey] = { month: monthKey, sortKey }; planNames.forEach(name => { data[monthKey][name as string] = 0; }); }
-      if (data[monthKey][planName] !== undefined) data[monthKey][planName]++;
-      else data[monthKey][planName] = 1;
-    });
-    return Object.values(data).sort((a, b) => a.sortKey - b.sortKey);
-  }, [appointments, customers, plans]);
-
-  const typeGrowthData = useMemo(() => {
-    const data: Record<string, any> = {};
-    const types = Array.from(new Set(appointments.map(a => a.type)));
-    appointments.forEach(app => {
-      const date = new Date(app.date + 'T12:00:00');
-      const monthKey = date.toLocaleString('pt-BR', { month: 'short', year: '2-digit' });
-      const sortKey = date.getFullYear() * 100 + date.getMonth();
-      if (!data[monthKey]) { data[monthKey] = { month: monthKey, sortKey }; types.forEach(t => data[monthKey][t as string] = 0); }
-      data[monthKey][app.type as string]++;
-    });
-    return Object.values(data).sort((a, b) => a.sortKey - b.sortKey);
-  }, [appointments]);
-
-  const roomUsageData = useMemo(() => {
-    const dayNames = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
-    const usage = dayNames.map(day => ({ day, count: 0 }));
-    appointments.forEach(app => {
-      const date = new Date(app.date + 'T12:00:00');
-      const dayIdx = date.getDay();
-      if (app.status !== AppointmentStatus.CANCELED) usage[dayIdx].count++;
-    });
-    return usage.filter((_, i) => i !== 0);
-  }, [appointments]);
-
-  // Assinaturas próximas do vencimento (30 dias)
-  const expiringSubscriptions = subscriptions.filter(s => {
-    if (s.status !== SubscriptionStatus.ACTIVE) return false;
-    const renewal = new Date(s.nextRenewal + 'T12:00:00');
-    const diffDays = Math.ceil((renewal.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-    return diffDays <= 30 && diffDays >= 0;
-  });
-
-  // Confirmações pendentes de hoje
-  const pendingConfirmationsToday = todayApps.filter(a =>
-    a.confirmationStatus === 'pending' && a.status !== AppointmentStatus.CANCELED
-  );
-
-  // Pacientes sem agendamento há mais de 30 dias
-  const inactivePatients = customers.filter(c => {
-    if (c.status !== CustomerStatus.ACTIVE) return false;
-    if (!c.lastAppointmentDate) return false;
-    const last = new Date(c.lastAppointmentDate + 'T12:00:00');
-    const diffDays = Math.ceil((today.getTime() - last.getTime()) / (1000 * 60 * 60 * 24));
-    return diffDays > 30;
-  });
-
-  const waitingListPending = waitingList.filter(w => w.status === 'pending');
-
-  const selectedMonthLabel = filterMode === 'all'
-    ? 'Todo o Período'
-    : filterMode === 'year'
-    ? `${selectedYear}`
-    : new Date(selectedYear, selectedMonth, 1).toLocaleString('pt-BR', { month: 'long', year: 'numeric' });
-
-  // ─── Render ──────────────────────────────────────────────────────────────
+  const [activeTab, setActiveTab] = useState<TabId>('resumo');
+
+  const {
+    // Estado
+    isLoading, error,
+    // Dados brutos (ainda necessários no render)
+    customers, plans, appointments, expenses, psychologists,
+    // Filtro de período
+    filterMode, setFilterMode, selectedMonth, setSelectedMonth, selectedYear, setSelectedYear,
+    availableMonths, availableYears, selectedMonthLabel,
+    // Agendamentos e despesas filtrados
+    expensesFiltered,
+    // KPIs
+    appsRealizados, appsNaoCancelados,
+    totalAppsScheduled,
+    cancelationRate, attendanceRate, cancelationRatePrev, attendanceRatePrev,
+    revenueRealizado, revenuePrevisto, revenueRealizadoPrev,
+    totalRepasseRealizado, totalExpenses, totalExpensesPrev, netProfit,
+    // Ticket médio
+    ticketMedioConsulta, ticketMedioPaciente, ticketMedioConsultaPrev,
+    // Pacientes
+    activeCustomersCount, newPatientsCount, newPatientsCountPrev,
+    // Métricas clínicas
+    avgSessionsPerPatient, noShowApps, noShowRate, avgTherapyDurationDays, returnRate,
+    // Churn
+    inactivatedThisMonth, churnByReason, retentionRate,
+    // Forecast
+    forecastRevenue, forecastProgress,
+    // Agenda
+    today, todayApps, todayConfirmed, todayCanceled, upcomingToday,
+    // Ocupação
+    estimatedCapacity, occupancyRate,
+    // Gráficos
+    heatmapData, maxHeatmapValue,
+    psychologistRanking,
+    revenueVsExpensesData,
+    revenueByPlan, revenueByPsychologist, monthlyData, modalityData,
+    genderProfileData, ageProfileData,
+    growthData, planGrowthData, typeGrowthData, roomUsageData,
+    // Alertas
+    expiringSubscriptions, pendingConfirmationsToday, inactivePatients, waitingListPending,
+  } = useDashboardData();
+
+  // ─── Render ───────────────────────────────────────────────────────────────
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-32">
+        <div className="animate-spin rounded-full h-8 w-8 border-2 border-priori-navy border-t-transparent" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center py-24 gap-4">
+        <div className="p-4 bg-red-50 rounded-2xl">
+          <AlertCircle size={32} className="text-red-500" />
+        </div>
+        <p className="text-sm font-bold text-zinc-700">{error}</p>
+        <button
+          onClick={() => window.location.reload()}
+          className="flex items-center gap-2 px-4 py-2 bg-priori-navy text-white text-sm font-bold rounded-xl hover:opacity-90 transition"
+        >
+          <RefreshCw size={14} /> Tentar Novamente
+        </button>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-8 min-h-[400px]">
-      {isLoading ? (
-        <div className="flex items-center justify-center py-20">
-          <div className="animate-spin rounded-full h-8 w-8 border-2 border-priori-navy border-t-transparent" />
+    <div className="space-y-6 min-h-[400px]">
+
+      {/* ── Header + Filtro de Período ── */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-bold text-priori-navy">Visão Geral</h2>
+          <p className="text-zinc-500">Acompanhe o desempenho da clínica em tempo real.</p>
         </div>
-      ) : (
-        <>
-          {/* ── Header + Filtro de Período ── */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <h2 className="text-2xl font-bold text-priori-navy">Visão Geral</h2>
-              <p className="text-zinc-500">Acompanhe o desempenho da clínica em tempo real.</p>
-            </div>
-            <div className="flex items-center gap-2 flex-wrap justify-end">
-              {/* Toggle de modo */}
-              <div className="flex bg-zinc-100 p-1 rounded-xl">
-                {(['month', 'year', 'all'] as const).map(mode => (
-                  <button
-                    key={mode}
-                    onClick={() => setFilterMode(mode)}
-                    className={cn(
-                      "px-3 py-1.5 text-xs font-bold uppercase tracking-wider rounded-lg transition-all whitespace-nowrap",
-                      filterMode === mode ? "bg-white text-priori-navy shadow-sm" : "text-zinc-500 hover:text-priori-navy"
-                    )}
-                  >
-                    {mode === 'month' ? 'Mês' : mode === 'year' ? 'Ano' : 'Todo Período'}
-                  </button>
-                ))}
-              </div>
-
-              {/* Seletor de Mês */}
-              {filterMode === 'month' && (
-                <div className="flex items-center gap-2 bg-white border border-zinc-100 rounded-xl px-4 py-2.5 shadow-sm">
-                  <Calendar size={16} className="text-priori-navy" />
-                  <select
-                    className="text-sm font-bold text-priori-navy bg-transparent focus:outline-none cursor-pointer"
-                    value={`${selectedYear}-${selectedMonth}`}
-                    onChange={e => {
-                      const [y, m] = e.target.value.split('-').map(Number);
-                      setSelectedYear(y);
-                      setSelectedMonth(m);
-                    }}
-                  >
-                    {availableMonths.map(m => (
-                      <option key={`${m.year}-${m.month}`} value={`${m.year}-${m.month}`}>{m.label}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              {/* Seletor de Ano */}
-              {filterMode === 'year' && (
-                <div className="flex items-center gap-2 bg-white border border-zinc-100 rounded-xl px-4 py-2.5 shadow-sm">
-                  <Calendar size={16} className="text-priori-navy" />
-                  <select
-                    className="text-sm font-bold text-priori-navy bg-transparent focus:outline-none cursor-pointer"
-                    value={selectedYear}
-                    onChange={e => setSelectedYear(Number(e.target.value))}
-                  >
-                    {availableYears.map(y => (
-                      <option key={y} value={y}>{y}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-            </div>
+        <div className="flex items-center gap-2 flex-wrap justify-end">
+          {/* Toggle de modo */}
+          <div className="flex bg-zinc-100 p-1 rounded-xl">
+            {(['month', 'year', 'all'] as const).map(mode => (
+              <button
+                key={mode}
+                onClick={() => setFilterMode(mode)}
+                className={cn(
+                  'px-3 py-1.5 text-xs font-bold uppercase tracking-wider rounded-lg transition-all whitespace-nowrap',
+                  filterMode === mode ? 'bg-white text-priori-navy shadow-sm' : 'text-zinc-500 hover:text-priori-navy'
+                )}
+              >
+                {mode === 'month' ? 'Mês' : mode === 'year' ? 'Ano' : 'Todo Período'}
+              </button>
+            ))}
           </div>
 
-          {/* ── Alertas Consolidados ── */}
-          {(pendingConfirmationsToday.length > 0 || expiringSubscriptions.length > 0 || inactivePatients.length > 0 || waitingListPending.length > 0) && (
-            <div className="bg-white border border-zinc-100 rounded-2xl p-5 shadow-sm">
-              <div className="flex items-center gap-2 mb-4">
-                <div className="p-2 bg-amber-50 rounded-xl"><Bell size={16} className="text-amber-500" /></div>
-                <h3 className="text-sm font-bold text-zinc-700 uppercase tracking-widest">Alertas e Notificações</h3>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                {pendingConfirmationsToday.length > 0 && (
-                  <button onClick={() => onNavigate('/pendentes')} className="flex items-center gap-3 p-3 bg-amber-50 border border-amber-100 rounded-xl hover:border-amber-300 transition-all text-left">
-                    <AlertCircle size={18} className="text-amber-500 shrink-0" />
-                    <div>
-                      <p className="text-xs font-bold text-amber-700">{pendingConfirmationsToday.length} confirmação{pendingConfirmationsToday.length > 1 ? 'ões' : ''} pendente{pendingConfirmationsToday.length > 1 ? 's' : ''} hoje</p>
-                      <p className="text-[10px] text-amber-500">Ver pendentes →</p>
-                    </div>
-                  </button>
-                )}
-                {expiringSubscriptions.length > 0 && (
-                  <button onClick={() => onNavigate('/planos')} className="flex items-center gap-3 p-3 bg-blue-50 border border-blue-100 rounded-xl hover:border-blue-300 transition-all text-left">
-                    <Clock size={18} className="text-blue-500 shrink-0" />
-                    <div>
-                      <p className="text-xs font-bold text-blue-700">{expiringSubscriptions.length} assinatura{expiringSubscriptions.length > 1 ? 's' : ''} vencendo em 30 dias</p>
-                      <p className="text-[10px] text-blue-500">Ver planos →</p>
-                    </div>
-                  </button>
-                )}
-                {inactivePatients.length > 0 && (
-                  <button onClick={() => {
-                    localStorage.setItem('customers_filter', 'sem-consulta-30d');
-                    onNavigate('/clientes');
-                  }} className="flex items-center gap-3 p-3 bg-zinc-50 border border-zinc-200 rounded-xl hover:border-zinc-300 transition-all text-left">
-                    <UserMinus size={18} className="text-zinc-500 shrink-0" />
-                    <div>
-                      <p className="text-xs font-bold text-zinc-700">{inactivePatients.length} paciente{inactivePatients.length > 1 ? 's' : ''} sem consulta há +30 dias</p>
-                      <p className="text-[10px] text-zinc-500">Ver pacientes →</p>
-                    </div>
-                  </button>
-                )}
-                {waitingListPending.length > 0 && (
-                  <button onClick={() => onNavigate('/lista-espera')} className="flex items-center gap-3 p-3 bg-purple-50 border border-purple-100 rounded-xl hover:border-purple-300 transition-all text-left">
-                    <ListOrdered size={18} className="text-purple-500 shrink-0" />
-                    <div>
-                      <p className="text-xs font-bold text-purple-700">{waitingListPending.length} pessoa{waitingListPending.length > 1 ? 's' : ''} na fila de espera</p>
-                      <p className="text-[10px] text-purple-500">Ver fila →</p>
-                    </div>
-                  </button>
-                )}
-              </div>
+          {/* Seletor de Mês */}
+          {filterMode === 'month' && (
+            <div className="flex items-center gap-2 bg-white border border-zinc-100 rounded-xl px-4 py-2.5 shadow-sm">
+              <Calendar size={16} className="text-priori-navy" />
+              <select
+                className="text-sm font-bold text-priori-navy bg-transparent focus:outline-none cursor-pointer"
+                value={`${selectedYear}-${selectedMonth}`}
+                onChange={e => {
+                  const [y, m] = e.target.value.split('-').map(Number);
+                  setSelectedYear(y);
+                  setSelectedMonth(m);
+                }}
+              >
+                {availableMonths.map(m => (
+                  <option key={`${m.year}-${m.month}`} value={`${m.year}-${m.month}`}>{m.label}</option>
+                ))}
+              </select>
             </div>
           )}
+
+          {/* Seletor de Ano */}
+          {filterMode === 'year' && (
+            <div className="flex items-center gap-2 bg-white border border-zinc-100 rounded-xl px-4 py-2.5 shadow-sm">
+              <Calendar size={16} className="text-priori-navy" />
+              <select
+                className="text-sm font-bold text-priori-navy bg-transparent focus:outline-none cursor-pointer"
+                value={selectedYear}
+                onChange={e => setSelectedYear(Number(e.target.value))}
+              >
+                {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
+              </select>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── Alertas Consolidados (sempre visíveis) ── */}
+      {(pendingConfirmationsToday.length > 0 || expiringSubscriptions.length > 0 || inactivePatients.length > 0 || waitingListPending.length > 0) && (
+        <div className="bg-white border border-zinc-100 rounded-2xl p-5 shadow-sm">
+          <div className="flex items-center gap-2 mb-4">
+            <div className="p-2 bg-amber-50 rounded-xl"><Bell size={16} className="text-amber-500" /></div>
+            <h3 className="text-sm font-bold text-zinc-700 uppercase tracking-widest">Alertas e Notificações</h3>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {pendingConfirmationsToday.length > 0 && (
+              <button onClick={() => onNavigate('/pendentes')} className="flex items-center gap-3 p-3 bg-amber-50 border border-amber-100 rounded-xl hover:border-amber-300 transition-all text-left">
+                <AlertCircle size={18} className="text-amber-500 shrink-0" />
+                <div>
+                  <p className="text-xs font-bold text-amber-700">{pendingConfirmationsToday.length} confirmação{pendingConfirmationsToday.length > 1 ? 'ões' : ''} pendente{pendingConfirmationsToday.length > 1 ? 's' : ''} hoje</p>
+                  <p className="text-[10px] text-amber-500">Ver pendentes →</p>
+                </div>
+              </button>
+            )}
+            {expiringSubscriptions.length > 0 && (
+              <button onClick={() => onNavigate('/planos')} className="flex items-center gap-3 p-3 bg-blue-50 border border-blue-100 rounded-xl hover:border-blue-300 transition-all text-left">
+                <Clock size={18} className="text-blue-500 shrink-0" />
+                <div>
+                  <p className="text-xs font-bold text-blue-700">{expiringSubscriptions.length} assinatura{expiringSubscriptions.length > 1 ? 's' : ''} vencendo em 30 dias</p>
+                  <p className="text-[10px] text-blue-500">Ver planos →</p>
+                </div>
+              </button>
+            )}
+            {inactivePatients.length > 0 && (
+              <button onClick={() => { localStorage.setItem('customers_filter', 'sem-consulta-30d'); onNavigate('/clientes'); }} className="flex items-center gap-3 p-3 bg-zinc-50 border border-zinc-200 rounded-xl hover:border-zinc-300 transition-all text-left">
+                <UserMinus size={18} className="text-zinc-500 shrink-0" />
+                <div>
+                  <p className="text-xs font-bold text-zinc-700">{inactivePatients.length} paciente{inactivePatients.length > 1 ? 's' : ''} sem consulta há +30 dias</p>
+                  <p className="text-[10px] text-zinc-500">Ver pacientes →</p>
+                </div>
+              </button>
+            )}
+            {waitingListPending.length > 0 && (
+              <button onClick={() => onNavigate('/lista-espera')} className="flex items-center gap-3 p-3 bg-purple-50 border border-purple-100 rounded-xl hover:border-purple-300 transition-all text-left">
+                <ListOrdered size={18} className="text-purple-500 shrink-0" />
+                <div>
+                  <p className="text-xs font-bold text-purple-700">{waitingListPending.length} pessoa{waitingListPending.length > 1 ? 's' : ''} na fila de espera</p>
+                  <p className="text-[10px] text-purple-500">Ver fila →</p>
+                </div>
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Navegação por Abas ── */}
+      <div className="flex bg-zinc-100 p-1 rounded-2xl">
+        {TABS.map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={cn(
+              'flex-1 px-4 py-2.5 text-xs font-bold uppercase tracking-wider rounded-xl transition-all',
+              activeTab === tab.id
+                ? 'bg-white text-priori-navy shadow-sm'
+                : 'text-zinc-500 hover:text-priori-navy'
+            )}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* ════════════════════════════════════════════════════════════
+          ABA 1: RESUMO
+          Agenda do Dia + KPIs Principais + KPIs Secundários + Forecast + DRE
+          ════════════════════════════════════════════════════════════ */}
+      {activeTab === 'resumo' && (
+        <div className="space-y-6">
 
           {/* ── Agenda do Dia ── */}
           <div className="bg-white border border-zinc-100 rounded-2xl p-6 shadow-sm">
@@ -776,7 +287,9 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
                 <div className="p-2.5 bg-priori-navy rounded-xl text-white"><Calendar size={18} /></div>
                 <div>
                   <h3 className="text-sm font-bold text-priori-navy">Agenda de Hoje</h3>
-                  <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">{today.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
+                  <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">
+                    {today.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
+                  </p>
                 </div>
               </div>
               <button onClick={() => onNavigate('/agenda')} className="text-xs font-bold text-priori-gold hover:text-priori-navy transition-colors flex items-center gap-1">
@@ -803,8 +316,8 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
               <div className="space-y-2">
                 <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-3">Próximos atendimentos</p>
                 {upcomingToday.map(app => {
-                  const customer = customers.find(c => c.id === app.customerId);
-                  const psy = psychologists.find(p => p.id === app.psychologistId);
+                  const customer   = customers.find(c => c.id === app.customerId);
+                  const psy        = psychologists.find(p => p.id === app.psychologistId);
                   const isConfirmed = app.confirmedPsychologist || app.confirmedPatient;
                   return (
                     <div key={app.id} className="flex items-center gap-3 p-3 bg-zinc-50 rounded-xl border border-zinc-100">
@@ -815,7 +328,9 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
                         <p className="text-sm font-bold text-priori-navy truncate">{customer?.name || 'Paciente'}</p>
                         <p className="text-[10px] text-zinc-400">{psy?.name} · {app.type}</p>
                       </div>
-                      <div className={cn("px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider", isConfirmed ? "bg-emerald-50 text-emerald-600" : "bg-amber-50 text-amber-600")}>
+                      <div className={cn('px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider',
+                        isConfirmed ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'
+                      )}>
                         {isConfirmed ? 'Confirmado' : 'Pendente'}
                       </div>
                     </div>
@@ -834,37 +349,30 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {[
               {
-                label: 'Pacientes Ativos',
-                value: activeCustomersCount,
-                prevValue: activeCustomersCount, // sem variação direta
+                label: 'Pacientes Ativos', value: activeCustomersCount,
+                prevValue: activeCustomersCount, currentNum: activeCustomersCount,
                 icon: Users, color: 'text-priori-navy', bg: 'bg-priori-navy/10', path: '/clientes',
-                extra: null
+                extra: null,
               },
               {
-                label: 'Faturamento Realizado',
-                value: `R$ ${fmt(revenueRealizado)}`,
-                prevValue: revenueRealizadoPrev,
-                currentNum: revenueRealizado,
+                label: 'Faturamento Realizado', value: `R$ ${fmt(revenueRealizado)}`,
+                prevValue: revenueRealizadoPrev, currentNum: revenueRealizado,
                 icon: TrendingUp, color: 'text-emerald-500', bg: 'bg-emerald-500/10', path: '/financeiro',
-                extra: getTrendText(revenueRealizado, revenueRealizadoPrev)
+                extra: getTrendText(revenueRealizado, revenueRealizadoPrev),
               },
               {
-                label: 'Taxa de Comparecimento',
-                value: `${attendanceRate.toFixed(1)}%`,
-                prevValue: attendanceRatePrev,
-                currentNum: attendanceRate,
+                label: 'Taxa de Comparecimento', value: `${attendanceRate.toFixed(1)}%`,
+                prevValue: attendanceRatePrev, currentNum: attendanceRate,
                 icon: ShieldCheck, color: 'text-priori-gold', bg: 'bg-priori-gold/10', path: '/agenda',
-                extra: getTrendText(attendanceRate, attendanceRatePrev)
+                extra: getTrendText(attendanceRate, attendanceRatePrev),
               },
               {
-                label: 'Taxa de Cancelamentos',
-                value: `${cancelationRate.toFixed(1)}%`,
-                prevValue: cancelationRatePrev,
-                currentNum: cancelationRate,
+                label: 'Taxa de Cancelamentos', value: `${cancelationRate.toFixed(1)}%`,
+                prevValue: cancelationRatePrev, currentNum: cancelationRate,
                 icon: AlertTriangle, color: 'text-red-500', bg: 'bg-red-500/10', path: '/agenda',
-                extra: getTrendText(cancelationRate, cancelationRatePrev)
+                extra: getTrendText(cancelationRate, cancelationRatePrev),
               },
-            ].map((stat) => (
+            ].map(stat => (
               <div
                 key={stat.label}
                 className="bg-white border border-zinc-100 p-6 rounded-2xl relative overflow-hidden group shadow-sm cursor-pointer hover:border-priori-gold/30 transition-all"
@@ -874,9 +382,7 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
                   <stat.icon size={80} className={stat.color} />
                 </div>
                 <div className="flex items-center justify-between mb-4">
-                  <div className={cn("p-3 rounded-xl", stat.bg)}>
-                    <stat.icon size={20} className={stat.color} />
-                  </div>
+                  <div className={cn('p-3 rounded-xl', stat.bg)}><stat.icon size={20} className={stat.color} /></div>
                   <ArrowUpRight size={16} className="text-zinc-300 group-hover:text-priori-gold transition-colors" />
                 </div>
                 <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1">{stat.label}</p>
@@ -886,7 +392,7 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
             ))}
           </div>
 
-          {/* ── Ticket Médio + Ocupação + Retenção ── */}
+          {/* ── KPIs Secundários ── */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             <div className="bg-white border border-zinc-100 p-6 rounded-2xl shadow-sm">
               <div className="flex items-center gap-3 mb-4">
@@ -990,7 +496,9 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
                   <div className="h-1.5 w-full bg-zinc-100 rounded-full overflow-hidden">
                     <div className="h-full bg-red-400" style={{ width: `${revenueRealizado > 0 ? (totalRepasseRealizado / revenueRealizado) * 100 : 0}%` }} />
                   </div>
-                  <p className="text-[9px] font-bold uppercase">Representa {revenueRealizado > 0 ? ((totalRepasseRealizado / revenueRealizado) * 100).toFixed(1) : 0}% da receita</p>
+                  <p className="text-[9px] font-bold uppercase">
+                    Representa {revenueRealizado > 0 ? ((totalRepasseRealizado / revenueRealizado) * 100).toFixed(1) : 0}% da receita
+                  </p>
                 </div>
                 <div className="space-y-2 text-amber-600">
                   <p className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em]">Despesas Clínica</p>
@@ -1005,34 +513,95 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
                   <p className="text-3xl font-black text-priori-gold">R$ {fmt(netProfit)}</p>
                   <div className="mt-3 flex items-center gap-2">
                     <div className="px-2 py-0.5 bg-white/10 rounded-full">
-                      <span className="text-[10px] font-bold">MARGEM: {revenueRealizado > 0 ? ((netProfit / revenueRealizado) * 100).toFixed(1) : 0}%</span>
+                      <span className="text-[10px] font-bold">
+                        MARGEM: {revenueRealizado > 0 ? ((netProfit / revenueRealizado) * 100).toFixed(1) : 0}%
+                      </span>
                     </div>
                   </div>
                 </div>
               </div>
             </div>
           </div>
+        </div>
+      )}
 
-          {/* ── Gráfico Receita vs Despesas ── */}
+      {/* ════════════════════════════════════════════════════════════
+          ABA 2: CLÍNICO
+          Métricas Clínicas + Perfil Demográfico + Churn + Heatmap
+          ════════════════════════════════════════════════════════════ */}
+      {activeTab === 'clinico' && (
+        <div className="space-y-6">
+
+          {/* ── Métricas Clínicas (NOVO) ── */}
           <div className="bg-white border border-zinc-100 rounded-2xl p-6 shadow-sm">
-            <h3 className="text-sm font-bold text-zinc-400 uppercase tracking-widest mb-6 text-center">Receita vs Despesas ao Longo do Tempo</h3>
-            <div className="h-[300px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={revenueVsExpensesData}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-                  <XAxis dataKey="month" fontSize={10} fontWeight="bold" tickLine={false} axisLine={false} />
-                  <YAxis fontSize={10} fontWeight="bold" tickLine={false} axisLine={false} tickFormatter={v => `R$${(v/1000).toFixed(0)}k`} />
-                  <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} formatter={(v: any) => `R$ ${fmt(Number(v))}`} />
-                  <Legend verticalAlign="top" height={36} iconType="circle" />
-                  <Area type="monotone" dataKey="receita" name="Receita" fill="#10b981" stroke="#10b981" fillOpacity={0.15} strokeWidth={2} animationDuration={1500} />
-                  <Area type="monotone" dataKey="despesas" name="Despesas" fill="#ef4444" stroke="#ef4444" fillOpacity={0.15} strokeWidth={2} animationDuration={1500} />
-                  <Line type="monotone" dataKey="lucro" name="Lucro Líquido" stroke="#d4af37" strokeWidth={3} dot={{ r: 4, fill: '#d4af37' }} activeDot={{ r: 6 }} animationDuration={1500} />
-                </ComposedChart>
-              </ResponsiveContainer>
+            <div className="flex items-center gap-3 mb-6">
+              <div className="p-2.5 bg-teal-50 rounded-xl"><Activity size={18} className="text-teal-500" /></div>
+              <div>
+                <h3 className="text-sm font-bold text-zinc-700 uppercase tracking-widest">Métricas Clínicas</h3>
+                <p className="text-[10px] text-zinc-400">Indicadores de saúde terapêutica — {selectedMonthLabel}</p>
+              </div>
             </div>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+
+              {/* Novos Pacientes */}
+              <div className="p-4 bg-zinc-50 rounded-xl border border-zinc-100">
+                <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-2">Novos Pacientes</p>
+                <p className="text-2xl font-black text-priori-navy">{newPatientsCount}</p>
+                <div className="mt-1 flex items-center gap-1">
+                  {getTrendIcon(newPatientsCount, newPatientsCountPrev)}
+                  {getTrendText(newPatientsCount, newPatientsCountPrev)}
+                </div>
+              </div>
+
+              {/* Sessões Médias por Paciente */}
+              <div className="p-4 bg-zinc-50 rounded-xl border border-zinc-100">
+                <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-2">Sessões Médias / Paciente</p>
+                <p className="text-2xl font-black text-priori-navy">{avgSessionsPerPatient.toFixed(1)}</p>
+                <p className="text-[10px] text-zinc-400 mt-1">consultas realizadas</p>
+              </div>
+
+              {/* Taxa de No-show */}
+              <div className="p-4 bg-amber-50 rounded-xl border border-amber-100">
+                <p className="text-[10px] font-bold text-amber-600 uppercase tracking-widest mb-2">Taxa de No-show</p>
+                <p className="text-2xl font-black text-amber-600">{noShowRate.toFixed(1)}%</p>
+                <p className="text-[10px] text-zinc-400 mt-1">
+                  {noShowApps.length} {noShowApps.length === 1 ? 'ausência' : 'ausências'} sem aviso
+                </p>
+              </div>
+
+              {/* Tempo Médio em Terapia */}
+              <div className="p-4 bg-zinc-50 rounded-xl border border-zinc-100">
+                <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-2">Tempo Médio em Terapia</p>
+                {avgTherapyDurationDays > 0 ? (
+                  <>
+                    <p className="text-2xl font-black text-priori-navy">
+                      {avgTherapyDurationDays >= 30
+                        ? `${(avgTherapyDurationDays / 30).toFixed(0)}m`
+                        : `${Math.round(avgTherapyDurationDays)}d`}
+                    </p>
+                    <p className="text-[10px] text-zinc-400 mt-1">{Math.round(avgTherapyDurationDays)} dias (média)</p>
+                  </>
+                ) : (
+                  <p className="text-sm text-zinc-400 mt-2">Sem dados</p>
+                )}
+              </div>
+
+              {/* Taxa de Retorno */}
+              <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-100">
+                <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest mb-2">Taxa de Retorno</p>
+                <p className="text-2xl font-black text-emerald-600">{returnRate.toFixed(1)}%</p>
+                <p className="text-[10px] text-zinc-400 mt-1">voltaram após 1ª sessão</p>
+              </div>
+            </div>
+
+            {/* Nota explicativa */}
+            <p className="text-[10px] text-zinc-400 mt-4 text-center">
+              * No-show = consultas passadas não canceladas e não confirmadas pelo psicólogo.
+              Taxa de Retorno calculada sobre o histórico completo.
+            </p>
           </div>
 
-          {/* ── Perfil Demográfico (Idade e Gênero) ── */}
+          {/* ── Perfil Demográfico ── */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Perfil de Idade */}
             <div className="bg-white border border-zinc-100 rounded-2xl p-6 shadow-sm">
@@ -1040,64 +609,48 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
                 <div className="p-2.5 bg-blue-50 rounded-xl"><Users size={18} className="text-blue-500" /></div>
                 <h3 className="text-sm font-bold text-zinc-700 uppercase tracking-widest">Perfil de Idade</h3>
               </div>
-              
               {ageProfileData.totalComIdade > 0 ? (
-              <div className="flex flex-col sm:flex-row items-center gap-6">
-                <div className="h-[200px] w-full sm:w-[200px] shrink-0">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={ageProfileData.data}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={50}
-                        outerRadius={80}
-                        paddingAngle={5}
-                        dataKey="value"
-                      >
-                        {ageProfileData.data.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.color} />
-                        ))}
-                      </Pie>
-                      <Tooltip 
-                        contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
-                        formatter={(value: any) => {
-                          const num = Number(value);
-                          return [
-                            `${num} paciente${num !== 1 ? 's' : ''} (${((num / ageProfileData.totalComIdade) * 100).toFixed(1)}%)`,
-                            ''
-                          ];
-                        }}
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
-                
-                <div className="flex-1 space-y-3 w-full">
-                  {ageProfileData.data.map(item => (
-                    <div key={item.name} className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
-                        <span className="text-sm font-bold text-priori-navy">{item.name}</span>
+                <div className="flex flex-col sm:flex-row items-center gap-6">
+                  <div className="h-[200px] w-full sm:w-[200px] shrink-0">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie data={ageProfileData.data} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={5} dataKey="value">
+                          {ageProfileData.data.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.color} />
+                          ))}
+                        </Pie>
+                        <Tooltip
+                          contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                          formatter={(value: any) => {
+                            const num = Number(value);
+                            return [`${num} paciente${num !== 1 ? 's' : ''} (${((num / ageProfileData.totalComIdade) * 100).toFixed(1)}%)`, ''];
+                          }}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="flex-1 space-y-3 w-full">
+                    {ageProfileData.data.map(item => (
+                      <div key={item.name} className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+                          <span className="text-sm font-bold text-priori-navy">{item.name}</span>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-sm font-black text-priori-navy">{item.value}</span>
+                          <span className="text-[10px] text-zinc-400 ml-2">{((item.value / ageProfileData.totalComIdade) * 100).toFixed(1)}%</span>
+                        </div>
                       </div>
-                      <div className="text-right">
-                        <span className="text-sm font-black text-priori-navy">{item.value}</span>
-                        <span className="text-[10px] text-zinc-400 ml-2">
-                          {((item.value / ageProfileData.totalComIdade) * 100).toFixed(1)}%
-                        </span>
+                    ))}
+                    {ageProfileData.semIdade > 0 && (
+                      <div className="pt-3 mt-3 border-t border-zinc-100">
+                        <p className="text-[10px] text-zinc-400 text-center">
+                          * {ageProfileData.semIdade} paciente{ageProfileData.semIdade !== 1 ? 's' : ''} sem data de nascimento cadastrada.
+                        </p>
                       </div>
-                    </div>
-                  ))}
-                  
-                  {ageProfileData.semIdade > 0 && (
-                    <div className="pt-3 mt-3 border-t border-zinc-100">
-                      <p className="text-[10px] text-zinc-400 text-center">
-                        * {ageProfileData.semIdade} paciente{ageProfileData.semIdade !== 1 ? 's' : ''} ativo{ageProfileData.semIdade !== 1 ? 's' : ''} sem data de nascimento cadastrada.
-                      </p>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
-              </div>
               ) : (
                 <div className="text-center py-10 text-zinc-400">
                   <Users size={32} className="mx-auto mb-2 opacity-30" />
@@ -1110,41 +663,28 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
             <div className="bg-white border border-zinc-100 rounded-2xl p-6 shadow-sm">
               <div className="flex items-center gap-3 mb-6">
                 <div className="p-2.5 bg-pink-50 rounded-xl"><Users size={18} className="text-pink-500" /></div>
-                <h3 className="text-sm font-bold text-zinc-700 uppercase tracking-widest">Perfil de Gênero (Estimado)</h3>
+                <h3 className="text-sm font-bold text-zinc-700 uppercase tracking-widest">Perfil de Gênero</h3>
               </div>
-              
               {genderProfileData.totalIdentificado > 0 ? (
                 <div className="flex flex-col sm:flex-row items-center gap-6">
                   <div className="h-[200px] w-full sm:w-[200px] shrink-0">
                     <ResponsiveContainer width="100%" height="100%">
                       <PieChart>
-                        <Pie
-                          data={genderProfileData.data}
-                          cx="50%"
-                          cy="50%"
-                          innerRadius={50}
-                          outerRadius={80}
-                          paddingAngle={5}
-                          dataKey="value"
-                        >
+                        <Pie data={genderProfileData.data} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={5} dataKey="value">
                           {genderProfileData.data.map((entry, index) => (
                             <Cell key={`cell-${index}`} fill={entry.color} />
                           ))}
                         </Pie>
-                        <Tooltip 
+                        <Tooltip
                           contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
                           formatter={(value: any) => {
                             const num = Number(value);
-                            return [
-                              `${num} paciente${num !== 1 ? 's' : ''} (${((num / genderProfileData.totalIdentificado) * 100).toFixed(1)}%)`,
-                              ''
-                            ];
+                            return [`${num} paciente${num !== 1 ? 's' : ''} (${((num / genderProfileData.totalIdentificado) * 100).toFixed(1)}%)`, ''];
                           }}
                         />
                       </PieChart>
                     </ResponsiveContainer>
                   </div>
-                  
                   <div className="flex-1 space-y-3 w-full">
                     {genderProfileData.data.map(item => (
                       <div key={item.name} className="flex items-center justify-between">
@@ -1154,17 +694,14 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
                         </div>
                         <div className="text-right">
                           <span className="text-sm font-black text-priori-navy">{item.value}</span>
-                          <span className="text-[10px] text-zinc-400 ml-2">
-                            {((item.value / genderProfileData.totalIdentificado) * 100).toFixed(1)}%
-                          </span>
+                          <span className="text-[10px] text-zinc-400 ml-2">{((item.value / genderProfileData.totalIdentificado) * 100).toFixed(1)}%</span>
                         </div>
                       </div>
                     ))}
-                    
                     {genderProfileData.naoIdentificado > 0 && (
                       <div className="pt-3 mt-3 border-t border-zinc-100">
                         <p className="text-[10px] text-zinc-400 text-center">
-                          * {genderProfileData.naoIdentificado} paciente{genderProfileData.naoIdentificado !== 1 ? 's' : ''} ativo{genderProfileData.naoIdentificado !== 1 ? 's' : ''} sem gênero identificado pelo nome.
+                          * {genderProfileData.naoIdentificado} paciente{genderProfileData.naoIdentificado !== 1 ? 's' : ''} sem gênero preenchido no cadastro.
                         </p>
                       </div>
                     )}
@@ -1173,49 +710,12 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
               ) : (
                 <div className="text-center py-10 text-zinc-400">
                   <Users size={32} className="mx-auto mb-2 opacity-30" />
-                  <p className="text-sm">Nenhum paciente com gênero identificado.</p>
+                  <p className="text-sm">Nenhum paciente com gênero preenchido no cadastro.</p>
+                  <p className="text-xs mt-1">Acesse Pacientes e preencha o campo Gênero.</p>
                 </div>
               )}
             </div>
           </div>
-
-          {/* ── Ranking de Psicólogos ── */}
-          {psychologistRanking.length > 0 && (
-            <div className="bg-white border border-zinc-100 rounded-2xl p-6 shadow-sm">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="p-2.5 bg-priori-gold/10 rounded-xl"><Flame size={18} className="text-priori-gold" /></div>
-                <h3 className="text-sm font-bold text-zinc-700 uppercase tracking-widest">Ranking de Produtividade — Psicólogos</h3>
-              </div>
-              <div className="space-y-3">
-                {psychologistRanking.map((psy, idx) => {
-                  const maxRevenue = psychologistRanking[0].revenue || 1;
-                  return (
-                    <div key={psy.name} className="flex items-center gap-4">
-                      <div className={cn("w-7 h-7 rounded-full flex items-center justify-center text-xs font-black shrink-0",
-                        idx === 0 ? "bg-priori-gold text-white" : idx === 1 ? "bg-zinc-300 text-zinc-700" : idx === 2 ? "bg-amber-700/20 text-amber-700" : "bg-zinc-100 text-zinc-500"
-                      )}>
-                        {idx + 1}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-sm font-bold text-priori-navy truncate">{psy.name}</span>
-                          <span className="text-sm font-black text-priori-gold ml-2 shrink-0">R$ {fmtShort(psy.revenue)}</span>
-                        </div>
-                        <div className="h-1.5 w-full bg-zinc-100 rounded-full overflow-hidden">
-                          <div className="h-full bg-priori-gold rounded-full transition-all" style={{ width: `${(psy.revenue / maxRevenue) * 100}%` }} />
-                        </div>
-                        <div className="flex items-center gap-3 mt-1">
-                          <span className="text-[10px] text-zinc-400">{psy.appointments} atendimentos</span>
-                          <span className="text-[10px] text-zinc-400">·</span>
-                          <span className="text-[10px] text-zinc-400">{psy.confirmationRate.toFixed(0)}% confirmação</span>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
 
           {/* ── Churn / Retenção ── */}
           {inactivatedThisMonth.length > 0 && (
@@ -1254,6 +754,94 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
               )}
             </div>
           )}
+
+          {/* ── Heatmap de Horários (filtrado pelo período selecionado) ── */}
+          <div className="bg-white border border-zinc-100 rounded-2xl p-6 shadow-sm">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="p-2.5 bg-priori-navy/10 rounded-xl"><BarChart2 size={18} className="text-priori-navy" /></div>
+              <div>
+                <h3 className="text-sm font-bold text-zinc-700 uppercase tracking-widest">Mapa de Calor — Horários Mais Ocupados</h3>
+                <p className="text-[10px] text-zinc-400">{selectedMonthLabel}</p>
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs mt-4">
+                <thead>
+                  <tr>
+                    <th className="text-left text-[10px] font-bold text-zinc-400 uppercase tracking-widest pb-3 pr-4 w-16">Hora</th>
+                    {heatmapData.dayNames.map(d => (
+                      <th key={d} className="text-center text-[10px] font-bold text-zinc-400 uppercase tracking-widest pb-3 px-1">{d}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {heatmapData.hours.map(hour => (
+                    <tr key={hour}>
+                      <td className="text-[10px] font-bold text-zinc-400 pr-4 py-1">{hour}</td>
+                      {heatmapData.dayNames.map(day => {
+                        const value     = heatmapData.grid[hour]?.[day] || 0;
+                        const intensity = value / maxHeatmapValue;
+                        const bg        = intensity === 0 ? 'bg-zinc-50' : intensity < 0.33 ? 'bg-priori-navy/10' : intensity < 0.66 ? 'bg-priori-navy/30' : 'bg-priori-navy/70';
+                        const textColor = intensity >= 0.66 ? 'text-white' : 'text-priori-navy';
+                        return (
+                          <td key={day} className="px-1 py-1">
+                            <div className={cn('w-full h-8 rounded-lg flex items-center justify-center font-bold transition-all', bg, textColor)}>
+                              {value > 0 ? value : ''}
+                            </div>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div className="flex items-center gap-3 mt-4 justify-end">
+                <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">Intensidade:</span>
+                {[
+                  { label: 'Vazio', bg: 'bg-zinc-50 border border-zinc-200' },
+                  { label: 'Baixo', bg: 'bg-priori-navy/10' },
+                  { label: 'Médio', bg: 'bg-priori-navy/30' },
+                  { label: 'Alto',  bg: 'bg-priori-navy/70' },
+                ].map(l => (
+                  <div key={l.label} className="flex items-center gap-1">
+                    <div className={cn('w-4 h-4 rounded', l.bg)} />
+                    <span className="text-[10px] text-zinc-400">{l.label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════
+          ABA 3: FINANCEIRO
+          Receita vs Despesas + Breakdowns + Modalidade + Despesas
+          ════════════════════════════════════════════════════════════ */}
+      {activeTab === 'financeiro' && (
+        <div className="space-y-6">
+
+          {/* ── Gráfico Receita vs Despesas ── */}
+          <div className="bg-white border border-zinc-100 rounded-2xl p-6 shadow-sm">
+            <div className="mb-2">
+              <h3 className="text-sm font-bold text-zinc-400 uppercase tracking-widest text-center">Receita vs Despesas ao Longo do Tempo</h3>
+              <p className="text-[10px] text-zinc-400 text-center mt-1">Receita baseada em consultas realizadas (histórico completo)</p>
+            </div>
+            <div className="h-[300px] w-full mt-4">
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart data={revenueVsExpensesData}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                  <XAxis dataKey="month" fontSize={10} fontWeight="bold" tickLine={false} axisLine={false} />
+                  <YAxis fontSize={10} fontWeight="bold" tickLine={false} axisLine={false} tickFormatter={v => `R$${(v / 1000).toFixed(0)}k`} />
+                  <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} formatter={(v: any) => `R$ ${fmt(Number(v))}`} />
+                  <Legend verticalAlign="top" height={36} iconType="circle" />
+                  <Area type="monotone" dataKey="receita"  name="Receita"       fill="#10b981" stroke="#10b981" fillOpacity={0.15} strokeWidth={2} animationDuration={1500} />
+                  <Area type="monotone" dataKey="despesas" name="Despesas"      fill="#ef4444" stroke="#ef4444" fillOpacity={0.15} strokeWidth={2} animationDuration={1500} />
+                  <Line type="monotone" dataKey="lucro"    name="Lucro Líquido" stroke="#d4af37" strokeWidth={3} dot={{ r: 4, fill: '#d4af37' }} activeDot={{ r: 6 }} animationDuration={1500} />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
 
           {/* ── Faturamento por Plano / Psicólogo / Mensal ── */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -1299,7 +887,10 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
                 {monthlyData.length === 0 && <p className="text-sm text-zinc-400 text-center py-4">Nenhum dado financeiro</p>}
               </div>
             </div>
+          </div>
 
+          {/* ── Modalidade + Despesas ── */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Modalidade */}
             <div className="bg-white border border-zinc-100 rounded-2xl p-6 shadow-sm">
               <h3 className="text-sm font-bold text-zinc-400 uppercase tracking-widest mb-2 text-center">Distribuição por Modalidade</h3>
@@ -1321,7 +912,7 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
               {modalityData.length > 0 && (
                 <div className="mt-4 flex justify-around text-[10px] font-bold uppercase tracking-tight text-zinc-400">
                   {modalityData.map((d, i) => {
-                    const total = modalityData.reduce((acc, curr) => acc + curr.value, 0);
+                    const total   = modalityData.reduce((acc, curr) => acc + curr.value, 0);
                     const percent = Math.round((d.value / total) * 100);
                     return (
                       <div key={d.name} className="flex flex-col items-center">
@@ -1334,7 +925,7 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
               )}
             </div>
 
-            {/* Despesas */}
+            {/* Despesas por Categoria */}
             <div className="bg-white border border-zinc-100 rounded-2xl p-6 shadow-sm lg:col-span-2">
               <div className="flex items-center justify-between mb-6">
                 <h3 className="text-sm font-bold text-zinc-400 uppercase tracking-widest">Resumo de Despesas por Categoria</h3>
@@ -1354,15 +945,72 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
                     </div>
                   );
                 })}
-                {expensesFiltered.length === 0 && <p className="col-span-4 text-sm text-zinc-400 text-center py-4">Sem despesas no período</p>}
+                {expensesFiltered.length === 0 && (
+                  <p className="col-span-4 text-sm text-zinc-400 text-center py-4">Sem despesas no período</p>
+                )}
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════
+          ABA 4: EQUIPE
+          Ranking Psicólogos + Crescimento + Evolução + Tipos + Ocupação por Dia
+          ════════════════════════════════════════════════════════════ */}
+      {activeTab === 'equipe' && (
+        <div className="space-y-6">
+
+          {/* ── Ranking de Psicólogos (com receita bruta e líquida) ── */}
+          {psychologistRanking.length > 0 && (
+            <div className="bg-white border border-zinc-100 rounded-2xl p-6 shadow-sm">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="p-2.5 bg-priori-gold/10 rounded-xl"><Flame size={18} className="text-priori-gold" /></div>
+                <div>
+                  <h3 className="text-sm font-bold text-zinc-700 uppercase tracking-widest">Ranking de Produtividade — Psicólogos</h3>
+                  <p className="text-[10px] text-zinc-400">{selectedMonthLabel} · Bruto = total gerado · Líquido = o que fica para a clínica</p>
+                </div>
+              </div>
+              <div className="space-y-4">
+                {psychologistRanking.map((psy, idx) => {
+                  const maxRevenue = psychologistRanking[0].grossRevenue || 1;
+                  return (
+                    <div key={psy.name} className="flex items-center gap-4">
+                      <div className={cn('w-7 h-7 rounded-full flex items-center justify-center text-xs font-black shrink-0',
+                        idx === 0 ? 'bg-priori-gold text-white' : idx === 1 ? 'bg-zinc-300 text-zinc-700' : idx === 2 ? 'bg-amber-700/20 text-amber-700' : 'bg-zinc-100 text-zinc-500'
+                      )}>
+                        {idx + 1}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between mb-1 flex-wrap gap-1">
+                          <span className="text-sm font-bold text-priori-navy truncate">{psy.name}</span>
+                          <div className="flex items-center gap-3 shrink-0">
+                            <span className="text-[10px] text-zinc-400">Bruto: <strong className="text-priori-gold">R$ {fmtShort(psy.grossRevenue)}</strong></span>
+                            <span className="text-[10px] text-zinc-400">Líquido: <strong className="text-emerald-600">R$ {fmtShort(psy.netRevenue)}</strong></span>
+                          </div>
+                        </div>
+                        <div className="h-1.5 w-full bg-zinc-100 rounded-full overflow-hidden">
+                          <div className="h-full bg-priori-gold rounded-full transition-all" style={{ width: `${(psy.grossRevenue / maxRevenue) * 100}%` }} />
+                        </div>
+                        <div className="flex items-center gap-3 mt-1">
+                          <span className="text-[10px] text-zinc-400">{psy.appointments} atendimentos</span>
+                          <span className="text-[10px] text-zinc-400">·</span>
+                          <span className="text-[10px] text-zinc-400">{psy.confirmationRate.toFixed(0)}% confirmação</span>
+                          <span className="text-[10px] text-zinc-400">·</span>
+                          <span className="text-[10px] text-zinc-400">Repasse: R$ {fmtShort(psy.repasseTotal)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* ── Gráficos de Evolução ── */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="bg-white border border-zinc-100 rounded-2xl p-6 shadow-sm">
-              <h3 className="text-sm font-bold text-zinc-400 uppercase tracking-widest mb-6 text-center">Crescimento da Clínica</h3>
+              <h3 className="text-sm font-bold text-zinc-400 uppercase tracking-widest mb-6 text-center">Crescimento da Clínica (Acumulado)</h3>
               <div className="h-[300px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={growthData}>
@@ -1371,8 +1019,8 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
                     <YAxis fontSize={10} fontWeight="bold" tickLine={false} axisLine={false} />
                     <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
                     <Legend verticalAlign="top" height={36} iconType="circle" />
-                    <Line type="monotone" dataKey="patients" name="Pacientes" stroke="#1a365d" strokeWidth={3} dot={{ r: 4, fill: '#1a365d' }} activeDot={{ r: 6 }} animationDuration={1500} />
-                    <Line type="monotone" dataKey="psychologists" name="Psicólogos" stroke="#d4af37" strokeWidth={3} dot={{ r: 4, fill: '#d4af37' }} activeDot={{ r: 6 }} animationDuration={1500} />
+                    <Line type="monotone" dataKey="patients"      name="Pacientes"   stroke="#1a365d" strokeWidth={3} dot={{ r: 4, fill: '#1a365d' }} activeDot={{ r: 6 }} animationDuration={1500} />
+                    <Line type="monotone" dataKey="psychologists" name="Psicólogos"  stroke="#d4af37" strokeWidth={3} dot={{ r: 4, fill: '#d4af37' }} activeDot={{ r: 6 }} animationDuration={1500} />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
@@ -1389,7 +1037,7 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
                     <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
                     <Legend verticalAlign="top" height={36} iconType="circle" />
                     {Array.from(new Set(plans.map(p => p.name))).map((name, i) => (
-                      <Area key={name} type="monotone" dataKey={name as string} stackId="1" stroke={CHART_COLORS[i % CHART_COLORS.length]} fill={CHART_COLORS[i % CHART_COLORS.length]} fillOpacity={0.6} animationDuration={1500} />
+                      <Area key={name} type="monotone" dataKey={name} stackId="1" stroke={CHART_COLORS[i % CHART_COLORS.length]} fill={CHART_COLORS[i % CHART_COLORS.length]} fillOpacity={0.6} animationDuration={1500} />
                     ))}
                   </AreaChart>
                 </ResponsiveContainer>
@@ -1414,9 +1062,13 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
               </div>
             </div>
 
+            {/* Ocupação por Dia da Semana (FIX: filtrado por período) */}
             <div className="bg-white border border-zinc-100 rounded-2xl p-6 shadow-sm">
-              <h3 className="text-sm font-bold text-zinc-400 uppercase tracking-widest mb-6 text-center">Ocupação das Salas (Por Dia)</h3>
-              <div className="h-[300px] w-full">
+              <div className="mb-2">
+                <h3 className="text-sm font-bold text-zinc-400 uppercase tracking-widest text-center">Ocupação das Salas (Por Dia)</h3>
+                <p className="text-[10px] text-zinc-400 text-center mt-1">{selectedMonthLabel}</p>
+              </div>
+              <div className="h-[300px] w-full mt-2">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={roomUsageData}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
@@ -1429,79 +1081,20 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
               </div>
             </div>
           </div>
-
-          {/* ── Heatmap de Horários ── */}
-          <div className="bg-white border border-zinc-100 rounded-2xl p-6 shadow-sm">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="p-2.5 bg-priori-navy/10 rounded-xl"><BarChart2 size={18} className="text-priori-navy" /></div>
-              <h3 className="text-sm font-bold text-zinc-700 uppercase tracking-widest">Mapa de Calor — Horários Mais Ocupados</h3>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr>
-                    <th className="text-left text-[10px] font-bold text-zinc-400 uppercase tracking-widest pb-3 pr-4 w-16">Hora</th>
-                    {heatmapData.dayNames.map(d => (
-                      <th key={d} className="text-center text-[10px] font-bold text-zinc-400 uppercase tracking-widest pb-3 px-1">{d}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {heatmapData.hours.map(hour => (
-                    <tr key={hour}>
-                      <td className="text-[10px] font-bold text-zinc-400 pr-4 py-1">{hour}</td>
-                      {heatmapData.dayNames.map(day => {
-                        const value = heatmapData.grid[hour]?.[day] || 0;
-                        const intensity = value / maxHeatmapValue;
-                        const bg = intensity === 0
-                          ? 'bg-zinc-50'
-                          : intensity < 0.33
-                          ? 'bg-priori-navy/10'
-                          : intensity < 0.66
-                          ? 'bg-priori-navy/30'
-                          : 'bg-priori-navy/70';
-                        const textColor = intensity >= 0.66 ? 'text-white' : 'text-priori-navy';
-                        return (
-                          <td key={day} className="px-1 py-1">
-                            <div className={cn("w-full h-8 rounded-lg flex items-center justify-center font-bold transition-all", bg, textColor)}>
-                              {value > 0 ? value : ''}
-                            </div>
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              <div className="flex items-center gap-3 mt-4 justify-end">
-                <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">Intensidade:</span>
-                {[
-                  { label: 'Vazio', bg: 'bg-zinc-50 border border-zinc-200' },
-                  { label: 'Baixo', bg: 'bg-priori-navy/10' },
-                  { label: 'Médio', bg: 'bg-priori-navy/30' },
-                  { label: 'Alto', bg: 'bg-priori-navy/70' },
-                ].map(l => (
-                  <div key={l.label} className="flex items-center gap-1">
-                    <div className={cn("w-4 h-4 rounded", l.bg)} />
-                    <span className="text-[10px] text-zinc-400">{l.label}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* ── Footer ── */}
-          <div className="bg-white border border-zinc-100 rounded-2xl p-6 shadow-sm flex flex-col justify-center items-center text-center space-y-4">
-            <div className="w-16 h-16 rounded-full bg-priori-gold/10 flex items-center justify-center">
-              <Activity size={32} className="text-priori-gold" />
-            </div>
-            <div>
-              <h3 className="text-lg font-semibold text-priori-navy">Núcleo Priori</h3>
-              <p className="text-zinc-500 text-sm max-w-xs">Neuropsicologia e Psicoterapia. Use o menu lateral para gerenciar seus pacientes e agenda.</p>
-            </div>
-          </div>
-        </>
+        </div>
       )}
+
+      {/* ── Footer ── */}
+      <div className="bg-white border border-zinc-100 rounded-2xl p-6 shadow-sm flex flex-col justify-center items-center text-center space-y-4">
+        <div className="w-16 h-16 rounded-full bg-priori-gold/10 flex items-center justify-center">
+          <Activity size={32} className="text-priori-gold" />
+        </div>
+        <div>
+          <h3 className="text-lg font-semibold text-priori-navy">Núcleo Priori</h3>
+          <p className="text-zinc-500 text-sm max-w-xs">Neuropsicologia e Psicoterapia. Use o menu lateral para gerenciar seus pacientes e agenda.</p>
+        </div>
+      </div>
+
     </div>
   );
 };
