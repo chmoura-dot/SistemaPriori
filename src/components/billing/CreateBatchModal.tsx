@@ -1,7 +1,8 @@
-import React from 'react';
-import { Ban } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { Ban, AlertTriangle, Calendar, ChevronRight, Users, FileText } from 'lucide-react';
 import { format } from 'date-fns';
-import { HealthPlan, Appointment, Customer, Psychologist } from '../../services/types';
+import { ptBR } from 'date-fns/locale';
+import { HealthPlan, Appointment, Customer, Psychologist, Plan, AppointmentType } from '../../services/types';
 import { Modal } from '../Modal';
 import { Button } from '../Button';
 import { Input } from '../Input';
@@ -18,10 +19,12 @@ interface Props {
   selectedPlan: HealthPlan;
   batchNumber: string;
   patientFilter: string;
+  monthFilter: string;
   selectedAppointmentIds: string[];
   neuropsicoDecisions: Record<string, boolean>;
   customers: Customer[];
   psychologists: Psychologist[];
+  plans: Plan[];
   eligibleAppointments: Appointment[];
   totalSelectedAmount: number;
   getNeuropsicoStatus: (app: Appointment) => NeuropsicoStatus;
@@ -30,6 +33,7 @@ interface Props {
   onPlanChange: (plan: HealthPlan) => void;
   onBatchNumberChange: (value: string) => void;
   onPatientFilterChange: (value: string) => void;
+  onMonthFilterChange: (value: string) => void;
   onToggleSelection: (id: string) => void;
   onSelectAll: () => void;
   onConfirmAppointment: (id: string, e: React.MouseEvent) => void;
@@ -43,10 +47,12 @@ export const CreateBatchModal: React.FC<Props> = ({
   selectedPlan,
   batchNumber,
   patientFilter,
+  monthFilter,
   selectedAppointmentIds,
   neuropsicoDecisions,
   customers,
   psychologists,
+  plans,
   eligibleAppointments,
   totalSelectedAmount,
   getNeuropsicoStatus,
@@ -55,6 +61,7 @@ export const CreateBatchModal: React.FC<Props> = ({
   onPlanChange,
   onBatchNumberChange,
   onPatientFilterChange,
+  onMonthFilterChange,
   onToggleSelection,
   onSelectAll,
   onConfirmAppointment,
@@ -62,16 +69,174 @@ export const CreateBatchModal: React.FC<Props> = ({
   onToggleNeuropsico,
   onSubmit,
 }) => {
-  const filteredAppointments = patientFilter.trim()
-    ? eligibleAppointments.filter(app => {
-        const customer = customers.find(c => c.id === app.customerId);
-        return customer?.name?.toLowerCase().includes(patientFilter.toLowerCase());
-      })
-    : eligibleAppointments;
+  const [showConfirm, setShowConfirm] = useState(false);
 
-  const allSelected = filteredAppointments.length > 0 &&
+  // ── Filter appointments by patient name ──────────────────────────────────
+  const filteredAppointments = useMemo(() => {
+    if (!patientFilter.trim()) return eligibleAppointments;
+    return eligibleAppointments.filter(app => {
+      const customer = customers.find(c => c.id === app.customerId);
+      return customer?.name?.toLowerCase().includes(patientFilter.toLowerCase());
+    });
+  }, [eligibleAppointments, patientFilter, customers]);
+
+  // ── Group appointments by patient ────────────────────────────────────────
+  const grouped = useMemo(() => {
+    const map = new Map<string, Appointment[]>();
+    filteredAppointments.forEach(app => {
+      const list = map.get(app.customerId) || [];
+      map.set(app.customerId, [...list, app]);
+    });
+    return Array.from(map.entries()).map(([customerId, apps]) => ({
+      customer: customers.find(c => c.id === customerId),
+      appointments: apps,
+    }));
+  }, [filteredAppointments, customers]);
+
+  // ── Duplicate detection (same patient + same date) ───────────────────────
+  const duplicateKeys = useMemo(() => {
+    const keyCount = new Map<string, number>();
+    eligibleAppointments.forEach(a => {
+      const key = `${a.customerId}-${a.date}`;
+      keyCount.set(key, (keyCount.get(key) || 0) + 1);
+    });
+    return keyCount;
+  }, [eligibleAppointments]);
+
+  const isDuplicate = (app: Appointment) =>
+    (duplicateKeys.get(`${app.customerId}-${app.date}`) || 0) > 1;
+
+  // ── Session limit helpers ─────────────────────────────────────────────────
+  const getSessionLimit = (customerId: string, type: AppointmentType): number | undefined => {
+    const customer = customers.find(c => c.id === customerId);
+    const plan = plans.find(p => p.name.toUpperCase() === (customer?.healthPlan ?? '').toUpperCase());
+    const procedure = plan?.procedures?.find(proc => proc.type === type);
+    return procedure?.maxSessionsPerMonth && procedure.maxSessionsPerMonth > 0
+      ? procedure.maxSessionsPerMonth
+      : undefined;
+  };
+
+  const getSelectedCountForCustomerType = (customerId: string, type: AppointmentType): number =>
+    eligibleAppointments.filter(
+      a => a.customerId === customerId && a.type === type && selectedAppointmentIds.includes(a.id)
+    ).length;
+
+  // ── Session warnings (patients exceeding monthly limit) ──────────────────
+  const sessionWarnings = useMemo(() => {
+    const warnings: { customerName: string; type: AppointmentType; count: number; limit: number }[] = [];
+    const seen = new Set<string>();
+    for (const id of selectedAppointmentIds) {
+      const app = eligibleAppointments.find(a => a.id === id);
+      if (!app) continue;
+      const key = `${app.customerId}-${app.type}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const limit = getSessionLimit(app.customerId, app.type);
+      if (!limit) continue;
+      const count = getSelectedCountForCustomerType(app.customerId, app.type);
+      if (count > limit) {
+        const customer = customers.find(c => c.id === app.customerId);
+        warnings.push({ customerName: customer?.name || '', type: app.type, count, limit });
+      }
+    }
+    return warnings;
+  }, [selectedAppointmentIds, eligibleAppointments, customers, plans]);
+
+  // ── TUSS code for an appointment ──────────────────────────────────────────
+  const getTussCode = (app: Appointment): string => {
+    if (app.procedureCode) return app.procedureCode;
+    const customer = customers.find(c => c.id === app.customerId);
+    const plan = plans.find(p => p.name.toUpperCase() === (customer?.healthPlan ?? '').toUpperCase());
+    return plan?.procedures?.find(proc => proc.type === app.type)?.code || '';
+  };
+
+  const allSelected =
+    filteredAppointments.length > 0 &&
     selectedAppointmentIds.length === eligibleAppointments.length;
 
+  const uniquePatients = new Set(
+    eligibleAppointments.filter(a => selectedAppointmentIds.includes(a.id)).map(a => a.customerId)
+  ).size;
+
+  const monthLabel = monthFilter
+    ? format(new Date(monthFilter + '-15'), 'MMMM/yyyy', { locale: ptBR })
+    : '—';
+
+  // ── Confirmation Step ─────────────────────────────────────────────────────
+  if (showConfirm) {
+    return (
+      <Modal
+        isOpen={isOpen}
+        onClose={onClose}
+        title="Confirmar Criação do Lote"
+        className="max-w-lg"
+      >
+        <div className="space-y-5">
+          {/* Warnings */}
+          {sessionWarnings.length > 0 && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
+              <AlertTriangle className="text-amber-500 flex-shrink-0 mt-0.5" size={18} />
+              <div>
+                <p className="text-sm font-semibold text-amber-800 mb-2">
+                  Limite de sessões excedido
+                </p>
+                <ul className="space-y-1">
+                  {sessionWarnings.map((w, i) => (
+                    <li key={i} className="text-xs text-amber-700">
+                      • <strong>{w.customerName}</strong>:{' '}
+                      <span className="font-semibold">{w.count}</span> sess. de{' '}
+                      <em>{w.type}</em> (limite do plano: {w.limit}/mês)
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )}
+
+          {/* Summary */}
+          <div className="bg-zinc-50 border border-zinc-100 rounded-xl p-4 space-y-3">
+            <p className="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-1">
+              Resumo do Lote
+            </p>
+            <div className="grid grid-cols-2 gap-y-2 gap-x-4 text-sm">
+              <div className="text-zinc-500">Operadora</div>
+              <div className="font-medium text-priori-navy">{selectedPlan}</div>
+              <div className="text-zinc-500">Competência</div>
+              <div className="font-medium text-priori-navy capitalize">{monthLabel}</div>
+              <div className="text-zinc-500">Nº do Lote</div>
+              <div className="font-medium text-priori-navy font-mono">{batchNumber}</div>
+              <div className="text-zinc-500">Pacientes</div>
+              <div className="font-medium text-priori-navy">{uniquePatients}</div>
+              <div className="text-zinc-500">Atendimentos</div>
+              <div className="font-medium text-priori-navy">{selectedAppointmentIds.length}</div>
+              <div className="text-zinc-500 font-semibold">Total</div>
+              <div className="font-bold text-priori-navy text-base">{formatCurrency(totalSelectedAmount)}</div>
+            </div>
+          </div>
+
+          <p className="text-sm text-zinc-500">
+            {sessionWarnings.length > 0
+              ? 'Deseja criar o lote mesmo com as advertências acima?'
+              : 'Confirmar criação do lote de faturamento?'}
+          </p>
+
+          <div className="flex justify-end gap-3 pt-1">
+            <Button variant="outline" onClick={() => setShowConfirm(false)}>
+              Voltar e Revisar
+            </Button>
+            <Button
+              onClick={() => { setShowConfirm(false); onSubmit(); }}
+              className="bg-priori-navy hover:bg-priori-navy/90"
+            >
+              {sessionWarnings.length > 0 ? 'Criar Assim Mesmo' : 'Confirmar e Criar'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+    );
+  }
+
+  // ── Main Selection Step ───────────────────────────────────────────────────
   return (
     <Modal
       isOpen={isOpen}
@@ -79,40 +244,52 @@ export const CreateBatchModal: React.FC<Props> = ({
       title="Novo Lote de Faturamento"
       className="max-w-4xl"
     >
-      <div className="space-y-6">
-        {/* Operadora */}
-        <div>
-          <label className="block text-sm font-medium text-priori-navy mb-1">Operadora</label>
-          <select
-            value={selectedPlan}
-            onChange={(e) => onPlanChange(e.target.value as HealthPlan)}
-            className="w-full rounded-xl border border-zinc-200 bg-zinc-50 text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-priori-navy/30 focus:border-priori-navy"
-          >
-            {Object.values(HealthPlan).map(plan => (
-              <option key={plan} value={plan}>{plan}</option>
-            ))}
-          </select>
+      <div className="space-y-4">
+
+        {/* Row 1: Operadora + Competência */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-priori-navy mb-1">Operadora</label>
+            <select
+              value={selectedPlan}
+              onChange={(e) => onPlanChange(e.target.value as HealthPlan)}
+              className="w-full rounded-xl border border-zinc-200 bg-zinc-50 text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-priori-navy/30 focus:border-priori-navy"
+            >
+              {Object.values(HealthPlan).map(plan => (
+                <option key={plan} value={plan}>{plan}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-priori-navy mb-1 flex items-center gap-1.5">
+              <Calendar size={13} />
+              Competência (mês de referência)
+            </label>
+            <input
+              type="month"
+              value={monthFilter}
+              onChange={(e) => onMonthFilterChange(e.target.value)}
+              className="w-full rounded-xl border border-zinc-200 bg-zinc-50 text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-priori-navy/30 focus:border-priori-navy"
+            />
+          </div>
         </div>
 
-        {/* Lista de Atendimentos */}
-        <div className="border-t border-zinc-100 pt-4">
-          {/* Filtro por paciente */}
-          <div className="mb-3">
+        {/* Appointments List */}
+        <div className="border-t border-zinc-100 pt-3">
+
+          {/* Filter + SelectAll */}
+          <div className="flex flex-col sm:flex-row gap-2 mb-3">
             <input
               type="text"
               placeholder="Filtrar por paciente..."
               value={patientFilter}
               onChange={(e) => onPatientFilterChange(e.target.value)}
-              className="w-full rounded-xl border border-zinc-200 bg-zinc-50 text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-priori-navy/30 focus:border-priori-navy"
+              className="flex-1 rounded-xl border border-zinc-200 bg-zinc-50 text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-priori-navy/30 focus:border-priori-navy"
             />
-          </div>
-
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-            <h4 className="font-semibold text-priori-navy">Atendimentos Disponíveis</h4>
-            <div className="flex items-center gap-4 text-sm">
-              <div className="text-zinc-500 font-medium">
+            <div className="flex items-center gap-4 text-sm justify-between sm:justify-end">
+              <span className="text-zinc-500 font-medium">
                 {selectedAppointmentIds.length} selecionados
-              </div>
+              </span>
               {eligibleAppointments.length > 0 && (
                 <button
                   onClick={onSelectAll}
@@ -124,160 +301,279 @@ export const CreateBatchModal: React.FC<Props> = ({
             </div>
           </div>
 
-          <div className="max-h-[400px] overflow-y-auto border border-zinc-100 rounded-xl divide-y divide-zinc-100">
-            {filteredAppointments.length === 0 ? (
+          {/* Grouped list */}
+          <div className="max-h-[380px] overflow-y-auto border border-zinc-100 rounded-xl">
+            {grouped.length === 0 ? (
               <div className="p-8 text-center text-zinc-500 text-sm">
                 {patientFilter.trim()
                   ? 'Nenhum atendimento encontrado para este paciente.'
-                  : 'Nenhum atendimento confirmado encontrado para esta operadora.'}
+                  : monthFilter
+                    ? `Nenhum atendimento disponível em ${monthLabel}.`
+                    : 'Nenhum atendimento confirmado encontrado para esta operadora.'}
               </div>
             ) : (
-              filteredAppointments.map(app => {
-                const customer = customers.find(c => c.id === app.customerId);
-                const psychologist = psychologists.find(p => p.id === app.psychologistId);
-                const neuropsicoStatus = getNeuropsicoStatus(app);
-                const basePrice = getAppPrice(app);
-                const isConfirmed = app.confirmedPsychologist === true;
+              grouped.map(({ customer, appointments: apps }) => {
+                const appTypes = [...new Set(apps.map(a => a.type))];
+                const selectedForThisPatient = apps.filter(a => selectedAppointmentIds.includes(a.id));
+                const patientTotal = selectedForThisPatient.reduce((sum, a) => sum + getAppPrice(a), 0);
+                const hasWarning = appTypes.some(type => {
+                  const limit = getSessionLimit(customer?.id || '', type);
+                  if (!limit) return false;
+                  return getSelectedCountForCustomerType(customer?.id || '', type) > limit;
+                });
 
                 return (
-                  <div key={app.id} className="flex flex-col border-b border-zinc-100 last:border-0">
-                    <div
-                      className={cn(
-                        'flex items-center gap-4 p-3 hover:bg-zinc-50 transition-colors',
-                        selectedAppointmentIds.includes(app.id) && 'bg-priori-navy/5',
-                        isConfirmed ? 'cursor-pointer' : 'opacity-75 cursor-not-allowed bg-zinc-50/50'
-                      )}
-                      onClick={() => isConfirmed && onToggleSelection(app.id)}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selectedAppointmentIds.includes(app.id)}
-                        disabled={!isConfirmed}
-                        onChange={() => {}}
-                        className="rounded border-zinc-300 text-priori-navy focus:ring-priori-navy disabled:opacity-50"
-                      />
-                      <div className="flex-1 min-w-0">
-                        <div className="font-medium text-priori-navy truncate flex items-center gap-2">
+                  <div key={customer?.id} className="divide-y divide-zinc-50">
+                    {/* Patient header row */}
+                    <div className="bg-zinc-50 px-4 py-2 flex items-center justify-between border-b border-zinc-100">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Users size={13} className="text-zinc-400 flex-shrink-0" />
+                        <span className={cn(
+                          'font-semibold text-sm',
+                          hasWarning ? 'text-amber-700' : 'text-priori-navy'
+                        )}>
                           {customer?.name}
-                          {neuropsicoStatus.type === 'blocked' && (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-zinc-100 text-zinc-600 border border-zinc-200">
-                              Neuropsico R$0 (último há {neuropsicoStatus.diffDays} dias)
+                        </span>
+                        {/* Session count badges per type */}
+                        {appTypes.map(type => {
+                          const count = getSelectedCountForCustomerType(customer?.id || '', type);
+                          if (count === 0) return null;
+                          const limit = getSessionLimit(customer?.id || '', type);
+                          const exceeded = limit ? count > limit : false;
+                          return (
+                            <span
+                              key={type}
+                              title={`${type}: ${count}${limit ? `/${limit}` : ''} sessões selecionadas`}
+                              className={cn(
+                                'text-[10px] px-2 py-0.5 rounded-full font-semibold border',
+                                exceeded
+                                  ? 'bg-red-50 text-red-600 border-red-200'
+                                  : 'bg-emerald-50 text-emerald-600 border-emerald-200'
+                              )}
+                            >
+                              {count}{limit ? `/${limit}` : ''} sess.{exceeded ? ' ⚠️' : ''}
                             </span>
-                          )}
-                          {neuropsicoStatus.type === 'ask' && (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-amber-50 text-amber-600 border border-amber-200">
-                              ⚠️ Neuropsico (último há {neuropsicoStatus.diffDays} dias)
-                            </span>
-                          )}
-                          {!isConfirmed && (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-amber-50 text-amber-600 border border-amber-200">
-                              Aguardando confirmação
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-xs text-zinc-500 truncate">
-                          {psychologist?.name} •{' '}
-                          {format(new Date(app.date + 'T12:00:00'), 'dd/MM/yyyy')} •{' '}
-                          {app.startTime}
-                        </div>
+                          );
+                        })}
                       </div>
-                      <div className="text-sm font-medium text-priori-navy mr-2">
-                        {formatCurrency(basePrice)}
-                      </div>
-                      {!isConfirmed && (
-                        <Button
-                          size="sm"
-                          onClick={(e) => onConfirmAppointment(app.id, e)}
-                          className="bg-emerald-600 hover:bg-emerald-700 text-xs px-3 h-8 mr-2"
-                        >
-                          Confirmar
-                        </Button>
+                      {selectedForThisPatient.length > 0 && (
+                        <span className="text-xs font-medium text-zinc-400">
+                          {formatCurrency(patientTotal)}
+                        </span>
                       )}
-                      <button
-                        onClick={(e) => onIgnoreAppointment(app.id, e)}
-                        className="p-1.5 text-zinc-300 hover:text-red-400 hover:bg-red-50 rounded-lg transition-all flex-shrink-0"
-                        title="Ignorar para faturamento"
-                      >
-                        <Ban size={15} />
-                      </button>
                     </div>
 
-                    {neuropsicoStatus.type === 'ask' && (
-                      <div className="bg-amber-50/50 px-11 py-2 flex items-center gap-3 text-xs border-t border-amber-100/50">
-                        <span className="text-amber-700 font-medium">Cobrar este atendimento?</span>
-                        <div className="flex bg-white rounded-lg border border-amber-200 p-0.5">
-                          <button
-                            onClick={(e) => { e.stopPropagation(); onToggleNeuropsico(app.id, false); }}
+                    {/* Appointment rows */}
+                    {apps.map(app => {
+                      const psychologist = psychologists.find(p => p.id === app.psychologistId);
+                      const neuropsicoStatus = getNeuropsicoStatus(app);
+                      const basePrice = getAppPrice(app);
+                      const isConfirmed = app.confirmedPsychologist === true;
+                      const tussCode = getTussCode(app);
+                      const duplic = isDuplicate(app);
+
+                      return (
+                        <div key={app.id} className="flex flex-col last:border-0">
+                          <div
                             className={cn(
-                              'px-3 py-1 font-semibold rounded-md transition-all',
-                              !neuropsicoDecisions[app.id]
-                                ? 'bg-amber-100 text-amber-800 shadow-sm'
-                                : 'text-zinc-500 hover:bg-zinc-50'
+                              'flex items-center gap-2 px-4 py-2.5 hover:bg-zinc-50 transition-colors',
+                              selectedAppointmentIds.includes(app.id) && 'bg-priori-navy/5',
+                              isConfirmed ? 'cursor-pointer' : 'opacity-70 cursor-not-allowed bg-zinc-50/50'
                             )}
+                            onClick={() => isConfirmed && onToggleSelection(app.id)}
                           >
-                            Não cobrar (R$ 0)
-                          </button>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); onToggleNeuropsico(app.id, true); }}
-                            className={cn(
-                              'px-3 py-1 font-semibold rounded-md transition-all',
-                              neuropsicoDecisions[app.id]
-                                ? 'bg-priori-navy text-white shadow-sm'
-                                : 'text-zinc-500 hover:bg-zinc-50'
+                            {/* Checkbox */}
+                            <input
+                              type="checkbox"
+                              checked={selectedAppointmentIds.includes(app.id)}
+                              disabled={!isConfirmed}
+                              onChange={() => {}}
+                              className="rounded border-zinc-300 text-priori-navy focus:ring-priori-navy disabled:opacity-50 flex-shrink-0"
+                            />
+
+                            {/* Date + time */}
+                            <div className="text-xs font-semibold text-zinc-600 w-20 flex-shrink-0">
+                              {format(new Date(app.date + 'T12:00:00'), 'dd/MM/yy')} {app.startTime}
+                            </div>
+
+                            {/* Psychologist */}
+                            <div className="text-xs text-zinc-400 flex-1 truncate min-w-0">
+                              {psychologist?.name}
+                            </div>
+
+                            {/* TUSS Code */}
+                            {tussCode && (
+                              <span
+                                title={`TUSS: ${tussCode} — ${app.type}`}
+                                className="text-[10px] text-zinc-400 font-mono bg-zinc-100 px-1.5 py-0.5 rounded border border-zinc-200 flex-shrink-0 hidden sm:inline"
+                              >
+                                {tussCode}
+                              </span>
                             )}
-                          >
-                            Cobrar normal
-                          </button>
+
+                            {/* Inline badges */}
+                            <div className="flex items-center gap-1 flex-shrink-0">
+                              {duplic && selectedAppointmentIds.includes(app.id) && (
+                                <span
+                                  title="Possível duplicata: mesmo paciente com sessão na mesma data"
+                                  className="text-[10px] px-1.5 py-0.5 rounded bg-orange-50 text-orange-600 border border-orange-200"
+                                >
+                                  Duplicata ⚠️
+                                </span>
+                              )}
+                              {neuropsicoStatus.type === 'blocked' && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-100 text-zinc-500 border border-zinc-200">
+                                  Neuropsico R$0
+                                </span>
+                              )}
+                              {neuropsicoStatus.type === 'ask' && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-600 border border-amber-200">
+                                  ⚠️ Neuropsico
+                                </span>
+                              )}
+                              {!isConfirmed && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-600 border border-amber-200">
+                                  Ag. confirmação
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Price */}
+                            <div className="text-sm font-semibold text-priori-navy w-20 text-right flex-shrink-0">
+                              {formatCurrency(basePrice)}
+                            </div>
+
+                            {/* Confirm button (if needed) */}
+                            {!isConfirmed && (
+                              <Button
+                                size="sm"
+                                onClick={(e) => onConfirmAppointment(app.id, e)}
+                                className="bg-emerald-600 hover:bg-emerald-700 text-xs px-2 h-7 flex-shrink-0"
+                              >
+                                Confirmar
+                              </Button>
+                            )}
+
+                            {/* Ignore button */}
+                            <button
+                              onClick={(e) => onIgnoreAppointment(app.id, e)}
+                              className="p-1 text-zinc-300 hover:text-red-400 hover:bg-red-50 rounded-lg transition-all flex-shrink-0"
+                              title="Ignorar para faturamento"
+                            >
+                              <Ban size={14} />
+                            </button>
+                          </div>
+
+                          {/* Neuropsico ask row */}
+                          {neuropsicoStatus.type === 'ask' && (
+                            <div className="bg-amber-50/50 px-12 py-2 flex items-center gap-3 text-xs border-t border-amber-100/50">
+                              <span className="text-amber-700 font-medium">Cobrar este atendimento?</span>
+                              <div className="flex bg-white rounded-lg border border-amber-200 p-0.5">
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); onToggleNeuropsico(app.id, false); }}
+                                  className={cn(
+                                    'px-3 py-1 font-semibold rounded-md transition-all',
+                                    !neuropsicoDecisions[app.id]
+                                      ? 'bg-amber-100 text-amber-800 shadow-sm'
+                                      : 'text-zinc-500 hover:bg-zinc-50'
+                                  )}
+                                >
+                                  Não cobrar (R$ 0)
+                                </button>
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); onToggleNeuropsico(app.id, true); }}
+                                  className={cn(
+                                    'px-3 py-1 font-semibold rounded-md transition-all',
+                                    neuropsicoDecisions[app.id]
+                                      ? 'bg-priori-navy text-white shadow-sm'
+                                      : 'text-zinc-500 hover:bg-zinc-50'
+                                  )}
+                                >
+                                  Cobrar normal
+                                </button>
+                              </div>
+                            </div>
+                          )}
                         </div>
-                      </div>
-                    )}
+                      );
+                    })}
                   </div>
                 );
               })
             )}
           </div>
 
-          {/* Somatório dinâmico */}
+          {/* Running total */}
           {selectedAppointmentIds.length > 0 && (
             <div className="mt-3 flex items-center justify-between px-4 py-3 bg-priori-navy/5 rounded-xl border border-priori-navy/10">
-              <span className="text-sm font-medium text-priori-navy">
-                Total selecionado ({selectedAppointmentIds.length}{' '}
-                {selectedAppointmentIds.length === 1 ? 'atendimento' : 'atendimentos'})
-              </span>
+              <div className="flex items-center gap-3 text-sm text-priori-navy">
+                <span className="font-medium">
+                  {selectedAppointmentIds.length}{' '}
+                  {selectedAppointmentIds.length === 1 ? 'atendimento' : 'atendimentos'}
+                </span>
+                <span className="text-zinc-400">•</span>
+                <span className="text-zinc-500">
+                  {uniquePatients}{' '}
+                  {uniquePatients === 1 ? 'paciente' : 'pacientes'}
+                </span>
+              </div>
               <span className="text-lg font-bold text-priori-navy">
                 {formatCurrency(totalSelectedAmount)}
               </span>
             </div>
           )}
+
+          {/* Session warnings banner */}
+          {sessionWarnings.length > 0 && selectedAppointmentIds.length > 0 && (
+            <div className="mt-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-start gap-2">
+              <AlertTriangle className="text-amber-500 flex-shrink-0 mt-0.5" size={15} />
+              <div className="text-xs text-amber-700 space-y-0.5">
+                {sessionWarnings.map((w, i) => (
+                  <p key={i}>
+                    <strong>{w.customerName}</strong>: {w.count}/{w.limit} sessões de {w.type} — excede o limite do plano
+                  </p>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Número do Lote + Ações */}
+        {/* Batch number + actions */}
         <div className="border-t border-zinc-100 pt-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
             <div>
-              <label className="block text-sm font-medium text-priori-navy mb-1">
+              <label className="block text-sm font-medium text-priori-navy mb-1 flex items-center gap-1.5">
+                <FileText size={13} />
                 Número do Lote / Protocolo
               </label>
               <Input
-                placeholder="Ex: 20240311-01"
                 value={batchNumber}
                 onChange={(e) => onBatchNumberChange(e.target.value)}
               />
+              <p className="text-xs text-zinc-400 mt-1">Gerado automaticamente. Pode editar se necessário.</p>
             </div>
             <div className="flex justify-end gap-3">
               <Button variant="outline" onClick={onClose}>
                 Cancelar
               </Button>
               <Button
-                onClick={onSubmit}
+                onClick={() => {
+                  if (sessionWarnings.length > 0) {
+                    setShowConfirm(true);
+                  } else {
+                    setShowConfirm(true); // always show summary before submit
+                  }
+                }}
                 disabled={!batchNumber || selectedAppointmentIds.length === 0}
-                className="bg-priori-navy hover:bg-priori-navy/90"
+                className="bg-priori-navy hover:bg-priori-navy/90 flex items-center gap-2"
               >
-                Gerar Lote de Faturamento
+                Revisar e Gerar Lote
+                <ChevronRight size={16} />
               </Button>
             </div>
           </div>
         </div>
+
       </div>
     </Modal>
   );

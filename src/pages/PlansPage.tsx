@@ -419,6 +419,28 @@ export const PlansPage = () => {
                       />
                     </div>
                   </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest ml-1 flex items-center gap-1">
+                        <Hash size={10} /> Limite Sessões/Mês
+                      </label>
+                      <input
+                        type="number"
+                        step="1"
+                        min="0"
+                        className="w-full bg-white border border-zinc-200 rounded-xl px-3 py-2 text-xs text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/20"
+                        value={proc.maxSessionsPerMonth ?? 0}
+                        onChange={(e) => {
+                          const newProcs = [...formData.procedures];
+                          newProcs[idx].maxSessionsPerMonth = Number(e.target.value) || 0;
+                          setFormData({ ...formData, procedures: newProcs });
+                        }}
+                        placeholder="0 = ilimitado"
+                      />
+                      <p className="text-[9px] text-zinc-400 ml-1">0 = sem limite</p>
+                    </div>
+                  </div>
                   
                   <div className="flex items-center gap-2 pt-1">
                     <input

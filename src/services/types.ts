@@ -171,6 +171,7 @@ export interface PlanProcedure {
   price: number;
   repassAmount: number;
   isOneTimeCharge: boolean;
+  maxSessionsPerMonth?: number; // 0 = ilimitado
 }
 
 export interface Plan {

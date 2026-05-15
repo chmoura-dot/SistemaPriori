@@ -60,22 +60,21 @@ export const BillingPage = () => {
         selectedPlan={billing.selectedPlan}
         batchNumber={billing.batchNumber}
         patientFilter={billing.patientFilter}
+        monthFilter={billing.monthFilter}
         selectedAppointmentIds={billing.selectedAppointmentIds}
         neuropsicoDecisions={billing.neuropsicoDecisions}
         customers={billing.customers}
         psychologists={billing.psychologists}
+        plans={billing.plans}
         eligibleAppointments={billing.getEligibleAppointments()}
         totalSelectedAmount={billing.calculateTotalSelectedAmount()}
         getNeuropsicoStatus={billing.getNeuropsicoStatus}
         getAppPrice={billing.getAppPrice}
         onClose={billing.closeCreateModal}
-        onPlanChange={(plan) => {
-          billing.setSelectedPlan(plan);
-          billing.setSelectedAppointmentIds([]);
-          billing.setPatientFilter('');
-        }}
+        onPlanChange={billing.handlePlanChange}
         onBatchNumberChange={billing.setBatchNumber}
         onPatientFilterChange={billing.setPatientFilter}
+        onMonthFilterChange={billing.handleMonthFilterChange}
         onToggleSelection={billing.toggleAppointmentSelection}
         onSelectAll={() => {
           const eligibleIds = billing.getEligibleAppointments().map(a => a.id);

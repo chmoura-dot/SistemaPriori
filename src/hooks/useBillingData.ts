@@ -109,15 +109,37 @@ export function useBillingData() {
     return app.customPrice ?? customer?.customPrice ?? procedure?.price ?? 0;
   };
 
+  const generateBatchNumber = (plan: HealthPlan, month: string): string => {
+    const planSiglas: Record<HealthPlan, string> = {
+      [HealthPlan.AMS_PETROBRAS]: 'AMS',
+      [HealthPlan.PAE]: 'PAE',
+      [HealthPlan.PORTO_SAUDE]: 'PORTO',
+      [HealthPlan.MEDSENIOR]: 'MEDSN',
+      [HealthPlan.REAL_GRANDEZA]: 'RG',
+      [HealthPlan.SAUDE_BLUE]: 'SBLUE',
+      [HealthPlan.GAMA]: 'GAMA',
+      [HealthPlan.SAUDE_CAIXA]: 'SCAIXA',
+      [HealthPlan.FUNDACAO_SAUDE]: 'FSI',
+      [HealthPlan.PARTICULAR]: 'PART',
+    };
+    const sigla = planSiglas[plan] || 'LOTE';
+    const monthFormatted = month.replace('-', '');
+    const existing = batches.filter(b => b.healthPlan === plan && b.sentAt.startsWith(month));
+    const seq = String(existing.length + 1).padStart(3, '0');
+    return `${sigla}-${monthFormatted}-${seq}`;
+  };
+
   const getEligibleAppointments = (): Appointment[] => {
     const today = new Date().toISOString().split('T')[0];
     return appointments.filter(a => {
       const customer = customers.find(c => c.id === a.customerId);
+      const matchesMonth = !monthFilter || a.date.startsWith(monthFilter);
       return (
         customer?.healthPlan === selectedPlan &&
         !a.billingBatchId &&
         !a.billingIgnored &&
-        a.date <= today
+        a.date <= today &&
+        matchesMonth
       );
     }).sort((a, b) => a.date.localeCompare(b.date));
   };
@@ -273,6 +295,10 @@ export function useBillingData() {
   };
 
   const openCreateModal = () => {
+    const now = new Date();
+    const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    setMonthFilter(month);
+    setBatchNumber(generateBatchNumber(selectedPlan, month));
     setIsCreateModalOpen(true);
   };
 
@@ -280,6 +306,19 @@ export function useBillingData() {
     setIsCreateModalOpen(false);
     setPatientFilter('');
     setMonthFilter('');
+  };
+
+  const handlePlanChange = (plan: HealthPlan) => {
+    setSelectedPlan(plan);
+    setSelectedAppointmentIds([]);
+    setPatientFilter('');
+    setBatchNumber(generateBatchNumber(plan, monthFilter));
+  };
+
+  const handleMonthFilterChange = (month: string) => {
+    setMonthFilter(month);
+    setSelectedAppointmentIds([]);
+    setBatchNumber(generateBatchNumber(selectedPlan, month));
   };
 
   // ── Derived values ────────────────────────────────────────────────────────
@@ -296,6 +335,7 @@ export function useBillingData() {
     appointments,
     customers,
     psychologists,
+    plans,
     isLoading,
 
     // Derived
@@ -347,5 +387,7 @@ export function useBillingData() {
     handleExportBatch,
     handleConfirmAppointment,
     handleIgnoreAppointment,
+    handlePlanChange,
+    handleMonthFilterChange,
   };
 }
