@@ -110,6 +110,7 @@ export function useBillingData() {
   };
 
   const generateBatchNumber = (plan: HealthPlan, month: string): string => {
+    if (!month || !/^\d{4}-\d{2}$/.test(month)) return '';
     const planSiglas: Record<HealthPlan, string> = {
       [HealthPlan.AMS_PETROBRAS]: 'AMS',
       [HealthPlan.PAE]: 'PAE',

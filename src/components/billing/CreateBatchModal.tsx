@@ -1,13 +1,22 @@
 import React, { useMemo, useState } from 'react';
 import { Ban, AlertTriangle, Calendar, ChevronRight, Users, FileText } from 'lucide-react';
 import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
 import { HealthPlan, Appointment, Customer, Psychologist, Plan, AppointmentType } from '../../services/types';
 import { Modal } from '../Modal';
 import { Button } from '../Button';
 import { Input } from '../Input';
 import { cn, formatCurrency } from '../../lib/utils';
 
+// ── Constantes ────────────────────────────────────────────────────────────────
+const MONTH_NAMES = [
+  'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+  'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro',
+];
+
+const CURRENT_YEAR = new Date().getFullYear();
+const YEAR_OPTIONS = [CURRENT_YEAR - 1, CURRENT_YEAR, CURRENT_YEAR + 1];
+
+// ── Types ─────────────────────────────────────────────────────────────────────
 type NeuropsicoStatus =
   | { type: 'regular' }
   | { type: 'billable'; diffDays?: number }
@@ -42,6 +51,17 @@ interface Props {
   onSubmit: () => void;
 }
 
+// ── Helper: parse monthFilter safely ─────────────────────────────────────────
+function parseMonthFilter(monthFilter: string): { month: number; year: number } {
+  const now = new Date();
+  if (!monthFilter || !/^\d{4}-\d{2}$/.test(monthFilter)) {
+    return { month: now.getMonth() + 1, year: now.getFullYear() };
+  }
+  const [y, m] = monthFilter.split('-').map(Number);
+  return { month: m, year: y };
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
 export const CreateBatchModal: React.FC<Props> = ({
   isOpen,
   selectedPlan,
@@ -71,7 +91,24 @@ export const CreateBatchModal: React.FC<Props> = ({
 }) => {
   const [showConfirm, setShowConfirm] = useState(false);
 
-  // ── Filter appointments by patient name ──────────────────────────────────
+  // ── Month/Year picker state ────────────────────────────────────────────────
+  const { month: filterMonth, year: filterYear } = parseMonthFilter(monthFilter);
+
+  const monthLabel = monthFilter
+    ? `${MONTH_NAMES[filterMonth - 1]}/${filterYear}`
+    : '—';
+
+  const handleMonthSelectChange = (newMonth: number) => {
+    const mm = String(newMonth).padStart(2, '0');
+    onMonthFilterChange(`${filterYear}-${mm}`);
+  };
+
+  const handleYearSelectChange = (newYear: number) => {
+    const mm = String(filterMonth).padStart(2, '0');
+    onMonthFilterChange(`${newYear}-${mm}`);
+  };
+
+  // ── Filter appointments by patient name ───────────────────────────────────
   const filteredAppointments = useMemo(() => {
     if (!patientFilter.trim()) return eligibleAppointments;
     return eligibleAppointments.filter(app => {
@@ -80,7 +117,7 @@ export const CreateBatchModal: React.FC<Props> = ({
     });
   }, [eligibleAppointments, patientFilter, customers]);
 
-  // ── Group appointments by patient ────────────────────────────────────────
+  // ── Group appointments by patient ─────────────────────────────────────────
   const grouped = useMemo(() => {
     const map = new Map<string, Appointment[]>();
     filteredAppointments.forEach(app => {
@@ -93,7 +130,7 @@ export const CreateBatchModal: React.FC<Props> = ({
     }));
   }, [filteredAppointments, customers]);
 
-  // ── Duplicate detection (same patient + same date) ───────────────────────
+  // ── Duplicate detection (same patient + same date) ────────────────────────
   const duplicateKeys = useMemo(() => {
     const keyCount = new Map<string, number>();
     eligibleAppointments.forEach(a => {
@@ -121,7 +158,7 @@ export const CreateBatchModal: React.FC<Props> = ({
       a => a.customerId === customerId && a.type === type && selectedAppointmentIds.includes(a.id)
     ).length;
 
-  // ── Session warnings (patients exceeding monthly limit) ──────────────────
+  // ── Session warnings ──────────────────────────────────────────────────────
   const sessionWarnings = useMemo(() => {
     const warnings: { customerName: string; type: AppointmentType; count: number; limit: number }[] = [];
     const seen = new Set<string>();
@@ -142,7 +179,7 @@ export const CreateBatchModal: React.FC<Props> = ({
     return warnings;
   }, [selectedAppointmentIds, eligibleAppointments, customers, plans]);
 
-  // ── TUSS code for an appointment ──────────────────────────────────────────
+  // ── TUSS code ─────────────────────────────────────────────────────────────
   const getTussCode = (app: Appointment): string => {
     if (app.procedureCode) return app.procedureCode;
     const customer = customers.find(c => c.id === app.customerId);
@@ -158,10 +195,6 @@ export const CreateBatchModal: React.FC<Props> = ({
     eligibleAppointments.filter(a => selectedAppointmentIds.includes(a.id)).map(a => a.customerId)
   ).size;
 
-  const monthLabel = monthFilter
-    ? format(new Date(monthFilter + '-15'), 'MMMM/yyyy', { locale: ptBR })
-    : '—';
-
   // ── Confirmation Step ─────────────────────────────────────────────────────
   if (showConfirm) {
     return (
@@ -172,14 +205,11 @@ export const CreateBatchModal: React.FC<Props> = ({
         className="max-w-lg"
       >
         <div className="space-y-5">
-          {/* Warnings */}
           {sessionWarnings.length > 0 && (
             <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
               <AlertTriangle className="text-amber-500 flex-shrink-0 mt-0.5" size={18} />
               <div>
-                <p className="text-sm font-semibold text-amber-800 mb-2">
-                  Limite de sessões excedido
-                </p>
+                <p className="text-sm font-semibold text-amber-800 mb-2">Limite de sessões excedido</p>
                 <ul className="space-y-1">
                   {sessionWarnings.map((w, i) => (
                     <li key={i} className="text-xs text-amber-700">
@@ -193,11 +223,8 @@ export const CreateBatchModal: React.FC<Props> = ({
             </div>
           )}
 
-          {/* Summary */}
-          <div className="bg-zinc-50 border border-zinc-100 rounded-xl p-4 space-y-3">
-            <p className="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-1">
-              Resumo do Lote
-            </p>
+          <div className="bg-zinc-50 border border-zinc-100 rounded-xl p-4">
+            <p className="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-3">Resumo do Lote</p>
             <div className="grid grid-cols-2 gap-y-2 gap-x-4 text-sm">
               <div className="text-zinc-500">Operadora</div>
               <div className="font-medium text-priori-navy">{selectedPlan}</div>
@@ -209,18 +236,20 @@ export const CreateBatchModal: React.FC<Props> = ({
               <div className="font-medium text-priori-navy">{uniquePatients}</div>
               <div className="text-zinc-500">Atendimentos</div>
               <div className="font-medium text-priori-navy">{selectedAppointmentIds.length}</div>
-              <div className="text-zinc-500 font-semibold">Total</div>
-              <div className="font-bold text-priori-navy text-base">{formatCurrency(totalSelectedAmount)}</div>
+              <div className="text-zinc-500 font-semibold border-t border-zinc-200 pt-2 mt-1">Total</div>
+              <div className="font-bold text-priori-navy text-base border-t border-zinc-200 pt-2 mt-1">
+                {formatCurrency(totalSelectedAmount)}
+              </div>
             </div>
           </div>
 
           <p className="text-sm text-zinc-500">
             {sessionWarnings.length > 0
               ? 'Deseja criar o lote mesmo com as advertências acima?'
-              : 'Confirmar criação do lote de faturamento?'}
+              : 'Tudo certo! Confirmar criação do lote?'}
           </p>
 
-          <div className="flex justify-end gap-3 pt-1">
+          <div className="flex justify-end gap-3">
             <Button variant="outline" onClick={() => setShowConfirm(false)}>
               Voltar e Revisar
             </Button>
@@ -248,6 +277,7 @@ export const CreateBatchModal: React.FC<Props> = ({
 
         {/* Row 1: Operadora + Competência */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* Operadora */}
           <div>
             <label className="block text-sm font-medium text-priori-navy mb-1">Operadora</label>
             <select
@@ -260,17 +290,39 @@ export const CreateBatchModal: React.FC<Props> = ({
               ))}
             </select>
           </div>
+
+          {/* Competência — dois selects lado a lado */}
           <div>
             <label className="block text-sm font-medium text-priori-navy mb-1 flex items-center gap-1.5">
               <Calendar size={13} />
-              Competência (mês de referência)
+              Competência
             </label>
-            <input
-              type="month"
-              value={monthFilter}
-              onChange={(e) => onMonthFilterChange(e.target.value)}
-              className="w-full rounded-xl border border-zinc-200 bg-zinc-50 text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-priori-navy/30 focus:border-priori-navy"
-            />
+            <div className="flex gap-2">
+              {/* Mês */}
+              <select
+                value={filterMonth}
+                onChange={(e) => handleMonthSelectChange(Number(e.target.value))}
+                className="flex-1 rounded-xl border border-zinc-200 bg-zinc-50 text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-priori-navy/30 focus:border-priori-navy"
+              >
+                {MONTH_NAMES.map((name, idx) => (
+                  <option key={idx + 1} value={idx + 1}>{name}</option>
+                ))}
+              </select>
+              {/* Ano */}
+              <select
+                value={filterYear}
+                onChange={(e) => handleYearSelectChange(Number(e.target.value))}
+                className="w-28 rounded-xl border border-zinc-200 bg-zinc-50 text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-priori-navy/30 focus:border-priori-navy"
+              >
+                {YEAR_OPTIONS.map(y => (
+                  <option key={y} value={y}>{y}</option>
+                ))}
+              </select>
+            </div>
+            {/* Label de competência selecionada */}
+            <p className="text-xs text-zinc-400 mt-1 ml-1">
+              Exibindo: <span className="font-medium text-priori-navy capitalize">{monthLabel}</span>
+            </p>
           </div>
         </div>
 
@@ -307,9 +359,7 @@ export const CreateBatchModal: React.FC<Props> = ({
               <div className="p-8 text-center text-zinc-500 text-sm">
                 {patientFilter.trim()
                   ? 'Nenhum atendimento encontrado para este paciente.'
-                  : monthFilter
-                    ? `Nenhum atendimento disponível em ${monthLabel}.`
-                    : 'Nenhum atendimento confirmado encontrado para esta operadora.'}
+                  : `Nenhum atendimento disponível em ${monthLabel}.`}
               </div>
             ) : (
               grouped.map(({ customer, appointments: apps }) => {
@@ -324,7 +374,7 @@ export const CreateBatchModal: React.FC<Props> = ({
 
                 return (
                   <div key={customer?.id} className="divide-y divide-zinc-50">
-                    {/* Patient header row */}
+                    {/* Patient header */}
                     <div className="bg-zinc-50 px-4 py-2 flex items-center justify-between border-b border-zinc-100">
                       <div className="flex items-center gap-2 flex-wrap">
                         <Users size={13} className="text-zinc-400 flex-shrink-0" />
@@ -334,7 +384,6 @@ export const CreateBatchModal: React.FC<Props> = ({
                         )}>
                           {customer?.name}
                         </span>
-                        {/* Session count badges per type */}
                         {appTypes.map(type => {
                           const count = getSelectedCountForCustomerType(customer?.id || '', type);
                           if (count === 0) return null;
@@ -357,9 +406,7 @@ export const CreateBatchModal: React.FC<Props> = ({
                         })}
                       </div>
                       {selectedForThisPatient.length > 0 && (
-                        <span className="text-xs font-medium text-zinc-400">
-                          {formatCurrency(patientTotal)}
-                        </span>
+                        <span className="text-xs font-medium text-zinc-400">{formatCurrency(patientTotal)}</span>
                       )}
                     </div>
 
@@ -382,7 +429,6 @@ export const CreateBatchModal: React.FC<Props> = ({
                             )}
                             onClick={() => isConfirmed && onToggleSelection(app.id)}
                           >
-                            {/* Checkbox */}
                             <input
                               type="checkbox"
                               checked={selectedAppointmentIds.includes(app.id)}
@@ -390,18 +436,12 @@ export const CreateBatchModal: React.FC<Props> = ({
                               onChange={() => {}}
                               className="rounded border-zinc-300 text-priori-navy focus:ring-priori-navy disabled:opacity-50 flex-shrink-0"
                             />
-
-                            {/* Date + time */}
                             <div className="text-xs font-semibold text-zinc-600 w-20 flex-shrink-0">
                               {format(new Date(app.date + 'T12:00:00'), 'dd/MM/yy')} {app.startTime}
                             </div>
-
-                            {/* Psychologist */}
                             <div className="text-xs text-zinc-400 flex-1 truncate min-w-0">
                               {psychologist?.name}
                             </div>
-
-                            {/* TUSS Code */}
                             {tussCode && (
                               <span
                                 title={`TUSS: ${tussCode} — ${app.type}`}
@@ -410,8 +450,6 @@ export const CreateBatchModal: React.FC<Props> = ({
                                 {tussCode}
                               </span>
                             )}
-
-                            {/* Inline badges */}
                             <div className="flex items-center gap-1 flex-shrink-0">
                               {duplic && selectedAppointmentIds.includes(app.id) && (
                                 <span
@@ -437,13 +475,9 @@ export const CreateBatchModal: React.FC<Props> = ({
                                 </span>
                               )}
                             </div>
-
-                            {/* Price */}
                             <div className="text-sm font-semibold text-priori-navy w-20 text-right flex-shrink-0">
                               {formatCurrency(basePrice)}
                             </div>
-
-                            {/* Confirm button (if needed) */}
                             {!isConfirmed && (
                               <Button
                                 size="sm"
@@ -453,8 +487,6 @@ export const CreateBatchModal: React.FC<Props> = ({
                                 Confirmar
                               </Button>
                             )}
-
-                            {/* Ignore button */}
                             <button
                               onClick={(e) => onIgnoreAppointment(app.id, e)}
                               className="p-1 text-zinc-300 hover:text-red-400 hover:bg-red-50 rounded-lg transition-all flex-shrink-0"
@@ -464,7 +496,6 @@ export const CreateBatchModal: React.FC<Props> = ({
                             </button>
                           </div>
 
-                          {/* Neuropsico ask row */}
                           {neuropsicoStatus.type === 'ask' && (
                             <div className="bg-amber-50/50 px-12 py-2 flex items-center gap-3 text-xs border-t border-amber-100/50">
                               <span className="text-amber-700 font-medium">Cobrar este atendimento?</span>
@@ -513,13 +544,10 @@ export const CreateBatchModal: React.FC<Props> = ({
                 </span>
                 <span className="text-zinc-400">•</span>
                 <span className="text-zinc-500">
-                  {uniquePatients}{' '}
-                  {uniquePatients === 1 ? 'paciente' : 'pacientes'}
+                  {uniquePatients} {uniquePatients === 1 ? 'paciente' : 'pacientes'}
                 </span>
               </div>
-              <span className="text-lg font-bold text-priori-navy">
-                {formatCurrency(totalSelectedAmount)}
-              </span>
+              <span className="text-lg font-bold text-priori-navy">{formatCurrency(totalSelectedAmount)}</span>
             </div>
           )}
 
@@ -557,13 +585,7 @@ export const CreateBatchModal: React.FC<Props> = ({
                 Cancelar
               </Button>
               <Button
-                onClick={() => {
-                  if (sessionWarnings.length > 0) {
-                    setShowConfirm(true);
-                  } else {
-                    setShowConfirm(true); // always show summary before submit
-                  }
-                }}
+                onClick={() => setShowConfirm(true)}
                 disabled={!batchNumber || selectedAppointmentIds.length === 0}
                 className="bg-priori-navy hover:bg-priori-navy/90 flex items-center gap-2"
               >
