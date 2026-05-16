@@ -499,6 +499,18 @@ export const supabaseService: AppService = {
     return (data ?? []).map(toAppointment);
   },
 
+  /** Retorna todos os atendimentos de um paciente específico (sem filtro de data). */
+  getAppointmentsByCustomer: async (customerId: string) => {
+    const { data, error } = await supabase
+      .from('appointments')
+      .select('*')
+      .eq('customer_id', customerId)
+      .order('date', { ascending: false })
+      .limit(10000);
+    if (error) throw new Error(error.message);
+    return (data ?? []).map(toAppointment);
+  },
+
   getAppointmentsNeedingRenewal: async () => {
     const sixtyDaysAgo = new Date(Date.now() - 60 * 86400000).toISOString().split('T')[0];
     const { data, error } = await supabase

@@ -21,6 +21,7 @@ import { AccountSecurityPage } from './pages/AccountSecurityPage';
 import { PendingConfirmationsPage } from './pages/PendingConfirmationsPage';
 import { AmsPasswordsPage } from './pages/AmsPasswordsPage';
 import { HolidaysPage } from './pages/HolidaysPage';
+import { PatientLookupPage } from './pages/PatientLookupPage';
 import { RenewalAlert } from './components/RenewalAlert';
 import { DuplicateAppointmentAlert } from './components/DuplicateAppointmentAlert';
 import { api } from './services/api';
@@ -190,6 +191,8 @@ export default function App() {
         return <AmsPasswordsPage />;
       case '/feriados':
         return <HolidaysPage />;
+      case '/consulta-paciente':
+        return <PatientLookupPage />;
       default:
         return <DashboardPage onNavigate={navigate} />;
     }

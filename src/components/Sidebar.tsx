@@ -19,7 +19,8 @@ import {
   KeySquare,
   ListOrdered,
   CalendarOff,
-  RefreshCw
+  RefreshCw,
+  SearchCheck,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { api } from '../services/api';
@@ -32,6 +33,7 @@ const menuItems = [
   { icon: KeySquare, label: 'Senhas AMS / PAE', path: '/senhas-ams' },
   { icon: ClipboardList, label: 'Validações', path: '/pendentes' },
   { icon: Users, label: 'Pacientes', path: '/clientes' },
+  { icon: SearchCheck, label: 'Consulta Paciente', path: '/consulta-paciente' },
   { icon: Package, label: 'Planos', path: '/planos' },
   { icon: BarChart3, label: 'Financeiro', path: '/financeiro' },
   { icon: FileText, label: 'Faturamento', path: '/faturamento' },

@@ -977,6 +977,12 @@ export const mockService: AppService = {
     return appointments.filter(a => a.date >= startDate && a.date <= endDate);
   },
 
+  getAppointmentsByCustomer: async (customerId: string) => {
+    await delay(300);
+    const appointments = getFromStorage<Appointment>(STORAGE_KEYS.APPOINTMENTS);
+    return appointments.filter(a => a.customerId === customerId);
+  },
+
   getAppointmentsNeedingRenewal: async () => {
     await delay(300);
     const appointments = getFromStorage<Appointment>(STORAGE_KEYS.APPOINTMENTS);
