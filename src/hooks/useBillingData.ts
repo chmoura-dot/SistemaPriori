@@ -171,16 +171,22 @@ export function useBillingData() {
   };
 
   /**
-   * Verifica se existe rascunho aberto para a mesma operadora
-   * com competência anterior ao mês alvo.
+   * Retorna um Map dos planos que possuem rascunho com competência anterior ao mês alvo.
+   * Chave: HealthPlan, Valor: label do mês do rascunho (ex: "Abril/2026")
    */
-  const getEarlierOpenDraftForPlan = (plan: HealthPlan, targetMonth: string): BillingBatch | undefined => {
-    return batches.find(
-      b =>
-        b.status === BillingBatchStatus.DRAFT &&
-        b.healthPlan === plan &&
-        b.sentAt.substring(0, 7) < targetMonth
-    );
+  const getPlansWithEarlierDrafts = (targetMonth: string): Map<HealthPlan, string> => {
+    const blocked = new Map<HealthPlan, string>();
+    if (!targetMonth) return blocked;
+    batches.forEach(b => {
+      if (b.status === BillingBatchStatus.DRAFT && b.sentAt.substring(0, 7) < targetMonth) {
+        if (!blocked.has(b.healthPlan)) {
+          const dm = parseInt(b.sentAt.substring(5, 7)) - 1;
+          const dy = b.sentAt.substring(0, 4);
+          blocked.set(b.healthPlan, `${MONTH_NAMES_PT[dm]}/${dy}`);
+        }
+      }
+    });
+    return blocked;
   };
 
   /**
@@ -579,22 +585,17 @@ export function useBillingData() {
       setBatchNumber(draftBatch.batchNumber);
       setSelectedAppointmentIds([...draftBatch.appointmentIds]);
     } else {
-      // Modo: Novo lote/rascunho — validar se há rascunho anterior em aberto
-      const earlierDraft = getEarlierOpenDraftForPlan(selectedPlan, month);
-      if (earlierDraft) {
-        const dm = parseInt(earlierDraft.sentAt.substring(5, 7)) - 1;
-        const dy = earlierDraft.sentAt.substring(0, 4);
-        const cm = parseInt(month.substring(5, 7)) - 1;
-        const cy = month.substring(0, 4);
-        toastError(
-          `Há um rascunho de ${MONTH_NAMES_PT[dm]}/${dy} (${earlierDraft.healthPlan}) em aberto. ` +
-          `Finalize ou exclua-o antes de criar um lote para ${MONTH_NAMES_PT[cm]}/${cy}.`
-        );
-        return;
+      // Modo: Novo lote/rascunho — auto-selecionar primeiro plano sem rascunho anterior
+      const blockedPlans = getPlansWithEarlierDrafts(month);
+      let planToUse = selectedPlan;
+      if (blockedPlans.has(planToUse)) {
+        const firstAvailable = Object.values(HealthPlan).find(p => !blockedPlans.has(p));
+        if (firstAvailable) planToUse = firstAvailable;
       }
+      setSelectedPlan(planToUse);
       setEditingDraftBatch(null);
       setMonthFilter(month);
-      setBatchNumber(generateBatchNumber(selectedPlan, month));
+      setBatchNumber(generateBatchNumber(planToUse, month));
       setSelectedAppointmentIds([]);
     }
     setIncludePrevMonth(false);
@@ -614,17 +615,6 @@ export function useBillingData() {
   };
 
   const handlePlanChange = (plan: HealthPlan) => {
-    if (!editingDraftBatch) {
-      const earlierDraft = getEarlierOpenDraftForPlan(plan, monthFilter);
-      if (earlierDraft) {
-        const dm = parseInt(earlierDraft.sentAt.substring(5, 7)) - 1;
-        const dy = earlierDraft.sentAt.substring(0, 4);
-        toastError(
-          `Há um rascunho de ${MONTH_NAMES_PT[dm]}/${dy} (${earlierDraft.healthPlan}) em aberto para esta operadora. Finalize ou exclua-o antes.`
-        );
-        return;
-      }
-    }
     setSelectedPlan(plan);
     setSelectedAppointmentIds([]);
     setPatientFilter('');
@@ -632,20 +622,6 @@ export function useBillingData() {
   };
 
   const handleMonthFilterChange = (month: string) => {
-    if (!editingDraftBatch) {
-      const earlierDraft = getEarlierOpenDraftForPlan(selectedPlan, month);
-      if (earlierDraft) {
-        const dm = parseInt(earlierDraft.sentAt.substring(5, 7)) - 1;
-        const dy = earlierDraft.sentAt.substring(0, 4);
-        const cm = parseInt(month.substring(5, 7)) - 1;
-        const cy = month.substring(0, 4);
-        toastError(
-          `Há um rascunho de ${MONTH_NAMES_PT[dm]}/${dy} (${earlierDraft.healthPlan}) em aberto. ` +
-          `Finalize ou exclua-o antes de selecionar ${MONTH_NAMES_PT[cm]}/${cy}.`
-        );
-        return;
-      }
-    }
     setMonthFilter(month);
     setSelectedAppointmentIds([]);
     setBatchNumber(generateBatchNumber(selectedPlan, month, editingDraftBatch !== null));
@@ -715,6 +691,7 @@ export function useBillingData() {
     getNeuropsicoStatus,
     getAppPrice,
     getEligibleAppointments,
+    getPlansWithEarlierDrafts,
     calculateTotalSelectedAmount,
     toggleAppointmentSelection,
 

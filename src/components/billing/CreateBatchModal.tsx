@@ -45,6 +45,8 @@ interface Props {
   // Rascunho
   editingDraftBatch?: BillingBatch | null;
   includePrevMonth: boolean;
+  /** Planos com rascunho de mês anterior em aberto: chave=plan, valor=label do mês (ex: "Abril/2026") */
+  blockedPlans?: Map<HealthPlan, string>;
   getNeuropsicoStatus: (app: Appointment) => NeuropsicoStatus;
   getAppPrice: (app: Appointment) => number;
   onClose: () => void;
@@ -96,6 +98,7 @@ export const CreateBatchModal: React.FC<Props> = ({
   totalSelectedAmount,
   editingDraftBatch,
   includePrevMonth,
+  blockedPlans,
   getNeuropsicoStatus,
   getAppPrice,
   onClose,
@@ -373,9 +376,14 @@ export const CreateBatchModal: React.FC<Props> = ({
               disabled={isDraftMode}
               className="w-full rounded-xl border border-zinc-200 bg-zinc-50 text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-priori-navy/30 focus:border-priori-navy disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              {Object.values(HealthPlan).map(plan => (
-                <option key={plan} value={plan}>{plan}</option>
-              ))}
+              {Object.values(HealthPlan).map(plan => {
+                const blockLabel = !isDraftMode ? blockedPlans?.get(plan) : undefined;
+                return (
+                  <option key={plan} value={plan} disabled={!!blockLabel}>
+                    {plan}{blockLabel ? ` — ⚠️ rascunho de ${blockLabel} pendente` : ''}
+                  </option>
+                );
+              })}
             </select>
           </div>
 

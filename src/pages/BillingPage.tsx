@@ -75,6 +75,7 @@ export const BillingPage = () => {
         totalSelectedAmount={billing.calculateTotalSelectedAmount()}
         editingDraftBatch={billing.editingDraftBatch}
         includePrevMonth={billing.includePrevMonth}
+        blockedPlans={billing.getPlansWithEarlierDrafts(billing.monthFilter)}
         getNeuropsicoStatus={billing.getNeuropsicoStatus}
         getAppPrice={billing.getAppPrice}
         onClose={billing.closeCreateModal}
