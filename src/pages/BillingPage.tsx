@@ -94,6 +94,8 @@ export const BillingPage = () => {
         onIgnoreAppointment={billing.handleIgnoreAppointment}
         onToggleNeuropsico={billing.toggleNeuropsicoDecision}
         onIncludePrevMonthChange={billing.setIncludePrevMonth}
+        includeNextMonth={billing.includeNextMonth}
+        onIncludeNextMonthChange={billing.setIncludeNextMonth}
         onSaveAsDraft={billing.handleSaveAsDraft}
         onQuickAddToDraft={billing.handleQuickAddToDraft}
         onSubmit={billing.handleCreateBatch}

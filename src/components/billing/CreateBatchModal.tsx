@@ -58,6 +58,8 @@ interface Props {
   onIgnoreAppointment: (id: string, e: React.MouseEvent) => void;
   onToggleNeuropsico: (id: string, value: boolean) => void;
   onIncludePrevMonthChange: (value: boolean) => void;
+  includeNextMonth: boolean;
+  onIncludeNextMonthChange: (value: boolean) => void;
   /** Salvar como rascunho sem passar pela etapa de confirmação */
   onSaveAsDraft: () => void;
   /** Adicionar UM atendimento rapidamente ao rascunho (botão por linha) */
@@ -107,6 +109,8 @@ export const CreateBatchModal: React.FC<Props> = ({
   onIgnoreAppointment,
   onToggleNeuropsico,
   onIncludePrevMonthChange,
+  includeNextMonth,
+  onIncludeNextMonthChange,
   onSaveAsDraft,
   onQuickAddToDraft,
   onSubmit,
@@ -129,6 +133,14 @@ export const CreateBatchModal: React.FC<Props> = ({
     if (!monthFilter) return '';
     const [y, m] = monthFilter.split('-').map(Number);
     const d = new Date(y, m - 2, 1);
+    return `${MONTH_NAMES[d.getMonth()]}/${d.getFullYear()}`;
+  }, [monthFilter]);
+
+  // Mês seguinte (para exibição no toggle)
+  const nextMonthLabel = useMemo(() => {
+    if (!monthFilter) return '';
+    const [y, m] = monthFilter.split('-').map(Number);
+    const d = new Date(y, m, 1);
     return `${MONTH_NAMES[d.getMonth()]}/${d.getFullYear()}`;
   }, [monthFilter]);
 
@@ -405,24 +417,46 @@ export const CreateBatchModal: React.FC<Props> = ({
                 {includePrevMonth && prevMonthLabel && (
                   <span className="ml-1 text-amber-600">+ {prevMonthLabel}</span>
                 )}
+                {includeNextMonth && nextMonthLabel && (
+                  <span className="ml-1 text-blue-600">+ {nextMonthLabel}</span>
+                )}
               </p>
-              <label className="flex items-center gap-1.5 cursor-pointer group">
-                <input
-                  type="checkbox"
-                  checked={includePrevMonth}
-                  onChange={(e) => onIncludePrevMonthChange(e.target.checked)}
-                  className="rounded border-zinc-300 text-amber-600 focus:ring-amber-500"
-                />
-                <span className="text-xs text-zinc-500 group-hover:text-amber-700 font-medium">
-                  Incluir mês anterior
-                </span>
-              </label>
+              <div className="flex items-center gap-3">
+                <label className="flex items-center gap-1.5 cursor-pointer group">
+                  <input
+                    type="checkbox"
+                    checked={includePrevMonth}
+                    onChange={(e) => onIncludePrevMonthChange(e.target.checked)}
+                    className="rounded border-zinc-300 text-amber-600 focus:ring-amber-500"
+                  />
+                  <span className="text-xs text-zinc-500 group-hover:text-amber-700 font-medium">
+                    Incluir mês anterior
+                  </span>
+                </label>
+                <label className="flex items-center gap-1.5 cursor-pointer group">
+                  <input
+                    type="checkbox"
+                    checked={includeNextMonth}
+                    onChange={(e) => onIncludeNextMonthChange(e.target.checked)}
+                    className="rounded border-zinc-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="text-xs text-zinc-500 group-hover:text-blue-700 font-medium">
+                    Incluir próximo mês
+                  </span>
+                </label>
+              </div>
             </div>
 
             {includePrevMonth && prevMonthLabel && (
               <div className="mt-1.5 ml-1 flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-2 py-1">
                 <Info size={11} className="flex-shrink-0" />
                 Mostrando atendimentos de <strong>{prevMonthLabel}</strong> e <strong>{monthLabel}</strong> — use para incluir atendimentos esquecidos no lote anterior.
+              </div>
+            )}
+            {includeNextMonth && nextMonthLabel && (
+              <div className="mt-1.5 ml-1 flex items-center gap-1.5 text-xs text-blue-700 bg-blue-50 border border-blue-100 rounded-lg px-2 py-1">
+                <Info size={11} className="flex-shrink-0" />
+                Mostrando atendimentos de <strong>{monthLabel}</strong> e <strong>{nextMonthLabel}</strong> — use para antecipar atendimentos do próximo mês neste lote.
               </div>
             )}
           </div>
@@ -526,7 +560,7 @@ export const CreateBatchModal: React.FC<Props> = ({
                         editingDraftBatch!.appointmentIds.includes(app.id);
                       // Indica se é de mês anterior (label informativo)
                       const appMonth = app.date.substring(0, 7);
-                      const isFromPrevMonth = includePrevMonth && appMonth !== monthFilter;
+                      const isFromPrevMonth = (includePrevMonth || includeNextMonth) && appMonth !== monthFilter;
 
                       return (
                         <div key={app.id} className="flex flex-col last:border-0">

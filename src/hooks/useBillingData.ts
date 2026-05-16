@@ -15,6 +15,11 @@ import {
 import { format, differenceInMonths, differenceInDays } from 'date-fns';
 import { toastSuccess, toastError } from '../lib/toast';
 
+const MONTH_NAMES_PT = [
+  'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+  'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro',
+];
+
 export interface AppointmentPaymentStatus {
   status: 'paid' | 'denied';
   reason?: string;
@@ -39,6 +44,7 @@ export function useBillingData() {
   const [patientFilter, setPatientFilter] = useState('');
   const [monthFilter, setMonthFilter] = useState('');
   const [includePrevMonth, setIncludePrevMonth] = useState(false);
+  const [includeNextMonth, setIncludeNextMonth] = useState(false);
 
   // Details Modal state
   const [selectedBatch, setSelectedBatch] = useState<BillingBatch | null>(null);
@@ -146,6 +152,7 @@ export function useBillingData() {
   /**
    * Retorna os meses elegíveis para filtro.
    * Se includePrevMonth = true, inclui também o mês anterior.
+   * Se includeNextMonth = true, inclui também o mês seguinte.
    */
   const getMonthsToInclude = (): string[] => {
     if (!monthFilter) return [];
@@ -155,7 +162,25 @@ export function useBillingData() {
       const d = new Date(y, m - 2, 1); // m-2: mês é 1-indexed, -1 pra anterior
       months.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
     }
+    if (includeNextMonth) {
+      const [y, m] = monthFilter.split('-').map(Number);
+      const d = new Date(y, m, 1); // m: mês é 1-indexed, sem -1 = próximo mês
+      months.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+    }
     return months;
+  };
+
+  /**
+   * Verifica se existe rascunho aberto para a mesma operadora
+   * com competência anterior ao mês alvo.
+   */
+  const getEarlierOpenDraftForPlan = (plan: HealthPlan, targetMonth: string): BillingBatch | undefined => {
+    return batches.find(
+      b =>
+        b.status === BillingBatchStatus.DRAFT &&
+        b.healthPlan === plan &&
+        b.sentAt.substring(0, 7) < targetMonth
+    );
   };
 
   /**
@@ -554,13 +579,26 @@ export function useBillingData() {
       setBatchNumber(draftBatch.batchNumber);
       setSelectedAppointmentIds([...draftBatch.appointmentIds]);
     } else {
-      // Modo: Novo lote/rascunho
+      // Modo: Novo lote/rascunho — validar se há rascunho anterior em aberto
+      const earlierDraft = getEarlierOpenDraftForPlan(selectedPlan, month);
+      if (earlierDraft) {
+        const dm = parseInt(earlierDraft.sentAt.substring(5, 7)) - 1;
+        const dy = earlierDraft.sentAt.substring(0, 4);
+        const cm = parseInt(month.substring(5, 7)) - 1;
+        const cy = month.substring(0, 4);
+        toastError(
+          `Há um rascunho de ${MONTH_NAMES_PT[dm]}/${dy} (${earlierDraft.healthPlan}) em aberto. ` +
+          `Finalize ou exclua-o antes de criar um lote para ${MONTH_NAMES_PT[cm]}/${cy}.`
+        );
+        return;
+      }
       setEditingDraftBatch(null);
       setMonthFilter(month);
       setBatchNumber(generateBatchNumber(selectedPlan, month));
       setSelectedAppointmentIds([]);
     }
     setIncludePrevMonth(false);
+    setIncludeNextMonth(false);
     setPatientFilter('');
     setIsCreateModalOpen(true);
   };
@@ -571,10 +609,22 @@ export function useBillingData() {
     setMonthFilter('');
     setEditingDraftBatch(null);
     setIncludePrevMonth(false);
+    setIncludeNextMonth(false);
     setSelectedAppointmentIds([]);
   };
 
   const handlePlanChange = (plan: HealthPlan) => {
+    if (!editingDraftBatch) {
+      const earlierDraft = getEarlierOpenDraftForPlan(plan, monthFilter);
+      if (earlierDraft) {
+        const dm = parseInt(earlierDraft.sentAt.substring(5, 7)) - 1;
+        const dy = earlierDraft.sentAt.substring(0, 4);
+        toastError(
+          `Há um rascunho de ${MONTH_NAMES_PT[dm]}/${dy} (${earlierDraft.healthPlan}) em aberto para esta operadora. Finalize ou exclua-o antes.`
+        );
+        return;
+      }
+    }
     setSelectedPlan(plan);
     setSelectedAppointmentIds([]);
     setPatientFilter('');
@@ -582,6 +632,20 @@ export function useBillingData() {
   };
 
   const handleMonthFilterChange = (month: string) => {
+    if (!editingDraftBatch) {
+      const earlierDraft = getEarlierOpenDraftForPlan(selectedPlan, month);
+      if (earlierDraft) {
+        const dm = parseInt(earlierDraft.sentAt.substring(5, 7)) - 1;
+        const dy = earlierDraft.sentAt.substring(0, 4);
+        const cm = parseInt(month.substring(5, 7)) - 1;
+        const cy = month.substring(0, 4);
+        toastError(
+          `Há um rascunho de ${MONTH_NAMES_PT[dm]}/${dy} (${earlierDraft.healthPlan}) em aberto. ` +
+          `Finalize ou exclua-o antes de selecionar ${MONTH_NAMES_PT[cm]}/${cy}.`
+        );
+        return;
+      }
+    }
     setMonthFilter(month);
     setSelectedAppointmentIds([]);
     setBatchNumber(generateBatchNumber(selectedPlan, month, editingDraftBatch !== null));
@@ -633,6 +697,8 @@ export function useBillingData() {
     setMonthFilter,
     includePrevMonth,
     setIncludePrevMonth,
+    includeNextMonth,
+    setIncludeNextMonth,
 
     // Details Modal
     selectedBatch,
