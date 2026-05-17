@@ -45,14 +45,34 @@ export const PendingConfirmationsPage = () => {
   const loadData = async () => {
     setIsLoading(true);
     try {
+      // Calcula o range de datas baseado no mês selecionado,
+      // evitando o limite de 30 dias do getAppointments() genérico.
+      let startDate: string;
+      let endDate: string;
+
+      if (monthFilter === 'all') {
+        // "Todos os meses": busca os últimos 12 meses completos
+        const today = new Date();
+        const past = new Date(today.getFullYear() - 1, today.getMonth(), 1);
+        startDate = past.toISOString().split('T')[0];
+        endDate = today.toISOString().split('T')[0];
+      } else {
+        const [year, month] = monthFilter.split('-').map(Number);
+        startDate = `${monthFilter}-01`;
+        const lastDay = new Date(year, month, 0).getDate();
+        endDate = `${monthFilter}-${String(lastDay).padStart(2, '0')}`;
+      }
+
       const [apps, psys, custs] = await Promise.all([
-        api.getAppointments(),
+        api.getAppointmentsByRange(startDate, endDate),
         api.getPsychologists(),
         api.getCustomers()
       ]);
 
       setAppointments(apps);
-      setPsychologists(psys.filter(p => p.active));
+      // Mantém TODOS os psicólogos (inclusive inativos) para não perder
+      // atendimentos de psicólogos que foram desativados recentemente.
+      setPsychologists(psys);
       setCustomers(custs);
     } catch (error) {
       console.error('Erro ao carregar validações:', error);
@@ -61,9 +81,10 @@ export const PendingConfirmationsPage = () => {
     }
   };
 
+  // Recarrega os dados sempre que o mês selecionado mudar
   useEffect(() => {
     loadData();
-  }, []);
+  }, [monthFilter]);
 
   const handleConfirmToggle = async (app: Appointment) => {
     try {
@@ -166,7 +187,11 @@ export const PendingConfirmationsPage = () => {
       // Filtro de status
       const isCanceled = a.status === AppointmentStatus.CANCELED;
       const isConfirmed = a.confirmedPsychologist;
-      const isPending = a.status === AppointmentStatus.ACTIVE && !a.confirmedPsychologist;
+      // RELEASED também precisa de validação se ainda não confirmado pelo psicólogo
+      const isPending = (
+        a.status === AppointmentStatus.ACTIVE ||
+        a.status === AppointmentStatus.RELEASED
+      ) && !a.confirmedPsychologist;
 
       if (statusFilter === 'pending' && !isPending) return false;
       if (statusFilter === 'confirmed' && !isConfirmed) return false;
@@ -192,27 +217,22 @@ export const PendingConfirmationsPage = () => {
 
   const totalFiltered = groupedAppointments.reduce((acc, curr) => acc + curr.apps.length, 0);
 
-  // Geração das opções de meses baseada nos agendamentos existentes
+  // Gera os últimos 12 meses de forma estática — não depende dos dados carregados,
+  // garantindo que meses mais antigos sempre apareçam como opção no dropdown.
   const monthOptions = useMemo(() => {
-    const months = new Set<string>();
-    appointments.forEach(app => {
-      if (app.date) {
-        months.add(app.date.substring(0, 7));
-      }
-    });
-
-    return Array.from(months)
-      .sort((a, b) => b.localeCompare(a)) // Mais recentes primeiro
-      .map(value => {
-        const [year, month] = value.split('-');
-        const d = new Date(parseInt(year), parseInt(month) - 1, 1);
-        const label = d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
-        return {
-          value,
-          label: label.charAt(0).toUpperCase() + label.slice(1)
-        };
+    const options: { value: string; label: string }[] = [];
+    const today = new Date();
+    for (let i = 0; i < 12; i++) {
+      const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+      const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const label = d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+      options.push({
+        value,
+        label: label.charAt(0).toUpperCase() + label.slice(1)
       });
-  }, [appointments]);
+    }
+    return options;
+  }, []);
 
   return (
     <div className="space-y-6 pb-20">
