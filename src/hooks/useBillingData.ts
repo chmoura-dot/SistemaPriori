@@ -548,12 +548,14 @@ export function useBillingData() {
   const handleConfirmAppointment = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     try {
-      await api.updateAppointment(id, { confirmedPsychologist: true, status: AppointmentStatus.ACTIVE });
+      // Apenas confirma o psicólogo — não altera status para evitar trigger de sobreposição
+      await api.updateAppointment(id, { confirmedPsychologist: true });
       setAppointments(prev =>
-        prev.map(a => a.id === id ? { ...a, confirmedPsychologist: true, status: AppointmentStatus.ACTIVE } : a)
+        prev.map(a => a.id === id ? { ...a, confirmedPsychologist: true } : a)
       );
     } catch (error) {
       console.error('Error confirming appointment:', error);
+      toastError('Não foi possível confirmar o atendimento. Tente novamente.');
     }
   };
 
