@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Plus, 
   Edit2, 
@@ -14,12 +14,10 @@ import {
   Loader2
 } from 'lucide-react';
 import { api } from '../services/api';
-import * as pdfjsLib from 'pdfjs-dist';
 import { supabase } from '../lib/supabase';
 import { toastError, toastSuccess } from '../lib/toast';
-
-// Configuração do worker do PDF.js
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
+// pdfjs-dist é importado dinamicamente dentro de handlePdfUpload
+// para não inflar o bundle inicial (~1.5MB carregado só quando necessário)
 import { Expense, ExpenseCategory } from '../services/types';
 import { Button } from '../components/Button';
 import { Modal } from '../components/Modal';
@@ -245,6 +243,10 @@ export const ExpensesPage = () => {
     let duplicateCount = 0;
 
     try {
+      // ── Dynamic import do PDF.js (só carrega quando o usuário usa esta função) ──
+      const pdfjsLib = await import('pdfjs-dist');
+      pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
+
       // Carrega as despesas atuais para checar duplicidade
       const currentExpenses = await api.getExpenses();
 
@@ -380,7 +382,20 @@ export const ExpensesPage = () => {
     }
   };
 
-  const totalExpenses = expenses.reduce((acc, exp) => acc + exp.amount, 0);
+  // ── Memoização de cálculos derivados ──────────────────────────────────────
+  const totalExpenses = useMemo(
+    () => expenses.reduce((acc, exp) => acc + exp.amount, 0),
+    [expenses]
+  );
+
+  // ── Paginação client-side ─────────────────────────────────────────────────
+  const ITEMS_PER_PAGE = 40;
+  const [currentPage, setCurrentPage] = useState(1);
+  const totalPages = Math.ceil(expenses.length / ITEMS_PER_PAGE);
+  const paginatedExpenses = useMemo(
+    () => expenses.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE),
+    [expenses, currentPage]
+  );
 
   return (
     <div className="space-y-6">
@@ -478,7 +493,7 @@ export const ExpensesPage = () => {
                   </td>
                 </tr>
               ) : (
-                expenses.map((expense) => (
+                paginatedExpenses.map((expense) => (
                   <tr key={expense.id} className="hover:bg-zinc-50 transition-colors group">
                     <td className="px-6 py-4">
                       <p className="text-sm font-bold text-priori-navy">
@@ -549,6 +564,32 @@ export const ExpensesPage = () => {
           </table>
         </div>
       </div>
+
+      {/* Paginação */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between px-2">
+          <span className="text-xs text-zinc-400">
+            Mostrando {(currentPage - 1) * ITEMS_PER_PAGE + 1}–{Math.min(currentPage * ITEMS_PER_PAGE, expenses.length)} de {expenses.length} despesas
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="px-3 py-1.5 text-xs font-medium rounded-lg border border-zinc-200 text-zinc-600 hover:bg-zinc-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              ← Anterior
+            </button>
+            <span className="text-xs text-zinc-500 font-medium">{currentPage} / {totalPages}</span>
+            <button
+              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              className="px-3 py-1.5 text-xs font-medium rounded-lg border border-zinc-200 text-zinc-600 hover:bg-zinc-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              Próxima →
+            </button>
+          </div>
+        </div>
+      )}
 
       <Modal
         isOpen={isModalOpen}

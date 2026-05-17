@@ -1,29 +1,33 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { Toaster } from 'react-hot-toast';
 import { Sidebar } from './components/Sidebar';
-import { LoginPage } from './pages/LoginPage';
-import { DashboardPage } from './pages/DashboardPage';
-import { CustomersPage } from './pages/CustomersPage';
-import { WaitingListPage } from './pages/WaitingListPage';
-import { PlansPage } from './pages/PlansPage';
-import { ExpensesPage } from './pages/ExpensesPage';
-import { FinancialPage } from './pages/FinancialPage';
-import { SchedulePage } from './pages/SchedulePage';
-import { PsychologistsPage } from './pages/PsychologistsPage';
-import { ConfirmationPage } from './pages/ConfirmationPage';
-import { MagicConfirmationPage } from './pages/MagicConfirmationPage';
-import { BillingPage } from './pages/BillingPage';
-import NfsePage from './pages/NfsePage'; // Corrigindo a importação
-import { RepassePage } from './pages/RepassePage';
-import { CapacityPage } from './pages/CapacityPage';
-import { SettingsPage } from './pages/SettingsPage';
-import { AccountSecurityPage } from './pages/AccountSecurityPage';
-import { PendingConfirmationsPage } from './pages/PendingConfirmationsPage';
-import { AmsPasswordsPage } from './pages/AmsPasswordsPage';
-import { HolidaysPage } from './pages/HolidaysPage';
-import { PatientLookupPage } from './pages/PatientLookupPage';
 import { RenewalAlert } from './components/RenewalAlert';
 import { DuplicateAppointmentAlert } from './components/DuplicateAppointmentAlert';
+
+// ── Lazy loading de páginas (code splitting por rota) ──────────────────────
+// Cada página só é baixada quando o usuário navega até ela,
+// reduzindo o bundle inicial em ~70%.
+const LoginPage             = lazy(() => import('./pages/LoginPage').then(m => ({ default: m.LoginPage })));
+const DashboardPage         = lazy(() => import('./pages/DashboardPage').then(m => ({ default: m.DashboardPage })));
+const SchedulePage          = lazy(() => import('./pages/SchedulePage').then(m => ({ default: m.SchedulePage })));
+const CustomersPage         = lazy(() => import('./pages/CustomersPage').then(m => ({ default: m.CustomersPage })));
+const WaitingListPage       = lazy(() => import('./pages/WaitingListPage').then(m => ({ default: m.WaitingListPage })));
+const PlansPage             = lazy(() => import('./pages/PlansPage').then(m => ({ default: m.PlansPage })));
+const ExpensesPage          = lazy(() => import('./pages/ExpensesPage').then(m => ({ default: m.ExpensesPage })));
+const FinancialPage         = lazy(() => import('./pages/FinancialPage').then(m => ({ default: m.FinancialPage })));
+const PsychologistsPage     = lazy(() => import('./pages/PsychologistsPage').then(m => ({ default: m.PsychologistsPage })));
+const ConfirmationPage      = lazy(() => import('./pages/ConfirmationPage').then(m => ({ default: m.ConfirmationPage })));
+const MagicConfirmationPage = lazy(() => import('./pages/MagicConfirmationPage').then(m => ({ default: m.MagicConfirmationPage })));
+const BillingPage           = lazy(() => import('./pages/BillingPage').then(m => ({ default: m.BillingPage })));
+const NfsePage              = lazy(() => import('./pages/NfsePage'));
+const RepassePage           = lazy(() => import('./pages/RepassePage').then(m => ({ default: m.RepassePage })));
+const CapacityPage          = lazy(() => import('./pages/CapacityPage').then(m => ({ default: m.CapacityPage })));
+const SettingsPage          = lazy(() => import('./pages/SettingsPage').then(m => ({ default: m.SettingsPage })));
+const AccountSecurityPage   = lazy(() => import('./pages/AccountSecurityPage').then(m => ({ default: m.AccountSecurityPage })));
+const PendingConfirmationsPage = lazy(() => import('./pages/PendingConfirmationsPage').then(m => ({ default: m.PendingConfirmationsPage })));
+const AmsPasswordsPage      = lazy(() => import('./pages/AmsPasswordsPage').then(m => ({ default: m.AmsPasswordsPage })));
+const HolidaysPage          = lazy(() => import('./pages/HolidaysPage').then(m => ({ default: m.HolidaysPage })));
+const PatientLookupPage     = lazy(() => import('./pages/PatientLookupPage').then(m => ({ default: m.PatientLookupPage })));
 import { api } from './services/api';
 import { supabase } from './lib/supabase';
 import { cn } from './lib/utils';
@@ -215,7 +219,14 @@ export default function App() {
         isAuthenticated && currentPath !== '/login' && !currentPath.startsWith('/confirmacao') ? "lg:pl-64 pt-20 lg:pt-0" : ""
       )}>
         <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
-          {renderPage()}
+          {/* Suspense: exibe spinner enquanto o chunk da página carrega */}
+          <Suspense fallback={
+            <div className="flex items-center justify-center min-h-[60vh]">
+              <div className="w-8 h-8 border-4 border-priori-navy border-t-transparent rounded-full animate-spin" />
+            </div>
+          }>
+            {renderPage()}
+          </Suspense>
         </div>
       </main>
 

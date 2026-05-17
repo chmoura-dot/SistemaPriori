@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Plus, Search, MoreVertical, Edit2, Trash2, Mail, Phone, User, UserX, UserCheck, TrendingUp, Check, AlertCircle, FileUp, Download, AlertTriangle } from 'lucide-react';
-import * as XLSX from 'xlsx';
+// xlsx é importado dinamicamente nos handlers (evita ~800KB no bundle inicial)
 import { api } from '../services/api';
 import { Customer, CustomerStatus, HealthPlan, Psychologist, UserRole, InactivationReason } from '../services/types';
 import { Button } from '../components/Button';
@@ -183,7 +183,8 @@ export const CustomersPage = () => {
     setIsModalOpen(true);
   };
 
-  const downloadTemplate = () => {
+  const downloadTemplate = async () => {
+    const XLSX = await import('xlsx');
     const ws = XLSX.utils.json_to_sheet([
       {
         'Nome': 'Nome do Paciente',
@@ -199,6 +200,7 @@ export const CustomersPage = () => {
   };
 
   const handleImportExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const XLSX = await import('xlsx');
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -425,39 +427,67 @@ export const CustomersPage = () => {
     return missing;
   };
 
-  const filteredCustomers = customers.filter(c => {
-    const searchLower = String(searchTerm || '').toLowerCase();
-    const nameMatch = String(c.name || '').toLowerCase().includes(searchLower);
-    const phoneMatch = String(c.phone || '').toLowerCase().includes(searchLower);
-    const planMatch = String(c.healthPlan || '').toLowerCase().includes(searchLower);
-    const matchesSearch = nameMatch || phoneMatch || planMatch;
-    
+  // ── Pré-computa campos incompletos + isInactive30 uma única vez por mudança de customers ──
+  // Evita chamar getIncompleteFields N× dentro do filter, N× dentro do sort e
+  // mais N× para o badge de incompletos → O(N) em vez de O(4N) por interação
+  const customersWithMeta = useMemo(() => {
     const today = new Date();
-    const isInactive30 = c.status === CustomerStatus.ACTIVE && 
-                         c.lastAppointmentDate && 
-                         Math.ceil((today.getTime() - new Date(c.lastAppointmentDate + 'T12:00:00').getTime()) / (1000*60*60*24)) > 30;
+    return customers.map(c => {
+      const daysSinceLastApp = c.lastAppointmentDate
+        ? Math.ceil((today.getTime() - new Date(c.lastAppointmentDate + 'T12:00:00').getTime()) / (1000 * 60 * 60 * 24))
+        : null;
+      return {
+        ...c,
+        _incompleteFields: getIncompleteFields(c),
+        _isInactive30: c.status === CustomerStatus.ACTIVE && daysSinceLastApp !== null && daysSinceLastApp > 30
+      };
+    });
+  }, [customers]);
 
-    const matchesStatus = statusFilter === 'all' || 
-                         (statusFilter === 'active' && c.status === CustomerStatus.ACTIVE) ||
-                         (statusFilter === 'inactive' && c.status === CustomerStatus.INACTIVE) ||
-                         (statusFilter === 'inactive30' && isInactive30);
-    
-    if (showIncompleteOnly) {
-      return matchesSearch && matchesStatus && getIncompleteFields(c).length > 0;
-    }
-    
-    return matchesSearch && matchesStatus;
-  }).sort((a, b) => {
-    const missingA = getIncompleteFields(a).length;
-    const missingB = getIncompleteFields(b).length;
-    
-    if (missingA > 0 && missingB === 0) return -1;
-    if (missingB > 0 && missingA === 0) return 1;
-    
-    return a.name.localeCompare(b.name);
-  });
+  const filteredCustomers = useMemo(() => {
+    const searchLower = String(searchTerm || '').toLowerCase();
+    return customersWithMeta.filter(c => {
+      const nameMatch = String(c.name || '').toLowerCase().includes(searchLower);
+      const phoneMatch = String(c.phone || '').toLowerCase().includes(searchLower);
+      const planMatch = String(c.healthPlan || '').toLowerCase().includes(searchLower);
+      const matchesSearch = nameMatch || phoneMatch || planMatch;
 
-  const activeIncompleteCount = customers.filter(c => c.status === CustomerStatus.ACTIVE && getIncompleteFields(c).length > 0).length;
+      const matchesStatus = statusFilter === 'all' ||
+                           (statusFilter === 'active' && c.status === CustomerStatus.ACTIVE) ||
+                           (statusFilter === 'inactive' && c.status === CustomerStatus.INACTIVE) ||
+                           (statusFilter === 'inactive30' && c._isInactive30);
+
+      if (showIncompleteOnly) {
+        return matchesSearch && matchesStatus && c._incompleteFields.length > 0;
+      }
+
+      return matchesSearch && matchesStatus;
+    }).sort((a, b) => {
+      const missingA = a._incompleteFields.length;
+      const missingB = b._incompleteFields.length;
+
+      if (missingA > 0 && missingB === 0) return -1;
+      if (missingB > 0 && missingA === 0) return 1;
+
+      return a.name.localeCompare(b.name);
+    });
+  }, [customersWithMeta, searchTerm, statusFilter, showIncompleteOnly]);
+
+  const activeIncompleteCount = useMemo(
+    () => customersWithMeta.filter(c => c.status === CustomerStatus.ACTIVE && c._incompleteFields.length > 0).length,
+    [customersWithMeta]
+  );
+
+  // ── Paginação client-side ─────────────────────────────────────────────────
+  const CUSTOMERS_PER_PAGE = 50;
+  const [currentPage, setCurrentPage] = useState(1);
+  // Volta para a primeira página sempre que os filtros mudarem
+  useEffect(() => { setCurrentPage(1); }, [searchTerm, statusFilter, showIncompleteOnly]);
+  const totalCustomerPages = Math.ceil(filteredCustomers.length / CUSTOMERS_PER_PAGE);
+  const paginatedCustomers = useMemo(
+    () => filteredCustomers.slice((currentPage - 1) * CUSTOMERS_PER_PAGE, currentPage * CUSTOMERS_PER_PAGE),
+    [filteredCustomers, currentPage]
+  );
 
   const formatDate = (dateStr?: string) => {
     if (!dateStr) return '-';
@@ -632,7 +662,7 @@ export const CustomersPage = () => {
                     <div className="animate-spin rounded-full h-6 w-6 border-2 border-priori-navy border-t-transparent mx-auto" />
                   </td>
                 </tr>
-              ) : filteredCustomers.map((customer) => {
+              ) : paginatedCustomers.map((customer) => {
                 const psy = psychologists.find(p => p.id === customer.psychologistId);
                 const missingFields = getIncompleteFields(customer);
                 return (
@@ -738,6 +768,32 @@ export const CustomersPage = () => {
           </table>
         </div>
       </div>
+
+      {/* Paginação */}
+      {totalCustomerPages > 1 && (
+        <div className="flex items-center justify-between px-2">
+          <span className="text-xs text-zinc-400">
+            Mostrando {(currentPage - 1) * CUSTOMERS_PER_PAGE + 1}–{Math.min(currentPage * CUSTOMERS_PER_PAGE, filteredCustomers.length)} de {filteredCustomers.length} pacientes
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="px-3 py-1.5 text-xs font-medium rounded-lg border border-zinc-200 text-zinc-600 hover:bg-zinc-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              ← Anterior
+            </button>
+            <span className="text-xs text-zinc-500 font-medium">{currentPage} / {totalCustomerPages}</span>
+            <button
+              onClick={() => setCurrentPage(p => Math.min(totalCustomerPages, p + 1))}
+              disabled={currentPage === totalCustomerPages}
+              className="px-3 py-1.5 text-xs font-medium rounded-lg border border-zinc-200 text-zinc-600 hover:bg-zinc-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              Próxima →
+            </button>
+          </div>
+        </div>
+      )}
 
       <Modal
         isOpen={isModalOpen}

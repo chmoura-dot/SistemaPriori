@@ -623,19 +623,26 @@ export const supabaseService: AppService = {
         });
       }
 
-      // Pré-validação de conflitos para todas as datas a serem inseridas
+      // Pré-validação de conflitos — 1 query para todas as datas (evita N+1 queries)
+      const allDates = appointmentsToInsert.map(a => a.date);
+      const psychId = appointmentsToInsert[0]?.psychologist_id;
+      const { data: existingApps } = await supabase
+        .from('appointments')
+        .select('date, start_time, end_time')
+        .eq('psychologist_id', psychId)
+        .in('date', allDates)
+        .neq('status', 'canceled');
+
       for (const appToInsert of appointmentsToInsert) {
-        const { data: conflicts } = await supabase
-          .from('appointments')
-          .select('id')
-          .eq('psychologist_id', appToInsert.psychologist_id)
-          .eq('date', appToInsert.date)
-          .neq('status', 'canceled')
-          .not('id', 'eq', '00000000-0000-0000-0000-000000000000')
-          .or(`and(start_time.gte.${appToInsert.start_time},start_time.lt.${appToInsert.end_time}),and(end_time.gt.${appToInsert.start_time},end_time.lte.${appToInsert.end_time}),and(start_time.lte.${appToInsert.start_time},end_time.gte.${appToInsert.end_time})`)
-          .limit(1);
-          
-        if (conflicts && conflicts.length > 0) {
+        const hasConflict = (existingApps || []).some(c =>
+          c.date === appToInsert.date &&
+          (
+            (c.start_time >= appToInsert.start_time && c.start_time < appToInsert.end_time) ||
+            (c.end_time > appToInsert.start_time && c.end_time <= appToInsert.end_time) ||
+            (c.start_time <= appToInsert.start_time && c.end_time >= appToInsert.end_time)
+          )
+        );
+        if (hasConflict) {
           throw new Error(`O psicólogo selecionado já possui um agendamento na data ${appToInsert.date} neste horário.`);
         }
       }
@@ -833,10 +840,19 @@ export const supabaseService: AppService = {
 
     const today = new Date().toISOString().split('T')[0];
 
-    // 3. Process metrics in memory
+    // 3. Indexa appointments por customer_id num Map — O(M) uma vez,
+    //    evitando O(N×M) com .filter() dentro do .map()
+    const appsByCustomer = new Map<string, { customer_id: string; date: string; status: string }[]>();
+    for (const app of (appData || [])) {
+      const list = appsByCustomer.get(app.customer_id);
+      if (list) list.push(app);
+      else appsByCustomer.set(app.customer_id, [app]);
+    }
+
     return customersData.map(row => {
       const customer = toCustomer(row);
-      const customerApps = (appData || []).filter(a => a.customer_id === customer.id);
+      // Lookup O(1) em vez de O(M) por cliente
+      const customerApps = appsByCustomer.get(customer.id) ?? [];
 
       // Quantidade de atendimentos realizados (past active)
       const pastApps = customerApps.filter(a => a.date && a.date < today).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
