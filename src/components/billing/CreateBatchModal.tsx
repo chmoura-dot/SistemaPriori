@@ -6,7 +6,7 @@ import {
 import { format } from 'date-fns';
 import {
   HealthPlan, Appointment, Customer, Psychologist, Plan,
-  AppointmentType, BillingBatch
+  AppointmentType, AppointmentStatus, BillingBatch
 } from '../../services/types';
 import { Modal } from '../Modal';
 import { Button } from '../Button';
@@ -560,6 +560,9 @@ export const CreateBatchModal: React.FC<Props> = ({
                       const neuropsicoStatus = getNeuropsicoStatus(app);
                       const basePrice = getAppPrice(app);
                       const isConfirmed = app.confirmedPsychologist === true;
+                      const isCanceledExempt =
+                        app.status === AppointmentStatus.CANCELED &&
+                        app.cancellationBilling === 'none';
                       const tussCode = getTussCode(app);
                       const duplic = isDuplicate(app);
                       // Indica se este atendimento já estava no rascunho antes de abrir o modal
@@ -577,14 +580,16 @@ export const CreateBatchModal: React.FC<Props> = ({
                               'flex items-center gap-2 px-4 py-2.5 hover:bg-zinc-50 transition-colors',
                               selectedAppointmentIds.includes(app.id) && 'bg-priori-navy/5',
                               isAlreadyInDraft && !selectedAppointmentIds.includes(app.id) && 'bg-zinc-50/80',
-                              isConfirmed ? 'cursor-pointer' : 'opacity-70 cursor-not-allowed bg-zinc-50/50'
+                              isCanceledExempt
+                                ? 'opacity-60 cursor-not-allowed bg-red-50/30'
+                                : isConfirmed ? 'cursor-pointer' : 'opacity-70 cursor-not-allowed bg-zinc-50/50'
                             )}
-                            onClick={() => isConfirmed && onToggleSelection(app.id)}
+                            onClick={() => !isCanceledExempt && isConfirmed && onToggleSelection(app.id)}
                           >
                             <input
                               type="checkbox"
                               checked={selectedAppointmentIds.includes(app.id)}
-                              disabled={!isConfirmed}
+                              disabled={!isConfirmed || isCanceledExempt}
                               onChange={() => {}}
                               className="rounded border-zinc-300 text-priori-navy focus:ring-priori-navy disabled:opacity-50 flex-shrink-0"
                             />
@@ -640,7 +645,12 @@ export const CreateBatchModal: React.FC<Props> = ({
                                   ⚠️ Neuropsico
                                 </span>
                               )}
-                              {!isConfirmed && (
+                              {isCanceledExempt && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-50 text-red-500 border border-red-200 font-semibold">
+                                  Cancelado — Isento
+                                </span>
+                              )}
+                              {!isCanceledExempt && !isConfirmed && (
                                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-600 border border-amber-200">
                                   Ag. confirmação
                                 </span>
@@ -649,7 +659,7 @@ export const CreateBatchModal: React.FC<Props> = ({
                             <div className="text-sm font-semibold text-priori-navy w-20 text-right flex-shrink-0">
                               {formatCurrency(basePrice)}
                             </div>
-                            {!isConfirmed && (
+                            {!isCanceledExempt && !isConfirmed && (
                               <Button
                                 size="sm"
                                 onClick={(e) => onConfirmAppointment(app.id, e)}
@@ -659,7 +669,7 @@ export const CreateBatchModal: React.FC<Props> = ({
                               </Button>
                             )}
                             {/* Botão rápido: adicionar ao rascunho (só para atendimentos confirmados e não editando draft) */}
-                            {isConfirmed && !isDraftMode && (
+                            {!isCanceledExempt && isConfirmed && !isDraftMode && (
                               <button
                                 onClick={(e) => onQuickAddToDraft(app.id, e)}
                                 className="p-1 text-zinc-300 hover:text-amber-500 hover:bg-amber-50 rounded-lg transition-all flex-shrink-0"
@@ -668,13 +678,15 @@ export const CreateBatchModal: React.FC<Props> = ({
                                 <BookmarkPlus size={14} />
                               </button>
                             )}
-                            <button
-                              onClick={(e) => onIgnoreAppointment(app.id, e)}
-                              className="p-1 text-zinc-300 hover:text-red-400 hover:bg-red-50 rounded-lg transition-all flex-shrink-0"
-                              title="Ignorar para faturamento"
-                            >
-                              <Ban size={14} />
-                            </button>
+                            {!isCanceledExempt && (
+                              <button
+                                onClick={(e) => onIgnoreAppointment(app.id, e)}
+                                className="p-1 text-zinc-300 hover:text-red-400 hover:bg-red-50 rounded-lg transition-all flex-shrink-0"
+                                title="Ignorar para faturamento"
+                              >
+                                <Ban size={14} />
+                              </button>
+                            )}
                           </div>
 
                           {neuropsicoStatus.type === 'ask' && (

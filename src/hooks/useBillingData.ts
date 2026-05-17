@@ -108,6 +108,8 @@ export function useBillingData() {
   };
 
   const getAppPrice = (app: Appointment): number => {
+    // Atendimento cancelado pelo psicólogo e classificado como isento → R$ 0
+    if (app.status === AppointmentStatus.CANCELED && app.cancellationBilling === 'none') return 0;
     const status = getNeuropsicoStatus(app);
     if (status.type === 'blocked') return 0;
     if (status.type === 'ask' && !neuropsicoDecisions[app.id]) return 0;
@@ -222,6 +224,9 @@ export function useBillingData() {
   };
 
   const toggleAppointmentSelection = (id: string) => {
+    // Impede seleção de atendimentos cancelados e isentos
+    const app = appointments.find(a => a.id === id);
+    if (app?.status === AppointmentStatus.CANCELED && app?.cancellationBilling === 'none') return;
     setSelectedAppointmentIds(prev =>
       prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
     );
