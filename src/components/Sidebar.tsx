@@ -28,7 +28,7 @@ import { UserRole } from '../services/types';
 
 const menuItems = [
   { icon: FileText, label: 'NFS-e', path: '/nfse' }, // Adicionando item para NFS-e
-  { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard', adminOnly: true },
+  { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
   { icon: CalendarIcon, label: 'Agenda', path: '/agenda' },
   { icon: KeySquare, label: 'Senhas AMS / PAE', path: '/senhas-ams' },
   { icon: ClipboardList, label: 'Validações', path: '/pendentes' },
@@ -38,8 +38,8 @@ const menuItems = [
   { icon: BarChart3, label: 'Financeiro', path: '/financeiro' },
   { icon: FileText, label: 'Faturamento', path: '/faturamento' },
   { icon: ArrowRightLeft, label: 'Repasse', path: '/repasse' },
-  { icon: BarChart3, label: 'Capacidade', path: '/capacidade', adminOnly: true },
-  { icon: TrendingDown, label: 'Despesas', path: '/despesas', adminOnly: true },
+  { icon: BarChart3, label: 'Capacidade', path: '/capacidade' },
+  { icon: TrendingDown, label: 'Despesas', path: '/despesas' },
   { icon: Users, label: 'Psicólogos', path: '/psicologos' },
   { icon: ListOrdered, label: 'Fila de Espera', path: '/fila-espera' },
   { icon: CalendarOff, label: 'Feriados', path: '/feriados' },

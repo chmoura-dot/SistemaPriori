@@ -162,25 +162,25 @@ export default function App() {
     switch (currentPath) {
       case '/':
       case '/dashboard':
-        return isAdmin ? <DashboardPage onNavigate={navigate} /> : <SchedulePage />;
+        return <DashboardPage onNavigate={navigate} />;
       case '/agenda':
         return <SchedulePage />;
       case '/capacidade':
-        return isAdmin ? <CapacityPage /> : <SchedulePage />;
+        return <CapacityPage />;
       case '/clientes':
         return <CustomersPage />;
       case '/planos':
         return <PlansPage />;
       case '/financeiro':
-        return isAdmin ? <FinancialPage key="financeiro-page" /> : <SchedulePage />;
+        return <FinancialPage key="financeiro-page" />;
       case '/faturamento':
-        return isAdmin ? <BillingPage /> : <SchedulePage />;
+        return <BillingPage />;
       case '/nfse':
-        return isAdmin ? <NfsePage /> : <SchedulePage />;
+        return <NfsePage />;
       case '/repasse':
-        return isAdmin ? <RepassePage /> : <SchedulePage />;
+        return <RepassePage />;
       case '/despesas':
-        return isAdmin ? <ExpensesPage /> : <SchedulePage />;
+        return <ExpensesPage />;
       case '/psicologos':
         return <PsychologistsPage />;
       case '/fila-espera':
