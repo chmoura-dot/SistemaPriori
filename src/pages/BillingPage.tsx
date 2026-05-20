@@ -97,6 +97,7 @@ export const BillingPage = () => {
         onIncludePrevMonthChange={billing.setIncludePrevMonth}
         includeNextMonth={billing.includeNextMonth}
         onIncludeNextMonthChange={billing.setIncludeNextMonth}
+        autoSaveStatus={billing.autoSaveStatus}
         onSaveAsDraft={billing.handleSaveAsDraft}
         onQuickAddToDraft={billing.handleQuickAddToDraft}
         onSubmit={billing.handleCreateBatch}
