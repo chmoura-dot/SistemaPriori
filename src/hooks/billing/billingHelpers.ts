@@ -106,9 +106,9 @@ export function createBillingHelpers({
       const sessionIdx = getAmsNeuropsicoSessionIndex(app);
       if (sessionIdx >= 3) return 0; // 4ª sessão em diante: sem cobrança
       if (sessionIdx === 1 || sessionIdx === 2) {
-        // 2ª e 3ª sessão: cobra como psicoterapia
-        const psicoProc = plan?.procedures?.find(p => p.type !== AppointmentType.NEUROPSICOLOGICA);
-        return app.customPrice ?? customer?.customPrice ?? psicoProc?.price ?? 0;
+        // 2ª e 3ª sessão: cobra com código 95090010
+        const proc95090010 = plan?.procedures?.find(p => p.code === '95090010');
+        return app.customPrice ?? customer?.customPrice ?? proc95090010?.price ?? 0;
       }
       // 1ª sessão (sessionIdx === 0): cobra como avaliação neuropsicológica
       const neuroProc = plan?.procedures?.find(p => p.type === AppointmentType.NEUROPSICOLOGICA);
@@ -136,13 +136,11 @@ export function createBillingHelpers({
     const customer = customers.find(c => c.id === app.customerId);
     const plan     = plans.find(p => p.name.toUpperCase() === (customer?.healthPlan ?? '').toUpperCase());
 
-    // Regra AMS Petrobras: 2ª e 3ª sessão → código de psicoterapia
+    // Regra AMS Petrobras: 2ª e 3ª sessão → código fixo 95090010; 4ª+ sem faturamento
     if (customer?.healthPlan === HealthPlan.AMS_PETROBRAS && app.type === AppointmentType.NEUROPSICOLOGICA) {
       const sessionIdx = getAmsNeuropsicoSessionIndex(app);
-      if (sessionIdx === 1 || sessionIdx === 2) {
-        const psicoProc = plan?.procedures?.find(p => p.type !== AppointmentType.NEUROPSICOLOGICA);
-        if (psicoProc) return psicoProc.code;
-      }
+      if (sessionIdx >= 3) return ''; // 4ª+ sem faturamento
+      if (sessionIdx === 1 || sessionIdx === 2) return '95090010';
     }
 
     return plan?.procedures?.find(p => p.type === app.type)?.code || '';

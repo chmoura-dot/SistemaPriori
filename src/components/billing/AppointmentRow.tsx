@@ -194,7 +194,7 @@ export const AppointmentRow: React.FC<Props> = memo(({
           {/* Badge AMS Petrobras */}
           {isAmsBlocked && (
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-100 text-zinc-500 border border-zinc-200">
-              AMS {amsSessionIndex + 1}ª R$0
+              AMS {amsSessionIndex + 1}ª — Sem cobrança
             </span>
           )}
           {isAmsAutoAltCode && (
@@ -228,8 +228,11 @@ export const AppointmentRow: React.FC<Props> = memo(({
           )}
         </div>
 
-        <div className="text-sm font-semibold text-priori-navy w-20 text-right flex-shrink-0">
-          {formatCurrency(basePrice)}
+        <div className="text-sm font-semibold w-20 text-right flex-shrink-0">
+          {isAmsBlocked
+            ? <span className="text-zinc-400 font-normal text-xs">—</span>
+            : <span className="text-priori-navy">{formatCurrency(basePrice)}</span>
+          }
         </div>
 
         {!isCanceledExempt && !isConfirmed && (
