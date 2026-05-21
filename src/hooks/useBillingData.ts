@@ -102,6 +102,16 @@ export function useBillingData() {
     includePrevMonth, includeNextMonth, selectedAppointmentIds, editingDraftBatch,
   });
 
+  /** Override manual do código TUSS de um atendimento (persiste no banco). */
+  const handleOverrideProcedureCode = async (id: string, newCode: string) => {
+    try {
+      await api.updateAppointment(id, { procedureCode: newCode || null } as any);
+      setAppointments(prev => prev.map(a => a.id === id ? { ...a, procedureCode: newCode || undefined } : a));
+    } catch (err) {
+      console.error('Erro ao atualizar código de procedimento:', err);
+    }
+  };
+
   // ─── Actions geradas a partir do estado atual ─────────────────────────────
   const actions = createBillingActions({
     batches, appointments, customers, psychologists,
@@ -216,12 +226,16 @@ export function useBillingData() {
     batchToPay, appointmentStatuses,
     updateAppointmentPaymentStatus,
     // Helpers
-    getNeuropsicoStatus:         helpers.getNeuropsicoStatus,
-    getAppPrice:                 helpers.getAppPrice,
-    getEligibleAppointments:     helpers.getEligibleAppointments,
-    getPlansWithEarlierDrafts:   helpers.getPlansWithEarlierDrafts,
-    calculateTotalSelectedAmount: helpers.calculateTotalSelectedAmount,
+    getNeuropsicoStatus:              helpers.getNeuropsicoStatus,
+    getAppPrice:                      helpers.getAppPrice,
+    getTussCode:                      helpers.getTussCode,
+    getAmsNeuropsicoSessionIndex:     helpers.getAmsNeuropsicoSessionIndex,
+    getPlanProcedures:                helpers.getPlanProcedures,
+    getEligibleAppointments:          helpers.getEligibleAppointments,
+    getPlansWithEarlierDrafts:        helpers.getPlansWithEarlierDrafts,
+    calculateTotalSelectedAmount:     helpers.calculateTotalSelectedAmount,
     toggleAppointmentSelection,
+    handleOverrideProcedureCode,
     // Handlers
     ...actions,
     handlePlanChange,

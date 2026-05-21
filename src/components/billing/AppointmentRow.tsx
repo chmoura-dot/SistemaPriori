@@ -1,9 +1,10 @@
-import React, { memo } from 'react';
-import { Ban, BookmarkPlus, CheckCircle2 } from 'lucide-react';
+import React, { memo, useState } from 'react';
+import { Ban, BookmarkPlus, CheckCircle2, Pencil } from 'lucide-react';
 import { format } from 'date-fns';
 import { Appointment, AppointmentStatus } from '../../services/types';
 import { Button } from '../Button';
 import { cn, formatCurrency } from '../../lib/utils';
+import { PlanProcedureInfo } from '../../hooks/billing/billingHelpers';
 
 type NeuropsicoStatus =
   | { type: 'regular' }
@@ -25,11 +26,16 @@ interface Props {
   monthFilter: string;
   includePrevMonth: boolean;
   includeNextMonth: boolean;
+  /** Índice 0-based da sessão AMS neuropsico (-1 se não aplicável) */
+  amsSessionIndex: number;
+  /** Procedimentos do plano do paciente para override manual */
+  planProcedures: PlanProcedureInfo[];
   onToggleSelection: (id: string) => void;
   onConfirmAppointment: (id: string, e: React.MouseEvent) => void;
   onIgnoreAppointment: (id: string, e: React.MouseEvent) => void;
   onToggleNeuropsico: (id: string, value: boolean) => void;
   onQuickAddToDraft: (id: string, e: React.MouseEvent) => void;
+  onOverrideProcedureCode: (id: string, newCode: string) => void;
 }
 
 export const AppointmentRow: React.FC<Props> = memo(({
@@ -46,12 +52,17 @@ export const AppointmentRow: React.FC<Props> = memo(({
   monthFilter,
   includePrevMonth,
   includeNextMonth,
+  amsSessionIndex,
+  planProcedures,
   onToggleSelection,
   onConfirmAppointment,
   onIgnoreAppointment,
   onToggleNeuropsico,
   onQuickAddToDraft,
+  onOverrideProcedureCode,
 }) => {
+  const [showOverride, setShowOverride] = useState(false);
+
   const isConfirmed = app.confirmedPsychologist === true;
   const isCanceledExempt =
     app.status === AppointmentStatus.CANCELED &&
@@ -59,6 +70,11 @@ export const AppointmentRow: React.FC<Props> = memo(({
 
   const appMonth = app.date.substring(0, 7);
   const isFromOtherMonth = (includePrevMonth || includeNextMonth) && appMonth !== monthFilter;
+
+  // Flags para regra AMS
+  const isAmsNeuropsico   = amsSessionIndex >= 0;
+  const isAmsAutoAltCode  = isAmsNeuropsico && (amsSessionIndex === 1 || amsSessionIndex === 2);
+  const isAmsBlocked      = isAmsNeuropsico && amsSessionIndex >= 3;
 
   return (
     <div className="flex flex-col last:border-0">
@@ -86,13 +102,66 @@ export const AppointmentRow: React.FC<Props> = memo(({
         <div className="text-xs text-zinc-400 flex-1 truncate min-w-0">
           {psychologistName}
         </div>
-        {tussCode && (
-          <span
-            title={`TUSS: ${tussCode} — ${app.type}`}
-            className="text-[10px] text-zinc-400 font-mono bg-zinc-100 px-1.5 py-0.5 rounded border border-zinc-200 flex-shrink-0 hidden sm:inline"
-          >
-            {tussCode}
-          </span>
+
+        {/* Código TUSS com override manual */}
+        {(tussCode || planProcedures.length > 0) && (
+          <div className="relative flex-shrink-0 hidden sm:flex items-center gap-0.5">
+            <span
+              title={`TUSS: ${tussCode} — ${app.type}${isAmsAutoAltCode ? ' (substituído automaticamente: Neuropsico → Psicoterapia)' : ''}`}
+              className={cn(
+                'text-[10px] font-mono px-1.5 py-0.5 rounded border',
+                isAmsAutoAltCode
+                  ? 'text-blue-600 bg-blue-50 border-blue-200'
+                  : 'text-zinc-400 bg-zinc-100 border-zinc-200'
+              )}
+            >
+              {isAmsAutoAltCode && '⟳ '}{tussCode}
+            </span>
+            {planProcedures.length > 0 && (
+              <button
+                onClick={(e) => { e.stopPropagation(); setShowOverride(v => !v); }}
+                className="p-0.5 text-zinc-300 hover:text-priori-navy rounded transition-colors"
+                title="Alterar código de procedimento manualmente"
+              >
+                <Pencil size={10} />
+              </button>
+            )}
+            {showOverride && (
+              <div
+                className="absolute top-full right-0 z-20 mt-1 bg-white border border-zinc-200 rounded-xl shadow-lg p-2 min-w-[260px]"
+                onClick={e => e.stopPropagation()}
+              >
+                <p className="text-[10px] text-zinc-400 uppercase font-bold mb-1.5 px-1 tracking-widest">
+                  Alterar procedimento
+                </p>
+                {planProcedures.map(p => (
+                  <button
+                    key={p.code}
+                    onClick={() => {
+                      onOverrideProcedureCode(app.id, p.code);
+                      setShowOverride(false);
+                    }}
+                    className={cn(
+                      'w-full text-left px-2 py-1.5 rounded-lg text-xs hover:bg-zinc-50 transition-colors flex items-center justify-between gap-2',
+                      tussCode === p.code ? 'bg-priori-navy/5 font-semibold text-priori-navy' : 'text-zinc-600'
+                    )}
+                  >
+                    <span>
+                      <span className="font-mono">{p.code}</span>
+                      <span className="text-zinc-400 ml-1">— {p.type}</span>
+                    </span>
+                    <span className="text-zinc-400 text-[10px]">{formatCurrency(p.price)}</span>
+                  </button>
+                ))}
+                <button
+                  onClick={() => { onOverrideProcedureCode(app.id, ''); setShowOverride(false); }}
+                  className="w-full text-left px-2 py-1.5 rounded-lg text-[11px] text-zinc-400 hover:bg-zinc-50 transition-colors mt-1 border-t border-zinc-100 pt-2"
+                >
+                  ↩ Restaurar código automático
+                </button>
+              </div>
+            )}
+          </div>
         )}
 
         {/* Badges */}
@@ -122,12 +191,27 @@ export const AppointmentRow: React.FC<Props> = memo(({
               Duplicata ⚠️
             </span>
           )}
-          {neuropsicoStatus.type === 'blocked' && (
+          {/* Badge AMS Petrobras */}
+          {isAmsBlocked && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-100 text-zinc-500 border border-zinc-200">
+              AMS {amsSessionIndex + 1}ª R$0
+            </span>
+          )}
+          {isAmsAutoAltCode && (
+            <span
+              title={`AMS: ${amsSessionIndex + 1}ª sessão neuropsico → cobrada como psicoterapia`}
+              className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 border border-blue-200"
+            >
+              AMS {amsSessionIndex + 1}ª → Psicot.
+            </span>
+          )}
+          {/* Badges neuropsico genérico (para outros planos) */}
+          {!isAmsNeuropsico && neuropsicoStatus.type === 'blocked' && (
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-100 text-zinc-500 border border-zinc-200">
               Neuropsico R$0
             </span>
           )}
-          {neuropsicoStatus.type === 'ask' && (
+          {!isAmsNeuropsico && neuropsicoStatus.type === 'ask' && (
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-600 border border-amber-200">
               ⚠️ Neuropsico
             </span>
@@ -177,8 +261,8 @@ export const AppointmentRow: React.FC<Props> = memo(({
         )}
       </div>
 
-      {/* Neuropsico decision panel */}
-      {neuropsicoStatus.type === 'ask' && (
+      {/* Painel de decisão neuropsico (apenas para planos genéricos, não AMS) */}
+      {!isAmsNeuropsico && neuropsicoStatus.type === 'ask' && (
         <div className="bg-amber-50/50 px-12 py-2 flex items-center gap-3 text-xs border-t border-amber-100/50">
           <span className="text-amber-700 font-medium">Cobrar este atendimento?</span>
           <div className="flex bg-white rounded-lg border border-amber-200 p-0.5">

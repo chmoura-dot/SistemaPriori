@@ -4,6 +4,7 @@ import {
   HealthPlan, Appointment, Customer, Psychologist, Plan,
   AppointmentType, BillingBatch,
 } from '../../services/types';
+import { PlanProcedureInfo } from '../../hooks/billing/billingHelpers';
 import { Modal } from '../Modal';
 import { Button } from '../Button';
 import { Input } from '../Input';
@@ -41,6 +42,9 @@ interface Props {
   blockedPlans?: Map<HealthPlan, string>;
   getNeuropsicoStatus: (app: Appointment) => NeuropsicoStatus;
   getAppPrice: (app: Appointment) => number;
+  getTussCode: (app: Appointment) => string;
+  getAmsNeuropsicoSessionIndex: (app: Appointment) => number;
+  getPlanProcedures: (app: Appointment) => PlanProcedureInfo[];
   onClose: () => void;
   onPlanChange: (plan: HealthPlan) => void;
   onBatchNumberChange: (value: string) => void;
@@ -57,6 +61,7 @@ interface Props {
   autoSaveStatus?: 'idle' | 'saving' | 'saved';
   onSaveAsDraft: () => void;
   onQuickAddToDraft: (id: string, e: React.MouseEvent) => void;
+  onOverrideProcedureCode: (id: string, newCode: string) => void;
   onSubmit: () => void;
   onFinalizeDraft?: () => void;
 }
@@ -72,10 +77,12 @@ export const CreateBatchModal: React.FC<Props> = ({
   isOpen, selectedPlan, batchNumber, patientFilter, monthFilter,
   selectedAppointmentIds, neuropsicoDecisions, customers, psychologists, plans,
   eligibleAppointments, totalSelectedAmount, editingDraftBatch, includePrevMonth, blockedPlans,
-  getNeuropsicoStatus, getAppPrice, onClose, onPlanChange, onBatchNumberChange,
+  getNeuropsicoStatus, getAppPrice, getTussCode, getAmsNeuropsicoSessionIndex, getPlanProcedures,
+  onClose, onPlanChange, onBatchNumberChange,
   onPatientFilterChange, onMonthFilterChange, onToggleSelection, onSelectAll,
   onConfirmAppointment, onIgnoreAppointment, onToggleNeuropsico, onIncludePrevMonthChange,
-  includeNextMonth, onIncludeNextMonthChange, autoSaveStatus, onSaveAsDraft, onQuickAddToDraft, onSubmit, onFinalizeDraft,
+  includeNextMonth, onIncludeNextMonthChange, autoSaveStatus, onSaveAsDraft, onQuickAddToDraft,
+  onOverrideProcedureCode, onSubmit, onFinalizeDraft,
 }) => {
   const [showConfirm, setShowConfirm] = useState<false | 'send' | 'finalize'>(false);
   const isDraftMode = !!editingDraftBatch;
@@ -125,13 +132,6 @@ export const CreateBatchModal: React.FC<Props> = ({
     eligibleAppointments.forEach(a => { if (!ss.has(a.id)) return; const k = `${a.customerId}-${a.type}`; m.set(k, (m.get(k) || 0) + 1); });
     return m;
   }, [selectedAppointmentIds, eligibleAppointments]);
-
-  const getTussCode = (app: Appointment): string => {
-    if (app.procedureCode) return app.procedureCode;
-    const customer = customerMap.get(app.customerId);
-    const plan     = planByNameMap.get((customer?.healthPlan ?? '').toUpperCase());
-    return plan?.procedures?.find(proc => proc.type === app.type)?.code || '';
-  };
 
   const sessionWarnings = useMemo(() => {
     const warnings: { customerName: string; type: AppointmentType; count: number; limit: number }[] = [];
@@ -193,7 +193,6 @@ export const CreateBatchModal: React.FC<Props> = ({
               <p className="text-xs font-semibold text-amber-800">Editando rascunho</p>
               <p className="text-xs text-amber-700 truncate">{selectedAppointmentIds.length} atendimento(s) • {formatCurrency(totalSelectedAmount)} previstos</p>
             </div>
-            {/* Indicador de auto-save */}
             {autoSaveStatus === 'saving' && (
               <div className="flex items-center gap-1.5 text-xs text-amber-600 shrink-0">
                 <Loader2 size={13} className="animate-spin" />
@@ -228,10 +227,13 @@ export const CreateBatchModal: React.FC<Props> = ({
           uniquePatients={uniquePatients} totalSelectedAmount={totalSelectedAmount} sessionWarnings={sessionWarnings}
           psychologistMap={psychologistMap} getAppPrice={getAppPrice} getTussCode={getTussCode}
           getNeuropsicoStatus={getNeuropsicoStatus}
+          getAmsNeuropsicoSessionIndex={getAmsNeuropsicoSessionIndex}
+          getPlanProcedures={getPlanProcedures}
           onPatientFilterChange={onPatientFilterChange} onSelectAll={onSelectAll}
           onToggleSelection={onToggleSelection} onConfirmAppointment={onConfirmAppointment}
           onIgnoreAppointment={onIgnoreAppointment} onToggleNeuropsico={onToggleNeuropsico}
           onQuickAddToDraft={onQuickAddToDraft}
+          onOverrideProcedureCode={onOverrideProcedureCode}
         />
 
         {/* Número do lote + ações */}

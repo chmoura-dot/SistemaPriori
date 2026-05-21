@@ -78,6 +78,9 @@ export const BillingPage = () => {
         blockedPlans={billing.getPlansWithEarlierDrafts(billing.monthFilter)}
         getNeuropsicoStatus={billing.getNeuropsicoStatus}
         getAppPrice={billing.getAppPrice}
+        getTussCode={billing.getTussCode}
+        getAmsNeuropsicoSessionIndex={billing.getAmsNeuropsicoSessionIndex}
+        getPlanProcedures={billing.getPlanProcedures}
         onClose={billing.closeCreateModal}
         onPlanChange={billing.handlePlanChange}
         onBatchNumberChange={billing.setBatchNumber}
@@ -100,6 +103,7 @@ export const BillingPage = () => {
         autoSaveStatus={billing.autoSaveStatus}
         onSaveAsDraft={billing.handleSaveAsDraft}
         onQuickAddToDraft={billing.handleQuickAddToDraft}
+        onOverrideProcedureCode={billing.handleOverrideProcedureCode}
         onSubmit={billing.handleCreateBatch}
         onFinalizeDraft={billing.handleFinalizeBatch}
       />

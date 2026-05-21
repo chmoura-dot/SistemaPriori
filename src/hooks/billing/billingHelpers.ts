@@ -10,6 +10,14 @@ import {
   AppointmentStatus, AppointmentType, HealthPlan, BillingBatchStatus,
 } from '../../services/types';
 
+/** Tipo retornado por getPlanProcedures */
+export interface PlanProcedureInfo {
+  code: string;
+  type: AppointmentType;
+  description: string;
+  price: number;
+}
+
 export interface AppointmentPaymentStatus {
   status: 'paid' | 'denied';
   reason?: string;
@@ -41,8 +49,30 @@ export function createBillingHelpers({
   includePrevMonth, includeNextMonth, selectedAppointmentIds, editingDraftBatch,
 }: BillingHelpersContext) {
 
+  /** Retorna o índice (0-based) da sessão neuropsicológica para pacientes AMS Petrobras.
+   *  Retorna -1 se não for AMS ou não for Avaliação Neuropsicológica. */
+  const getAmsNeuropsicoSessionIndex = (app: Appointment): number => {
+    if (app.type !== AppointmentType.NEUROPSICOLOGICA) return -1;
+    const customer = customers.find(c => c.id === app.customerId);
+    if (customer?.healthPlan !== HealthPlan.AMS_PETROBRAS) return -1;
+
+    const allSessions = appointments
+      .filter(a =>
+        a.customerId === app.customerId &&
+        a.type === AppointmentType.NEUROPSICOLOGICA &&
+        a.status !== AppointmentStatus.CANCELED
+      )
+      .sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime));
+
+    return allSessions.findIndex(a => a.id === app.id);
+  };
+
   const getNeuropsicoStatus = (app: Appointment) => {
     if (app.type !== AppointmentType.NEUROPSICOLOGICA) return { type: 'regular' as const };
+
+    // AMS Petrobras tem regra própria — tratada por getAmsNeuropsicoSessionIndex
+    const customer = customers.find(c => c.id === app.customerId);
+    if (customer?.healthPlan === HealthPlan.AMS_PETROBRAS) return { type: 'regular' as const };
 
     const pastApps = appointments
       .filter(a =>
@@ -67,14 +97,67 @@ export function createBillingHelpers({
 
   const getAppPrice = (app: Appointment): number => {
     if (app.status === AppointmentStatus.CANCELED && app.cancellationBilling === 'none') return 0;
-    const status = getNeuropsicoStatus(app);
-    if (status.type === 'blocked') return 0;
-    if (status.type === 'ask' && !neuropsicoDecisions[app.id]) return 0;
 
-    const customer  = customers.find(c => c.id === app.customerId);
-    const plan      = plans.find(p => p.name.toUpperCase() === (customer?.healthPlan ?? '').toUpperCase());
-    const procedure = plan?.procedures?.find(proc => proc.type === app.type);
+    const customer = customers.find(c => c.id === app.customerId);
+    const plan     = plans.find(p => p.name.toUpperCase() === (customer?.healthPlan ?? '').toUpperCase());
+
+    // Regra específica AMS Petrobras para Avaliação Neuropsicológica (sem override manual)
+    if (!app.procedureCode && customer?.healthPlan === HealthPlan.AMS_PETROBRAS && app.type === AppointmentType.NEUROPSICOLOGICA) {
+      const sessionIdx = getAmsNeuropsicoSessionIndex(app);
+      if (sessionIdx >= 3) return 0; // 4ª sessão em diante: sem cobrança
+      if (sessionIdx === 1 || sessionIdx === 2) {
+        // 2ª e 3ª sessão: cobra como psicoterapia
+        const psicoProc = plan?.procedures?.find(p => p.type !== AppointmentType.NEUROPSICOLOGICA);
+        return app.customPrice ?? customer?.customPrice ?? psicoProc?.price ?? 0;
+      }
+      // 1ª sessão (sessionIdx === 0): cobra como avaliação neuropsicológica
+      const neuroProc = plan?.procedures?.find(p => p.type === AppointmentType.NEUROPSICOLOGICA);
+      return app.customPrice ?? customer?.customPrice ?? neuroProc?.price ?? 0;
+    }
+
+    // Regra genérica para neuropsico de outros planos (sem override manual)
+    if (!app.procedureCode) {
+      const status = getNeuropsicoStatus(app);
+      if (status.type === 'blocked') return 0;
+      if (status.type === 'ask' && !neuropsicoDecisions[app.id]) return 0;
+    }
+
+    // Preço: prioriza o código de procedimento salvo (override manual), depois o tipo
+    const procedure = app.procedureCode
+      ? plan?.procedures?.find(proc => proc.code === app.procedureCode)
+      : plan?.procedures?.find(proc => proc.type === app.type);
     return app.customPrice ?? customer?.customPrice ?? procedure?.price ?? 0;
+  };
+
+  /** Retorna o código TUSS efetivo para o atendimento (aplica regra AMS se necessário). */
+  const getTussCode = (app: Appointment): string => {
+    if (app.procedureCode) return app.procedureCode; // override manual tem prioridade
+
+    const customer = customers.find(c => c.id === app.customerId);
+    const plan     = plans.find(p => p.name.toUpperCase() === (customer?.healthPlan ?? '').toUpperCase());
+
+    // Regra AMS Petrobras: 2ª e 3ª sessão → código de psicoterapia
+    if (customer?.healthPlan === HealthPlan.AMS_PETROBRAS && app.type === AppointmentType.NEUROPSICOLOGICA) {
+      const sessionIdx = getAmsNeuropsicoSessionIndex(app);
+      if (sessionIdx === 1 || sessionIdx === 2) {
+        const psicoProc = plan?.procedures?.find(p => p.type !== AppointmentType.NEUROPSICOLOGICA);
+        if (psicoProc) return psicoProc.code;
+      }
+    }
+
+    return plan?.procedures?.find(p => p.type === app.type)?.code || '';
+  };
+
+  /** Retorna os procedimentos disponíveis do plano do paciente (para override manual). */
+  const getPlanProcedures = (app: Appointment): PlanProcedureInfo[] => {
+    const customer = customers.find(c => c.id === app.customerId);
+    const plan     = plans.find(p => p.name.toUpperCase() === (customer?.healthPlan ?? '').toUpperCase());
+    return (plan?.procedures ?? []).map(p => ({
+      code: p.code,
+      type: p.type as AppointmentType,
+      description: p.description,
+      price: p.price,
+    }));
   };
 
   const generateBatchNumber = (plan: HealthPlan, month: string, isDraft = false): string => {
@@ -158,7 +241,10 @@ export function createBillingHelpers({
 
   return {
     getNeuropsicoStatus,
+    getAmsNeuropsicoSessionIndex,
     getAppPrice,
+    getTussCode,
+    getPlanProcedures,
     generateBatchNumber,
     getMonthsToInclude,
     getPlansWithEarlierDrafts,

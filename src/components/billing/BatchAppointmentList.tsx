@@ -8,6 +8,7 @@ import { AlertTriangle, Users } from 'lucide-react';
 import { Appointment, Customer, Plan, BillingBatch, AppointmentType } from '../../services/types';
 import { cn, formatCurrency } from '../../lib/utils';
 import { AppointmentRow } from './AppointmentRow';
+import { PlanProcedureInfo } from '../../hooks/billing/billingHelpers';
 
 type NeuropsicoStatus =
   | { type: 'regular' }
@@ -46,6 +47,8 @@ interface Props {
   getAppPrice: (app: Appointment) => number;
   getTussCode: (app: Appointment) => string;
   getNeuropsicoStatus: (app: Appointment) => NeuropsicoStatus;
+  getAmsNeuropsicoSessionIndex: (app: Appointment) => number;
+  getPlanProcedures: (app: Appointment) => PlanProcedureInfo[];
   onPatientFilterChange: (value: string) => void;
   onSelectAll: () => void;
   onToggleSelection: (id: string) => void;
@@ -53,6 +56,7 @@ interface Props {
   onIgnoreAppointment: (id: string, e: React.MouseEvent) => void;
   onToggleNeuropsico: (id: string, value: boolean) => void;
   onQuickAddToDraft: (id: string, e: React.MouseEvent) => void;
+  onOverrideProcedureCode: (id: string, newCode: string) => void;
 }
 
 export const BatchAppointmentList: React.FC<Props> = ({
@@ -62,8 +66,10 @@ export const BatchAppointmentList: React.FC<Props> = ({
   sessionLimitMap, selectedCountMap, duplicateKeys,
   isDraftMode, editingDraftBatch, uniquePatients, totalSelectedAmount, sessionWarnings,
   psychologistMap, getAppPrice, getTussCode, getNeuropsicoStatus,
+  getAmsNeuropsicoSessionIndex, getPlanProcedures,
   onPatientFilterChange, onSelectAll, onToggleSelection,
   onConfirmAppointment, onIgnoreAppointment, onToggleNeuropsico, onQuickAddToDraft,
+  onOverrideProcedureCode,
 }) => (
   <div className="border-t border-zinc-100 pt-3">
     {/* Filtro por paciente + Selecionar todos */}
@@ -155,11 +161,14 @@ export const BatchAppointmentList: React.FC<Props> = ({
                   monthFilter={monthFilter}
                   includePrevMonth={includePrevMonth}
                   includeNextMonth={includeNextMonth}
+                  amsSessionIndex={getAmsNeuropsicoSessionIndex(app)}
+                  planProcedures={getPlanProcedures(app)}
                   onToggleSelection={onToggleSelection}
                   onConfirmAppointment={onConfirmAppointment}
                   onIgnoreAppointment={onIgnoreAppointment}
                   onToggleNeuropsico={onToggleNeuropsico}
                   onQuickAddToDraft={onQuickAddToDraft}
+                  onOverrideProcedureCode={onOverrideProcedureCode}
                 />
               ))}
             </div>
