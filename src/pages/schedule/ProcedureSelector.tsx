@@ -49,16 +49,21 @@ export const ProcedureSelector: React.FC<ProcedureSelectorProps> = ({
         <label className="text-sm font-bold text-zinc-500 uppercase tracking-widest">Procedimento / Código TUSS</label>
         <select
           className="w-full rounded-xl bg-white border border-zinc-200 px-4 py-3 text-base text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/10 transition-all"
-          value={formData.procedureCode}
+          value={String(
+            currentPlan?.procedures.findIndex(
+              p => p.code === formData.procedureCode && p.type === formData.type
+            ) ?? -1
+          )}
           onChange={e => {
-            const proc = currentPlan?.procedures.find(p => p.code === e.target.value);
-            setFormData(prev => ({ ...prev, procedureCode: e.target.value, type: proc ? proc.type : prev.type }));
+            const idx = Number(e.target.value);
+            const proc = currentPlan?.procedures[idx];
+            if (proc) setFormData(prev => ({ ...prev, procedureCode: proc.code, type: proc.type }));
           }}
           required
         >
-          <option value="">Selecione o procedimento...</option>
-          {currentPlan?.procedures.map(proc => (
-            <option key={proc.code} value={proc.code}>{proc.code} — {proc.type} ({proc.description})</option>
+          <option value="-1">Selecione o procedimento...</option>
+          {currentPlan?.procedures.map((proc, idx) => (
+            <option key={idx} value={String(idx)}>{proc.code} — {proc.type} ({proc.description})</option>
           ))}
           {!currentPlan && <option disabled>Nenhum procedimento para este plano</option>}
         </select>
