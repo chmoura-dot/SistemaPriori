@@ -118,8 +118,8 @@ export function createBillingHelpers({
       return app.customPrice ?? customer?.customPrice ?? neuroProc?.price ?? 0;
     }
 
-    // Regra genérica para neuropsico de outros planos (sem override manual)
-    if (!app.procedureCode) {
+    // Regra genérica para neuropsico de outros planos — bloqueia independente de procedureCode
+    {
       const status = getNeuropsicoStatus(app);
       if (status.type === 'blocked') return 0;
     }

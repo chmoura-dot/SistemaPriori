@@ -210,12 +210,6 @@ export const AppointmentRow: React.FC<Props> = memo(({
               AMS {amsSessionIndex + 1}ª → Psicot.
             </span>
           )}
-          {/* Badges neuropsico genérico (para outros planos) */}
-          {!isAmsNeuropsico && neuropsicoStatus.type === 'blocked' && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-100 text-zinc-500 border border-zinc-200">
-              Neuropsico R$0
-            </span>
-          )}
           {isIgnored && (
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-200 text-zinc-500 border border-zinc-300 font-semibold">
               🚫 Ignorado
