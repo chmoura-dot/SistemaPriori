@@ -21,8 +21,7 @@ const MONTH_NAMES = [
 type NeuropsicoStatus =
   | { type: 'regular' }
   | { type: 'billable'; diffDays?: number }
-  | { type: 'blocked'; diffDays: number }
-  | { type: 'ask'; diffDays: number };
+  | { type: 'blocked'; diffDays: number };
 
 interface Props {
   isOpen: boolean;

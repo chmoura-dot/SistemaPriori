@@ -3,7 +3,7 @@
  * Funções auxiliares puras/derivadas do hook de faturamento.
  * Recebem os dados de estado como parâmetros — sem useState/useEffect.
  */
-import { differenceInMonths, differenceInDays } from 'date-fns';
+import { differenceInDays } from 'date-fns';
 import { api } from '../../services/api';
 import { matchPlanByHealthPlan } from '../../services/supabase/helpers';
 import {
@@ -79,6 +79,7 @@ export function createBillingHelpers({
       .filter(a =>
         a.customerId === app.customerId &&
         a.type === AppointmentType.NEUROPSICOLOGICA &&
+        a.status !== AppointmentStatus.CANCELED &&
         a.date < app.date &&
         a.id !== app.id
       )
@@ -86,14 +87,15 @@ export function createBillingHelpers({
 
     if (pastApps.length === 0) return { type: 'billable' as const };
 
-    const lastAppDate     = new Date(pastApps[0].date + 'T12:00:00');
-    const currentAppDate  = new Date(app.date + 'T12:00:00');
-    const diffMonths      = differenceInMonths(currentAppDate, lastAppDate);
-    const diffDays        = differenceInDays(currentAppDate, lastAppDate);
+    const lastAppDate    = new Date(pastApps[0].date + 'T12:00:00');
+    const currentAppDate = new Date(app.date + 'T12:00:00');
+    const diffDays       = differenceInDays(currentAppDate, lastAppDate);
 
-    if (diffMonths >= 11) return { type: 'billable' as const, diffDays };
-    if (diffDays <= 90)   return { type: 'blocked' as const, diffDays };
-    return { type: 'ask' as const, diffDays };
+    // Após 6 meses (≥ 180 dias) desde a última sessão, permite faturar novamente
+    if (diffDays >= 180) return { type: 'billable' as const, diffDays };
+
+    // Dentro de 6 meses: bloqueia automaticamente (R$ 0, sem perguntar)
+    return { type: 'blocked' as const, diffDays };
   };
 
   const getAppPrice = (app: Appointment): number => {
@@ -120,7 +122,6 @@ export function createBillingHelpers({
     if (!app.procedureCode) {
       const status = getNeuropsicoStatus(app);
       if (status.type === 'blocked') return 0;
-      if (status.type === 'ask' && !neuropsicoDecisions[app.id]) return 0;
     }
 
     // Preço: prioriza o código de procedimento salvo (override manual), depois o tipo

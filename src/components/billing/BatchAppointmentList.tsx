@@ -13,8 +13,7 @@ import { PlanProcedureInfo } from '../../hooks/billing/billingHelpers';
 type NeuropsicoStatus =
   | { type: 'regular' }
   | { type: 'billable'; diffDays?: number }
-  | { type: 'blocked'; diffDays: number }
-  | { type: 'ask'; diffDays: number };
+  | { type: 'blocked'; diffDays: number };
 
 interface SessionWarning {
   customerName: string;

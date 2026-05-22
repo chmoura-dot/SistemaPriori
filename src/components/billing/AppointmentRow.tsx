@@ -9,8 +9,7 @@ import { PlanProcedureInfo } from '../../hooks/billing/billingHelpers';
 type NeuropsicoStatus =
   | { type: 'regular' }
   | { type: 'billable'; diffDays?: number }
-  | { type: 'blocked'; diffDays: number }
-  | { type: 'ask'; diffDays: number };
+  | { type: 'blocked'; diffDays: number };
 
 interface Props {
   app: Appointment;
@@ -217,11 +216,6 @@ export const AppointmentRow: React.FC<Props> = memo(({
               Neuropsico R$0
             </span>
           )}
-          {!isAmsNeuropsico && neuropsicoStatus.type === 'ask' && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-600 border border-amber-200">
-              ⚠️ Neuropsico
-            </span>
-          )}
           {isIgnored && (
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-200 text-zinc-500 border border-zinc-300 font-semibold">
               🚫 Ignorado
@@ -285,36 +279,6 @@ export const AppointmentRow: React.FC<Props> = memo(({
         )}
       </div>
 
-      {/* Painel de decisão neuropsico (apenas para planos genéricos, não AMS) */}
-      {!isAmsNeuropsico && neuropsicoStatus.type === 'ask' && (
-        <div className="bg-amber-50/50 px-12 py-2 flex items-center gap-3 text-xs border-t border-amber-100/50">
-          <span className="text-amber-700 font-medium">Cobrar este atendimento?</span>
-          <div className="flex bg-white rounded-lg border border-amber-200 p-0.5">
-            <button
-              onClick={(e) => { e.stopPropagation(); onToggleNeuropsico(app.id, false); }}
-              className={cn(
-                'px-3 py-1 font-semibold rounded-md transition-all',
-                !neuropsicoDecision
-                  ? 'bg-amber-100 text-amber-800 shadow-sm'
-                  : 'text-zinc-500 hover:bg-zinc-50'
-              )}
-            >
-              Não cobrar (R$ 0)
-            </button>
-            <button
-              onClick={(e) => { e.stopPropagation(); onToggleNeuropsico(app.id, true); }}
-              className={cn(
-                'px-3 py-1 font-semibold rounded-md transition-all',
-                neuropsicoDecision
-                  ? 'bg-priori-navy text-white shadow-sm'
-                  : 'text-zinc-500 hover:bg-zinc-50'
-              )}
-            >
-              Cobrar normal
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 });
