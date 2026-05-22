@@ -130,8 +130,11 @@ export function createBillingHelpers({
     const customer = customers.find(c => c.id === app.customerId);
     const plan     = matchPlanByHealthPlan(plans, customer?.healthPlan);
 
-    // Regra específica AMS Petrobras para Avaliação Neuropsicológica (sem override manual)
-    if (!app.procedureCode && customer?.healthPlan === HealthPlan.AMS_PETROBRAS && app.type === AppointmentType.NEUROPSICOLOGICA) {
+    // Regra específica AMS Petrobras para Avaliação Neuropsicológica.
+    // Tem prioridade sobre qualquer procedureCode salvo no agendamento,
+    // pois o procedureCode é preenchido automaticamente pelo ProcedureSelector
+    // e não deve anular as regras de faturamento da operadora.
+    if (customer?.healthPlan === HealthPlan.AMS_PETROBRAS && app.type === AppointmentType.NEUROPSICOLOGICA) {
       const sessionIdx = getAmsNeuropsicoSessionIndex(app);
       if (sessionIdx >= 3) return 0; // 4ª sessão em diante: sem cobrança
       if (sessionIdx === 1 || sessionIdx === 2) {
@@ -159,17 +162,24 @@ export function createBillingHelpers({
 
   /** Retorna o código TUSS efetivo para o atendimento (aplica regra AMS se necessário). */
   const getTussCode = (app: Appointment): string => {
-    if (app.procedureCode) return app.procedureCode; // override manual tem prioridade
-
     const customer = customers.find(c => c.id === app.customerId);
     const plan     = matchPlanByHealthPlan(plans, customer?.healthPlan);
 
-    // Regra AMS Petrobras: 2ª e 3ª sessão → código fixo 95090010; 4ª+ sem faturamento
+    // Regra AMS Petrobras: tem prioridade sobre o procedureCode salvo no agendamento.
+    // O procedureCode do agendamento (95110011) é preenchido automaticamente e não deve
+    // substituir as regras de faturamento da operadora.
     if (customer?.healthPlan === HealthPlan.AMS_PETROBRAS && app.type === AppointmentType.NEUROPSICOLOGICA) {
       const sessionIdx = getAmsNeuropsicoSessionIndex(app);
       if (sessionIdx >= 3) return ''; // 4ª+ sem faturamento
-      if (sessionIdx === 1 || sessionIdx === 2) return '95090010';
+      if (sessionIdx === 1 || sessionIdx === 2) return '95090010'; // 2ª e 3ª → psicoterapia
+      // 1ª sessão → código original da avaliação neuropsicológica
+      return plan?.procedures?.find(p => p.type === AppointmentType.NEUROPSICOLOGICA)?.code
+        || app.procedureCode
+        || '';
     }
+
+    // Para outros planos: override manual tem prioridade
+    if (app.procedureCode) return app.procedureCode;
 
     return plan?.procedures?.find(p => p.type === app.type)?.code || '';
   };
