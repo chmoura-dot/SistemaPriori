@@ -54,6 +54,7 @@ interface Props {
   onSelectAll: () => void;
   onConfirmAppointment: (id: string, e: React.MouseEvent) => void;
   onIgnoreAppointment: (id: string, e: React.MouseEvent) => void;
+  onUnignoreAppointment: (id: string, e: React.MouseEvent) => void;
   onToggleNeuropsico: (id: string, value: boolean) => void;
   onIncludePrevMonthChange: (value: boolean) => void;
   includeNextMonth: boolean;
@@ -80,7 +81,7 @@ export const CreateBatchModal: React.FC<Props> = ({
   getNeuropsicoStatus, getAppPrice, getTussCode, getAmsNeuropsicoSessionIndex, getPlanProcedures,
   onClose, onPlanChange, onBatchNumberChange,
   onPatientFilterChange, onMonthFilterChange, onToggleSelection, onSelectAll,
-  onConfirmAppointment, onIgnoreAppointment, onToggleNeuropsico, onIncludePrevMonthChange,
+  onConfirmAppointment, onIgnoreAppointment, onUnignoreAppointment, onToggleNeuropsico, onIncludePrevMonthChange,
   includeNextMonth, onIncludeNextMonthChange, autoSaveStatus, onSaveAsDraft, onQuickAddToDraft,
   onOverrideProcedureCode, onSubmit, onFinalizeDraft,
 }) => {
@@ -162,7 +163,9 @@ export const CreateBatchModal: React.FC<Props> = ({
     return Array.from(map.entries()).map(([customerId, apps]) => ({ customer: customerMap.get(customerId), appointments: apps }));
   }, [filteredAppointments, customerMap]);
 
-  const allSelected   = filteredAppointments.length > 0 && selectedAppointmentIds.length === eligibleAppointments.length;
+  // allSelected considera apenas atendimentos NÃO ignorados (ignorados são visíveis mas não selecionáveis)
+  const selectableCount = filteredAppointments.filter(a => !a.billingIgnored).length;
+  const allSelected = selectableCount > 0 && filteredAppointments.filter(a => !a.billingIgnored).every(a => selectedAppointmentIds.includes(a.id));
   const uniquePatients = useMemo(() => {
     const ss = new Set(selectedAppointmentIds);
     return new Set(eligibleAppointments.filter(a => ss.has(a.id)).map(a => a.customerId)).size;
@@ -231,7 +234,8 @@ export const CreateBatchModal: React.FC<Props> = ({
           getPlanProcedures={getPlanProcedures}
           onPatientFilterChange={onPatientFilterChange} onSelectAll={onSelectAll}
           onToggleSelection={onToggleSelection} onConfirmAppointment={onConfirmAppointment}
-          onIgnoreAppointment={onIgnoreAppointment} onToggleNeuropsico={onToggleNeuropsico}
+          onIgnoreAppointment={onIgnoreAppointment} onUnignoreAppointment={onUnignoreAppointment}
+          onToggleNeuropsico={onToggleNeuropsico}
           onQuickAddToDraft={onQuickAddToDraft}
           onOverrideProcedureCode={onOverrideProcedureCode}
         />

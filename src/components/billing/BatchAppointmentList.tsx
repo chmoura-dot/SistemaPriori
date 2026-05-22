@@ -54,6 +54,7 @@ interface Props {
   onToggleSelection: (id: string) => void;
   onConfirmAppointment: (id: string, e: React.MouseEvent) => void;
   onIgnoreAppointment: (id: string, e: React.MouseEvent) => void;
+  onUnignoreAppointment: (id: string, e: React.MouseEvent) => void;
   onToggleNeuropsico: (id: string, value: boolean) => void;
   onQuickAddToDraft: (id: string, e: React.MouseEvent) => void;
   onOverrideProcedureCode: (id: string, newCode: string) => void;
@@ -68,7 +69,7 @@ export const BatchAppointmentList: React.FC<Props> = ({
   psychologistMap, getAppPrice, getTussCode, getNeuropsicoStatus,
   getAmsNeuropsicoSessionIndex, getPlanProcedures,
   onPatientFilterChange, onSelectAll, onToggleSelection,
-  onConfirmAppointment, onIgnoreAppointment, onToggleNeuropsico, onQuickAddToDraft,
+  onConfirmAppointment, onIgnoreAppointment, onUnignoreAppointment, onToggleNeuropsico, onQuickAddToDraft,
   onOverrideProcedureCode,
 }) => (
   <div className="border-t border-zinc-100 pt-3">
@@ -166,6 +167,7 @@ export const BatchAppointmentList: React.FC<Props> = ({
                   onToggleSelection={onToggleSelection}
                   onConfirmAppointment={onConfirmAppointment}
                   onIgnoreAppointment={onIgnoreAppointment}
+                  onUnignoreAppointment={onUnignoreAppointment}
                   onToggleNeuropsico={onToggleNeuropsico}
                   onQuickAddToDraft={onQuickAddToDraft}
                   onOverrideProcedureCode={onOverrideProcedureCode}

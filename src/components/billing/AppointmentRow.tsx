@@ -1,5 +1,5 @@
 import React, { memo, useState } from 'react';
-import { Ban, BookmarkPlus, CheckCircle2, Pencil } from 'lucide-react';
+import { Ban, BookmarkPlus, CheckCircle2, Pencil, RotateCcw } from 'lucide-react';
 import { format } from 'date-fns';
 import { Appointment, AppointmentStatus } from '../../services/types';
 import { Button } from '../Button';
@@ -33,6 +33,7 @@ interface Props {
   onToggleSelection: (id: string) => void;
   onConfirmAppointment: (id: string, e: React.MouseEvent) => void;
   onIgnoreAppointment: (id: string, e: React.MouseEvent) => void;
+  onUnignoreAppointment: (id: string, e: React.MouseEvent) => void;
   onToggleNeuropsico: (id: string, value: boolean) => void;
   onQuickAddToDraft: (id: string, e: React.MouseEvent) => void;
   onOverrideProcedureCode: (id: string, newCode: string) => void;
@@ -57,12 +58,14 @@ export const AppointmentRow: React.FC<Props> = memo(({
   onToggleSelection,
   onConfirmAppointment,
   onIgnoreAppointment,
+  onUnignoreAppointment,
   onToggleNeuropsico,
   onQuickAddToDraft,
   onOverrideProcedureCode,
 }) => {
   const [showOverride, setShowOverride] = useState(false);
 
+  const isIgnored = app.billingIgnored === true;
   const isConfirmed = app.confirmedPsychologist === true;
   const isCanceledExempt =
     app.status === AppointmentStatus.CANCELED &&
@@ -80,19 +83,22 @@ export const AppointmentRow: React.FC<Props> = memo(({
     <div className="flex flex-col last:border-0">
       <div
         className={cn(
-          'flex items-center gap-2 px-4 py-2.5 hover:bg-zinc-50 transition-colors',
-          isSelected && 'bg-priori-navy/5',
-          isAlreadyInDraft && !isSelected && 'bg-zinc-50/80',
-          isCanceledExempt
+          'flex items-center gap-2 px-4 py-2.5 transition-colors',
+          isIgnored
+            ? 'bg-zinc-100/70 opacity-60 cursor-not-allowed'
+            : 'hover:bg-zinc-50',
+          !isIgnored && isSelected && 'bg-priori-navy/5',
+          !isIgnored && isAlreadyInDraft && !isSelected && 'bg-zinc-50/80',
+          !isIgnored && isCanceledExempt
             ? 'opacity-60 cursor-not-allowed bg-red-50/30'
-            : isConfirmed ? 'cursor-pointer' : 'opacity-70 cursor-not-allowed bg-zinc-50/50'
+            : !isIgnored && isConfirmed ? 'cursor-pointer' : !isIgnored ? 'opacity-70 cursor-not-allowed bg-zinc-50/50' : ''
         )}
-        onClick={() => !isCanceledExempt && isConfirmed && onToggleSelection(app.id)}
+        onClick={() => !isIgnored && !isCanceledExempt && isConfirmed && onToggleSelection(app.id)}
       >
         <input
           type="checkbox"
           checked={isSelected}
-          disabled={!isConfirmed || isCanceledExempt}
+          disabled={isIgnored || !isConfirmed || isCanceledExempt}
           onChange={() => {}}
           className="rounded border-zinc-300 text-priori-navy focus:ring-priori-navy disabled:opacity-50 flex-shrink-0"
         />
@@ -216,12 +222,17 @@ export const AppointmentRow: React.FC<Props> = memo(({
               ⚠️ Neuropsico
             </span>
           )}
+          {isIgnored && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-200 text-zinc-500 border border-zinc-300 font-semibold">
+              🚫 Ignorado
+            </span>
+          )}
           {isCanceledExempt && (
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-50 text-red-500 border border-red-200 font-semibold">
               Cancelado — Isento
             </span>
           )}
-          {!isCanceledExempt && !isConfirmed && (
+          {!isIgnored && !isCanceledExempt && !isConfirmed && (
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-600 border border-amber-200">
               Ag. confirmação
             </span>
@@ -235,7 +246,7 @@ export const AppointmentRow: React.FC<Props> = memo(({
           }
         </div>
 
-        {!isCanceledExempt && !isConfirmed && (
+        {!isIgnored && !isCanceledExempt && !isConfirmed && (
           <Button
             size="sm"
             onClick={(e) => onConfirmAppointment(app.id, e)}
@@ -244,7 +255,7 @@ export const AppointmentRow: React.FC<Props> = memo(({
             Confirmar
           </Button>
         )}
-        {!isCanceledExempt && isConfirmed && !isDraftMode && (
+        {!isIgnored && !isCanceledExempt && isConfirmed && !isDraftMode && (
           <button
             onClick={(e) => onQuickAddToDraft(app.id, e)}
             className="p-1 text-zinc-300 hover:text-amber-500 hover:bg-amber-50 rounded-lg transition-all flex-shrink-0"
@@ -253,14 +264,24 @@ export const AppointmentRow: React.FC<Props> = memo(({
             <BookmarkPlus size={14} />
           </button>
         )}
-        {!isCanceledExempt && (
+        {isIgnored ? (
           <button
-            onClick={(e) => onIgnoreAppointment(app.id, e)}
-            className="p-1 text-zinc-300 hover:text-red-400 hover:bg-red-50 rounded-lg transition-all flex-shrink-0"
-            title="Ignorar para faturamento"
+            onClick={(e) => onUnignoreAppointment(app.id, e)}
+            className="p-1 text-zinc-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all flex-shrink-0"
+            title="Restaurar para faturamento"
           >
-            <Ban size={14} />
+            <RotateCcw size={14} />
           </button>
+        ) : (
+          !isCanceledExempt && (
+            <button
+              onClick={(e) => onIgnoreAppointment(app.id, e)}
+              className="p-1 text-zinc-300 hover:text-red-400 hover:bg-red-50 rounded-lg transition-all flex-shrink-0"
+              title="Ignorar para faturamento"
+            >
+              <Ban size={14} />
+            </button>
+          )
         )}
       </div>
 

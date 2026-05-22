@@ -31,7 +31,6 @@ export const appointmentReadService = {
         .from('appointments')
         .select('*')
         .is('billing_batch_id', null)
-        .or('billing_ignored.is.null,billing_ignored.eq.false')
         .lte('date', today)
         .order('date', { ascending: true })
         .limit(5000),

@@ -88,14 +88,17 @@ export const BillingPage = () => {
         onMonthFilterChange={billing.handleMonthFilterChange}
         onToggleSelection={billing.toggleAppointmentSelection}
         onSelectAll={() => {
-          if (billing.selectedAppointmentIds.length === eligibleAppointments.length) {
+          const selectable = eligibleAppointments.filter(a => !a.billingIgnored);
+          const allSelectableSelected = selectable.every(a => billing.selectedAppointmentIds.includes(a.id));
+          if (allSelectableSelected) {
             billing.setSelectedAppointmentIds([]);
           } else {
-            billing.setSelectedAppointmentIds(eligibleAppointments.map(a => a.id));
+            billing.setSelectedAppointmentIds(selectable.map(a => a.id));
           }
         }}
         onConfirmAppointment={billing.handleConfirmAppointment}
         onIgnoreAppointment={billing.handleIgnoreAppointment}
+        onUnignoreAppointment={billing.handleUnignoreAppointment}
         onToggleNeuropsico={billing.toggleNeuropsicoDecision}
         onIncludePrevMonthChange={billing.setIncludePrevMonth}
         includeNextMonth={billing.includeNextMonth}

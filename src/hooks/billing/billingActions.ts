@@ -252,7 +252,7 @@ export function createBillingActions({
 
   const handleIgnoreAppointment = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!confirm('Marcar este atendimento como "Ignorado para Faturamento"? Ele não aparecerá mais na lista de disponíveis, mas o histórico será mantido.')) return;
+    if (!confirm('Ignorar este atendimento no faturamento? Ele ficará visível na lista mas bloqueado para seleção. Você pode desfazer depois.')) return;
     try {
       await api.updateAppointment(id, { billingIgnored: true });
       setAppointments(prev => prev.map(a => a.id === id ? { ...a, billingIgnored: true } : a));
@@ -262,9 +262,19 @@ export function createBillingActions({
     }
   };
 
+  const handleUnignoreAppointment = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await api.updateAppointment(id, { billingIgnored: false });
+      setAppointments(prev => prev.map(a => a.id === id ? { ...a, billingIgnored: false } : a));
+    } catch (error) {
+      console.error('Error unignoring appointment:', error);
+    }
+  };
+
   return {
     handleCreateBatch, handleSaveAsDraft, handleQuickAddToDraft, handleFinalizeBatch,
     handleMarkAsPaid, submitPayment, handleDeleteBatch, handleExportBatch,
-    handleConfirmAppointment, handleIgnoreAppointment,
+    handleConfirmAppointment, handleIgnoreAppointment, handleUnignoreAppointment,
   };
 }

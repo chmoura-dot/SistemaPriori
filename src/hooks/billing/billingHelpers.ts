@@ -223,7 +223,8 @@ export function createBillingHelpers({
       const customer        = customers.find(c => c.id === a.customerId);
       const matchesMonth    = monthsToInclude.length === 0 || monthsToInclude.some(m => a.date.startsWith(m));
       const isInCurrentDraft = editingDraftId ? a.billingBatchId === editingDraftId : false;
-      const isAvailable     = !a.billingBatchId && !a.billingIgnored;
+      // Inclui disponíveis (não ignorados) e também os ignorados (visíveis mas bloqueados)
+      const isAvailable     = !a.billingBatchId;
       return (
         customer?.healthPlan === selectedPlan &&
         (isInCurrentDraft || isAvailable) &&
