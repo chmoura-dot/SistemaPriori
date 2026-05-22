@@ -48,7 +48,7 @@ export const ScheduleFormModal: React.FC<ScheduleFormModalProps> = ({
     prevStartTimeRef.current = formData.startTime;
 
     const customer = customers.find(c => c.id === formData.customerId);
-    const plan = plans.find(p => p.name === customer?.healthPlan);
+    const plan = plans.find(p => p.name.toUpperCase() === (customer?.healthPlan ?? '').toUpperCase());
     const procedure = plan?.procedures.find(proc => proc.type === formData.type || proc.code === formData.procedureCode);
 
     if (customerChanged && customer) {
@@ -75,7 +75,7 @@ export const ScheduleFormModal: React.FC<ScheduleFormModalProps> = ({
   }, [formData.date, formData.startTime, formData.endTime]);
 
   const currentCustomer = customers.find(c => c.id === formData.customerId);
-  const currentPlan = plans.find(p => p.name === currentCustomer?.healthPlan);
+  const currentPlan = plans.find(p => p.name.toUpperCase() === (currentCustomer?.healthPlan ?? '').toUpperCase());
 
   // Available psychologists (no conflict on date+time)
   const availablePsychologists = psychologists.filter(p => {

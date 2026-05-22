@@ -50,10 +50,10 @@ export const customerService = {
         notes: c.notes ?? null,
         custom_price: c.customPrice ?? null,
         custom_repass_amount: c.customRepassAmount ?? null,
-        birth_date: c.birthDate ?? null,
+        birth_date: c.birthDate || null,
         gender: c.gender ?? null,
-        ams_password: c.amsPassword ?? null,
-        ams_password_expiry: c.amsPasswordExpiry ?? null,
+        ams_password: c.amsPassword || null,
+        ams_password_expiry: c.amsPasswordExpiry || null,
       }).select().single()
     );
     return toCustomer(row);
@@ -71,10 +71,10 @@ export const customerService = {
     if (c.notes !== undefined) updates.notes = c.notes;
     if (c.customPrice !== undefined) updates.custom_price = c.customPrice;
     if (c.customRepassAmount !== undefined) updates.custom_repass_amount = c.customRepassAmount;
-    if (c.birthDate !== undefined) updates.birth_date = c.birthDate;
+    if (c.birthDate !== undefined) updates.birth_date = c.birthDate || null;
     if (c.gender !== undefined) updates.gender = c.gender;
     if (c.amsPassword !== undefined) updates.ams_password = c.amsPassword;
-    if (c.amsPasswordExpiry !== undefined) updates.ams_password_expiry = c.amsPasswordExpiry;
+    if (c.amsPasswordExpiry !== undefined) updates.ams_password_expiry = c.amsPasswordExpiry || null;
 
     const row = await throwOnError(
       supabase.from('customers').update(updates).eq('id', id).select().single()
