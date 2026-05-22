@@ -50,7 +50,9 @@ export function createBillingHelpers({
   includePrevMonth, includeNextMonth, selectedAppointmentIds, editingDraftBatch,
 }: BillingHelpersContext) {
 
-  /** Retorna o índice (0-based) da sessão neuropsicológica para pacientes AMS Petrobras.
+  /** Retorna o índice (0-based) da sessão neuropsicológica para pacientes AMS Petrobras,
+   *  dentro do ciclo de 10 meses a partir da 1ª sessão do ciclo.
+   *  Após 10 meses, um novo ciclo começa (índice volta a 0).
    *  Retorna -1 se não for AMS ou não for Avaliação Neuropsicológica. */
   const getAmsNeuropsicoSessionIndex = (app: Appointment): number => {
     if (app.type !== AppointmentType.NEUROPSICOLOGICA) return -1;
@@ -65,7 +67,31 @@ export function createBillingHelpers({
       )
       .sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime));
 
-    return allSessions.findIndex(a => a.id === app.id);
+    // Agrupa sessões em ciclos de 10 meses a partir da 1ª sessão de cada ciclo.
+    // Ao atingir 10 meses, inicia novo ciclo com índice 0.
+    let cycleStartDate: string | null = null;
+    let indexInCycle = -1;
+
+    for (const session of allSessions) {
+      if (cycleStartDate === null) {
+        cycleStartDate = session.date;
+        indexInCycle = 0;
+      } else {
+        const [sy, sm] = cycleStartDate.split('-').map(Number);
+        const [ey, em] = session.date.split('-').map(Number);
+        const monthsDiff = (ey - sy) * 12 + (em - sm);
+        if (monthsDiff >= 10) {
+          // Nova sessão fora da janela de 10 meses → inicia novo ciclo
+          cycleStartDate = session.date;
+          indexInCycle = 0;
+        } else {
+          indexInCycle++;
+        }
+      }
+      if (session.id === app.id) return indexInCycle;
+    }
+
+    return -1;
   };
 
   const getNeuropsicoStatus = (app: Appointment) => {
