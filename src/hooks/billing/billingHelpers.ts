@@ -5,6 +5,7 @@
  */
 import { differenceInMonths, differenceInDays } from 'date-fns';
 import { api } from '../../services/api';
+import { matchPlanByHealthPlan } from '../../services/supabase/helpers';
 import {
   Appointment, Customer, Plan, BillingBatch,
   AppointmentStatus, AppointmentType, HealthPlan, BillingBatchStatus,
@@ -99,7 +100,7 @@ export function createBillingHelpers({
     if (app.status === AppointmentStatus.CANCELED && app.cancellationBilling === 'none') return 0;
 
     const customer = customers.find(c => c.id === app.customerId);
-    const plan     = plans.find(p => p.name.toUpperCase() === (customer?.healthPlan ?? '').toUpperCase());
+    const plan     = matchPlanByHealthPlan(plans, customer?.healthPlan);
 
     // Regra específica AMS Petrobras para Avaliação Neuropsicológica (sem override manual)
     if (!app.procedureCode && customer?.healthPlan === HealthPlan.AMS_PETROBRAS && app.type === AppointmentType.NEUROPSICOLOGICA) {
@@ -134,7 +135,7 @@ export function createBillingHelpers({
     if (app.procedureCode) return app.procedureCode; // override manual tem prioridade
 
     const customer = customers.find(c => c.id === app.customerId);
-    const plan     = plans.find(p => p.name.toUpperCase() === (customer?.healthPlan ?? '').toUpperCase());
+    const plan     = matchPlanByHealthPlan(plans, customer?.healthPlan);
 
     // Regra AMS Petrobras: 2ª e 3ª sessão → código fixo 95090010; 4ª+ sem faturamento
     if (customer?.healthPlan === HealthPlan.AMS_PETROBRAS && app.type === AppointmentType.NEUROPSICOLOGICA) {
@@ -149,7 +150,7 @@ export function createBillingHelpers({
   /** Retorna os procedimentos disponíveis do plano do paciente (para override manual). */
   const getPlanProcedures = (app: Appointment): PlanProcedureInfo[] => {
     const customer = customers.find(c => c.id === app.customerId);
-    const plan     = plans.find(p => p.name.toUpperCase() === (customer?.healthPlan ?? '').toUpperCase());
+    const plan     = matchPlanByHealthPlan(plans, customer?.healthPlan);
     return (plan?.procedures ?? []).map(p => ({
       code: p.code,
       type: p.type as AppointmentType,

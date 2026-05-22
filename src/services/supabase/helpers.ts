@@ -42,9 +42,19 @@ const HEALTH_PLAN_MAP: Record<string, string> = {
 };
 
 export function normalizeHealthPlan(raw?: string): HealthPlan {
-  if (!raw) return HealthPlan.PARTICULAR as unknown as HealthPlan;
+  if (!raw) return HealthPlan.PARTICULAR;
   const str = String(raw);
-  return (HEALTH_PLAN_MAP[str.toUpperCase()] ?? str) as unknown as HealthPlan;
+  return (HEALTH_PLAN_MAP[str.toUpperCase()] ?? str) as HealthPlan;
+}
+
+/**
+ * Encontra o plano cadastrado que corresponde ao healthPlan de um paciente.
+ * A comparação é case-insensitive para evitar quebras por diferenças de capitalização.
+ */
+export function matchPlanByHealthPlan(plans: import('../types').Plan[], healthPlan?: string): import('../types').Plan | undefined {
+  if (!healthPlan) return undefined;
+  const normalized = healthPlan.toUpperCase();
+  return plans.find(p => p.name.toUpperCase() === normalized);
 }
 
 export function toCustomer(row: any): Customer {

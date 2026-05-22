@@ -7,6 +7,7 @@ import {
 import { Modal } from '../../components/Modal';
 import { Button } from '../../components/Button';
 import { cn } from '../../lib/utils';
+import { matchPlanByHealthPlan } from '../../services/supabase/helpers';
 import { ScheduleFormData } from './scheduleUtils';
 import { CustomerSearchDropdown } from './CustomerSearchDropdown';
 import { DateTimePicker } from './DateTimePicker';
@@ -48,7 +49,7 @@ export const ScheduleFormModal: React.FC<ScheduleFormModalProps> = ({
     prevStartTimeRef.current = formData.startTime;
 
     const customer = customers.find(c => c.id === formData.customerId);
-    const plan = plans.find(p => p.name.toUpperCase() === (customer?.healthPlan ?? '').toUpperCase());
+    const plan = matchPlanByHealthPlan(plans, customer?.healthPlan);
     const procedure = plan?.procedures.find(proc => proc.type === formData.type || proc.code === formData.procedureCode);
 
     if (customerChanged && customer) {
@@ -75,7 +76,7 @@ export const ScheduleFormModal: React.FC<ScheduleFormModalProps> = ({
   }, [formData.date, formData.startTime, formData.endTime]);
 
   const currentCustomer = customers.find(c => c.id === formData.customerId);
-  const currentPlan = plans.find(p => p.name.toUpperCase() === (currentCustomer?.healthPlan ?? '').toUpperCase());
+  const currentPlan = matchPlanByHealthPlan(plans, currentCustomer?.healthPlan);
 
   // Available psychologists (no conflict on date+time)
   const availablePsychologists = psychologists.filter(p => {
