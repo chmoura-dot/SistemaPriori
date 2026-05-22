@@ -8,7 +8,8 @@ import { PsychologistFormModal, PsyFormData } from './psychologists/Psychologist
 
 const DEFAULT_FORM: PsyFormData = {
   name: '', email: '', specialties: [], phone: '', active: true,
-  availability: [], repassRate: 0.50, repassFixedAmount: undefined
+  availability: [], repassRate: 0.50, repassFixedAmount: undefined,
+  pixKeyType: '', pixKey: '',
 };
 
 export const PsychologistsPage = () => {
@@ -32,7 +33,7 @@ export const PsychologistsPage = () => {
   const handleOpenModal = (psy?: Psychologist) => {
     if (psy) {
       setEditingPsychologist(psy);
-      setFormData({ name: psy.name, email: psy.email || '', specialties: psy.specialties || [], phone: psy.phone || '', active: psy.active, availability: psy.availability || [], repassRate: psy.repassRate ?? 0.50, repassFixedAmount: psy.repassFixedAmount });
+      setFormData({ name: psy.name, email: psy.email || '', specialties: psy.specialties || [], phone: psy.phone || '', active: psy.active, availability: psy.availability || [], repassRate: psy.repassRate ?? 0.50, repassFixedAmount: psy.repassFixedAmount, pixKeyType: psy.pixKeyType ?? '', pixKey: psy.pixKey ?? '' });
     } else {
       setEditingPsychologist(null);
       setFormData(DEFAULT_FORM);
@@ -43,9 +44,14 @@ export const PsychologistsPage = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
+    const payload = {
+      ...formData,
+      pixKeyType: formData.pixKeyType || undefined,
+      pixKey: formData.pixKey || undefined,
+    };
     try {
-      if (editingPsychologist) { await api.updatePsychologist(editingPsychologist.id, formData); }
-      else { await api.createPsychologist(formData); }
+      if (editingPsychologist) { await api.updatePsychologist(editingPsychologist.id, payload); }
+      else { await api.createPsychologist(payload); }
       await loadPsychologists();
       setIsModalOpen(false);
     } catch { alert('Erro ao salvar psicólogo'); }

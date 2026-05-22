@@ -1,5 +1,5 @@
 import React from 'react';
-import { Edit2, Trash2, Phone, Calendar, MessageCircle, FileText, Globe, Home, Layers, Mail, Key } from 'lucide-react';
+import { Edit2, Trash2, Phone, Calendar, MessageCircle, FileText, Globe, Home, Layers, Mail, Key, QrCode } from 'lucide-react';
 import { Psychologist } from '../../services/types';
 import { cn } from '../../lib/utils';
 
@@ -32,6 +32,17 @@ export const PsychologistCard: React.FC<Props> = ({ psy, onEdit, onDelete, onInv
     <div className="space-y-4 mb-6 flex-1">
       <div className="flex items-center gap-2 text-zinc-500"><Phone size={14} className="text-priori-navy" /><span className="text-sm">{psy.phone || 'Sem telefone'}</span></div>
       <div className="flex items-center gap-2 text-zinc-500"><Mail size={14} className="text-priori-navy" /><span className="text-sm truncate" title={psy.email}>{psy.email || 'Sem e-mail (agenda desativada)'}</span></div>
+      {psy.pixKey && (
+        <div className="flex items-center gap-2 text-zinc-500">
+          <QrCode size={14} className="text-emerald-600 shrink-0" />
+          <span className="text-sm truncate">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 mr-1">
+              Pix {psy.pixKeyType === 'telefone' ? '(Tel)' : psy.pixKeyType === 'email' ? '(E-mail)' : psy.pixKeyType === 'cpf' ? '(CPF)' : psy.pixKeyType === 'aleatoria' ? '(Aleat.)' : ''}
+            </span>
+            {psy.pixKey}
+          </span>
+        </div>
+      )}
       <div className="space-y-2">
         <div className="flex items-center gap-2 text-zinc-400 text-[10px] font-bold uppercase tracking-widest"><Calendar size={12} /> Agenda Disponível</div>
         <div className="space-y-1">

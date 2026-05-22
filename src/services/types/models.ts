@@ -30,6 +30,8 @@ export interface Psychologist {
   availability: PsychologistAvailability[];
   repassRate?: number;
   repassFixedAmount?: number;
+  pixKeyType?: 'telefone' | 'email' | 'cpf' | 'aleatoria';
+  pixKey?: string;
 }
 
 export interface Room {

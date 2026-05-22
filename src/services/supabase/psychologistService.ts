@@ -21,6 +21,8 @@ export const psychologistService = {
           availability: p.availability,
           repass_rate: p.repassRate,
           repass_fixed_amount: p.repassFixedAmount,
+          pix_key_type: p.pixKeyType ?? null,
+          pix_key: p.pixKey ?? null,
         })
         .select()
         .single()
@@ -47,6 +49,8 @@ export const psychologistService = {
     if (p.availability !== undefined) updates.availability = p.availability;
     if (p.repassRate !== undefined) updates.repass_rate = p.repassRate;
     if (p.repassFixedAmount !== undefined) updates.repass_fixed_amount = p.repassFixedAmount;
+    updates.pix_key_type = p.pixKeyType ?? null;
+    updates.pix_key = p.pixKey ?? null;
 
     const row = await throwOnError(
       supabase.from('psychologists').update(updates).eq('id', id).select().single()

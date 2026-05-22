@@ -20,6 +20,8 @@ export function toPsychologist(row: any): Psychologist {
     availability: row.availability ?? [],
     repassRate: row.repass_rate,
     repassFixedAmount: row.repass_fixed_amount,
+    pixKeyType: row.pix_key_type ?? undefined,
+    pixKey: row.pix_key ?? undefined,
   };
 }
 

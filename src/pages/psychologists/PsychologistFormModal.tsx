@@ -15,6 +15,8 @@ export interface PsyFormData {
   availability: PsychologistAvailability[];
   repassRate: number;
   repassFixedAmount: number | undefined;
+  pixKeyType: 'telefone' | 'email' | 'cpf' | 'aleatoria' | '';
+  pixKey: string;
 }
 
 interface Props {
@@ -93,6 +95,39 @@ export const PsychologistFormModal: React.FC<Props> = ({
             </div>
           </div>
           <p className="text-[9px] text-zinc-400 italic">* Se o valor fixo for preenchido, ele terá prioridade sobre o percentual.</p>
+        </div>
+        <div className="p-4 bg-zinc-50 rounded-2xl border border-zinc-100 space-y-3">
+          <p className="text-[10px] font-bold text-priori-navy uppercase tracking-widest">Dados Pix</p>
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Tipo de Chave</label>
+            <select
+              className="w-full bg-white border border-zinc-100 rounded-xl px-4 py-2 text-sm text-priori-navy focus:outline-none"
+              value={formData.pixKeyType}
+              onChange={e => setFormData({ ...formData, pixKeyType: e.target.value as PsyFormData['pixKeyType'], pixKey: '' })}
+            >
+              <option value="">Selecione o tipo</option>
+              <option value="telefone">Telefone</option>
+              <option value="email">E-mail</option>
+              <option value="cpf">CPF</option>
+              <option value="aleatoria">Chave Aleatória</option>
+            </select>
+          </div>
+          {formData.pixKeyType && (
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Chave Pix</label>
+              <input
+                className="w-full bg-white border border-zinc-100 rounded-xl px-4 py-2 text-sm text-priori-navy focus:outline-none"
+                value={formData.pixKey}
+                onChange={e => setFormData({ ...formData, pixKey: e.target.value })}
+                placeholder={
+                  formData.pixKeyType === 'telefone' ? '(11) 99999-9999' :
+                  formData.pixKeyType === 'email' ? 'email@exemplo.com' :
+                  formData.pixKeyType === 'cpf' ? '000.000.000-00' :
+                  'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'
+                }
+              />
+            </div>
+          )}
         </div>
         <div className="space-y-3">
           <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Especialidades</label>
