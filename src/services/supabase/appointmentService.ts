@@ -26,18 +26,26 @@ export const appointmentReadService = {
   getAppointmentsForBilling: async (): Promise<Appointment[]> => {
     const today = new Date().toISOString().split('T')[0];
 
+    // Limita a janela de busca a 3 meses atrás para garantir que os atendimentos
+    // do mês corrente não sejam cortados pelo limite de registros.
+    const threeMonthsAgo = new Date();
+    threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+    const minDate = threeMonthsAgo.toISOString().split('T')[0];
+
     const [unbilledResult, billedResult] = await Promise.all([
       supabase
         .from('appointments')
         .select('*')
         .is('billing_batch_id', null)
+        .gte('date', minDate)
         .lte('date', today)
-        .order('date', { ascending: true })
+        .order('date', { ascending: false })
         .limit(5000),
       supabase
         .from('appointments')
         .select('*')
         .not('billing_batch_id', 'is', null)
+        .gte('date', minDate)
         .order('date', { ascending: false })
         .limit(5000),
     ]);
