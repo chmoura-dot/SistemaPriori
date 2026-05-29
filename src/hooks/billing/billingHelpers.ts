@@ -252,16 +252,34 @@ export function createBillingHelpers({
   };
 
   const getEligibleAppointments = (): Appointment[] => {
-    const today         = new Date().toISOString().split('T')[0];
+    const today           = new Date().toISOString().split('T')[0];
     const monthsToInclude = getMonthsToInclude();
     const editingDraftId  = editingDraftBatch?.id;
 
+    // IDs de lotes com status DRAFT — atendimentos nesses lotes ainda não foram
+    // "enviados" à operadora, portanto continuam elegíveis para novos lotes.
+    const draftBatchIds = new Set(
+      batches.filter(b => b.status === BillingBatchStatus.DRAFT).map(b => b.id)
+    );
+
     return appointments.filter(a => {
-      const customer        = customers.find(c => c.id === a.customerId);
-      const matchesMonth    = monthsToInclude.length === 0 || monthsToInclude.some(m => a.date.startsWith(m));
+      // Exclui horários internos (supervisão, reunião, etc.) — não são faturáveis
+      if (a.isInternal) return false;
+
+      // Exclui atendimentos cancelados sem cobrança definida
+      if (
+        a.status === AppointmentStatus.CANCELED &&
+        (!a.cancellationBilling || a.cancellationBilling === 'none')
+      ) return false;
+
+      const customer         = customers.find(c => c.id === a.customerId);
+      const matchesMonth     = monthsToInclude.length === 0 || monthsToInclude.some(m => a.date.startsWith(m));
       const isInCurrentDraft = editingDraftId ? a.billingBatchId === editingDraftId : false;
-      // Inclui disponíveis (não ignorados) e também os ignorados (visíveis mas bloqueados)
-      const isAvailable     = !a.billingBatchId;
+      // Um atendimento é "disponível" se:
+      //   a) não tem billingBatchId (nunca foi associado a lote), OU
+      //   b) está num lote RASCUNHO (draft) — ainda não foi enviado à operadora
+      const isAvailable = !a.billingBatchId || (!!a.billingBatchId && draftBatchIds.has(a.billingBatchId));
+
       return (
         customer?.healthPlan === selectedPlan &&
         (isInCurrentDraft || isAvailable) &&

@@ -47,6 +47,29 @@ export function createBillingActions({
   setAppointments, setBatchToPay, setIsPaymentModalOpen, setAppointmentStatuses,
 }: BillingActionsContext) {
 
+  /**
+   * Remove atendimentos de lotes RASCUNHO anteriores quando esses atendimentos
+   * estão sendo "promovidos" para um novo lote (ou outro rascunho).
+   * Evita que o appointmentIds de rascunhos fique com referências obsoletas.
+   */
+  const releaseFromOtherDrafts = async (idsBeingMoved: string[], targetBatchId: string) => {
+    const draftBatches = batches.filter(
+      b => b.status === BillingBatchStatus.DRAFT && b.id !== targetBatchId
+    );
+    for (const draft of draftBatches) {
+      const toRemove = draft.appointmentIds.filter(id => idsBeingMoved.includes(id));
+      if (toRemove.length === 0) continue;
+      const remainingIds = draft.appointmentIds.filter(id => !idsBeingMoved.includes(id));
+      const remainingTotal = appointments
+        .filter(a => remainingIds.includes(a.id))
+        .reduce((sum, a) => sum + getAppPrice(a), 0);
+      await api.updateBillingBatch(draft.id, {
+        appointmentIds: remainingIds,
+        totalAmount: remainingTotal,
+      });
+    }
+  };
+
   /** Cria o lote diretamente como ENVIADO (via "Revisar e Gerar Lote"). */
   const handleCreateBatch = async () => {
     if (!batchNumber || selectedAppointmentIds.length === 0) return;
@@ -59,6 +82,8 @@ export function createBillingActions({
         status: BillingBatchStatus.SENT, healthPlan: selectedPlan,
         totalAmount, appointmentIds: selectedAppointmentIds,
       });
+      // Remove os atendimentos de eventuais rascunhos onde estavam antes
+      await releaseFromOtherDrafts(selectedAppointmentIds, batch.id);
       await syncAppointmentsBatch(batch.id, [], selectedAppointmentIds);
       setIsCreateModalOpen(false);
       setSelectedAppointmentIds([]);
@@ -79,6 +104,8 @@ export function createBillingActions({
       .reduce((sum, a) => sum + getAppPrice(a), 0);
     try {
       if (editingDraftBatch) {
+        // Libera atendimentos que estavam em OUTROS rascunhos (não o que está sendo editado)
+        await releaseFromOtherDrafts(selectedAppointmentIds, editingDraftBatch.id);
         await syncAppointmentsBatch(editingDraftBatch.id, editingDraftBatch.appointmentIds, selectedAppointmentIds);
         await api.updateBillingBatch(editingDraftBatch.id, { appointmentIds: selectedAppointmentIds, totalAmount });
         setEditingDraftBatch(prev =>
@@ -93,6 +120,8 @@ export function createBillingActions({
         if (existingDraft) {
           const mergedIds   = [...new Set([...existingDraft.appointmentIds, ...selectedAppointmentIds])];
           const mergedTotal = appointments.filter(a => mergedIds.includes(a.id)).reduce((sum, a) => sum + getAppPrice(a), 0);
+          // Libera atendimentos de outros rascunhos antes de adicionar ao rascunho atual
+          await releaseFromOtherDrafts(selectedAppointmentIds, existingDraft.id);
           await syncAppointmentsBatch(existingDraft.id, existingDraft.appointmentIds, mergedIds);
           await api.updateBillingBatch(existingDraft.id, { appointmentIds: mergedIds, totalAmount: mergedTotal });
           toastSuccess('Atendimentos adicionados ao rascunho existente!');
@@ -104,6 +133,8 @@ export function createBillingActions({
             status: BillingBatchStatus.DRAFT, healthPlan: selectedPlan,
             totalAmount, appointmentIds: selectedAppointmentIds,
           });
+          // Libera atendimentos de outros rascunhos antes de criar o novo rascunho
+          await releaseFromOtherDrafts(selectedAppointmentIds, batch.id);
           await syncAppointmentsBatch(batch.id, [], selectedAppointmentIds);
           toastSuccess('Rascunho salvo! Continue adicionando atendimentos quando quiser.');
         }
