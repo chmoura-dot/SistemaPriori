@@ -85,29 +85,55 @@ export function useDashboardCharts({
 
   // ─── Gráfico Receita vs Despesas ──────────────────────────────────────────
   const revenueVsExpensesData = useMemo(() => {
-    const data: Record<string, { month: string; sortKey: number; receita: number; despesas: number; lucro: number }> = {};
-    appointments.forEach(app => {
-      if (!app.confirmedPsychologist && !isCanceledButBilled(app)) return;
-      const d       = new Date(app.date + 'T12:00:00');
-      const key     = d.toLocaleString('pt-BR', { month: 'short', year: '2-digit' });
-      const sortKey = d.getFullYear() * 100 + d.getMonth();
-      if (!data[key]) data[key] = { month: key, sortKey, receita: 0, despesas: 0, lucro: 0 };
-      const customer  = customers.find(c => c.id === app.customerId);
-      const plan      = findPlan(customer?.healthPlan);
-      const procedure = plan?.procedures?.find(proc => proc.type === app.type);
-      data[key].receita += app.customPrice ?? customer?.customPrice ?? procedure?.price ?? 0;
+    const data: Record<string, { month: string; sortKey: number; receita: number; repasses: number; despesas: number; lucro: number }> = {};
+
+    // Agrupa por paciente+tipo para lidar corretamente com cobranças únicas (isOneTimeCharge)
+    const grouped = appointments
+      .filter(app => app.confirmedPsychologist || isCanceledButBilled(app))
+      .reduce((acc: Record<string, Appointment[]>, app) => {
+        const key = `${app.customerId}-${app.type}`;
+        if (!acc[key]) acc[key] = [];
+        acc[key].push(app);
+        return acc;
+      }, {});
+
+    Object.values(grouped).forEach(group => {
+      const sorted = [...group].sort((a, b) => a.date.localeCompare(b.date));
+      sorted.forEach((app, idx) => {
+        const customer  = customers.find(c => c.id === app.customerId);
+        const psy       = psychologists.find(p => p.id === app.psychologistId);
+        const plan      = findPlan(customer?.healthPlan);
+        const procedure = plan?.procedures?.find(proc => proc.type === app.type);
+        const isOneTime = procedure?.isOneTimeCharge ||
+          (customer?.healthPlan === HealthPlan.PARTICULAR && app.type === AppointmentType.NEUROPSICOLOGICA);
+
+        // Cobrança única: apenas a primeira consulta do grupo é contabilizada
+        if (isOneTime && idx > 0) return;
+
+        const amount = app.customPrice ?? customer?.customPrice ?? procedure?.price ?? 0;
+        const repass = app.customRepassAmount ?? customer?.customRepassAmount ?? calcRepass(amount, psy);
+
+        const d       = new Date(app.date + 'T12:00:00');
+        const key     = d.toLocaleString('pt-BR', { month: 'short', year: '2-digit' });
+        const sortKey = d.getFullYear() * 100 + d.getMonth();
+        if (!data[key]) data[key] = { month: key, sortKey, receita: 0, repasses: 0, despesas: 0, lucro: 0 };
+        data[key].receita  += amount;
+        data[key].repasses += repass;
+      });
     });
+
     expenses.forEach(exp => {
       const d       = new Date(exp.date + 'T12:00:00');
       const key     = d.toLocaleString('pt-BR', { month: 'short', year: '2-digit' });
       const sortKey = d.getFullYear() * 100 + d.getMonth();
-      if (!data[key]) data[key] = { month: key, sortKey, receita: 0, despesas: 0, lucro: 0 };
+      if (!data[key]) data[key] = { month: key, sortKey, receita: 0, repasses: 0, despesas: 0, lucro: 0 };
       data[key].despesas += exp.amount;
     });
+
     return Object.values(data)
       .sort((a, b) => a.sortKey - b.sortKey)
-      .map(d => ({ ...d, lucro: d.receita - d.despesas }));
-  }, [appointments, expenses, customers, findPlan, isCanceledButBilled]);
+      .map(d => ({ ...d, lucro: d.receita - d.repasses - d.despesas }));
+  }, [appointments, expenses, customers, psychologists, findPlan, isCanceledButBilled]);
 
   // ─── Faturamento por plano / psicólogo ────────────────────────────────────
   const revenueByPlan = useMemo(() =>

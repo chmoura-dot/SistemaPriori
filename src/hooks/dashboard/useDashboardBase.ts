@@ -26,7 +26,7 @@ export function useDashboardBase() {
 
   const todayRef = useRef(new Date());
   const today    = todayRef.current;
-  const todayStr = today.toISOString().split('T')[0];
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
   // ─── Filtro de período ────────────────────────────────────────────────────
   const [filterMode, setFilterMode]       = useState<'month' | 'year' | 'all'>('month');
