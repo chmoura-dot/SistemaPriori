@@ -3,7 +3,6 @@ import { Toaster } from 'react-hot-toast';
 import { ErrorBoundary } from './components/ErrorBoundary';
 const Sidebar                  = lazy(() => import('./components/Sidebar').then(m => ({ default: m.Sidebar })));
 // Alertas globais carregados diretamente (sempre visíveis após login, componentes pequenos)
-import { RenewalAlert } from './components/RenewalAlert';
 import { DuplicateAppointmentAlert } from './components/DuplicateAppointmentAlert';
 import { DischargeNotificationAlert } from './components/DischargeNotificationAlert';
 
@@ -240,7 +239,6 @@ export default function App() {
 
       {isAuthenticated && (
         <>
-          <RenewalAlert />
           <DuplicateAppointmentAlert onNavigate={navigate} />
           <DischargeNotificationAlert />
         </>
