@@ -60,8 +60,16 @@ export const useScheduleActions = (s: ScheduleData) => {
       if (editingId) {
         const appt = appointments.find(a => a.id === editingId);
         if (appt?.isRecurring && appt.recurrenceGroupId && s.updateFuture) {
+          // Contar sessões futuras do grupo para preservar a mesma quantidade ao recriar
+          const remainingCount = appointments.filter(
+            a => a.recurrenceGroupId === appt.recurrenceGroupId &&
+                 a.date >= appt.date &&
+                 a.status !== AppointmentStatus.CANCELED
+          ).length;
+          const recurrenceCount = Math.max(remainingCount, 1);
+
           await api.deleteFutureAppointments(appt.recurrenceGroupId, appt.date);
-          await api.createAppointment({ ...payload as any, date: formData.date, dayOfWeek: new Date(formData.date + 'T12:00:00').getDay(), status: AppointmentStatus.ACTIVE });
+          await api.createAppointment({ ...payload as any, date: formData.date, dayOfWeek: new Date(formData.date + 'T12:00:00').getDay(), status: AppointmentStatus.ACTIVE, recurrenceCount });
         } else {
           await api.updateAppointment(editingId, payload as any);
         }
@@ -107,7 +115,7 @@ export const useScheduleActions = (s: ScheduleData) => {
       internalNotes: appointment.internalNotes ?? '',
     });
     s.setEditingId(appointment.id);
-    s.setUpdateFuture(false);
+    s.setUpdateFuture(appointment.isRecurring);
     s.setIsModalOpen(true);
   };
 
