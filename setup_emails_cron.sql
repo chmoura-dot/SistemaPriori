@@ -48,7 +48,18 @@ SELECT cron.schedule('stale-confirmation-nag', '15 11 * * *', $$
   ) as request_id;
 $$);
 
--- 5. Lembrete de Senhas AMS Petrobras (Toda Segunda-feira às 07:00 BRT / 10:00 UTC)
+-- 5. Renovação Automática de Agendamentos Recorrentes (Diariamente às 07:00 BRT / 10:00 UTC)
+-- Renova automaticamente os ciclos de sessões que chegaram ao fim (needs_renewal = true).
+DO $$ BEGIN PERFORM cron.unschedule('auto-renew-appointments'); EXCEPTION WHEN OTHERS THEN NULL; END $$;
+SELECT cron.schedule('auto-renew-appointments', '0 10 * * *', $$
+  SELECT net.http_post(
+      url:='https://ntqkrxtesuaeobxpmznr.supabase.co/functions/v1/auto-renew-appointments',
+      headers:='{"Content-Type": "application/json", "Authorization": "Bearer SUA_SERVICE_ROLE_KEY"}'::jsonb,
+      body:='{}'::jsonb
+  ) as request_id;
+$$);
+
+-- 6. Lembrete de Senhas AMS Petrobras (Toda Segunda-feira às 07:00 BRT / 10:00 UTC)
 DO $$ BEGIN PERFORM cron.unschedule('ams-password-alert'); EXCEPTION WHEN OTHERS THEN NULL; END $$;
 SELECT cron.schedule('ams-password-alert', '0 10 * * 1', $$
   SELECT net.http_post(
