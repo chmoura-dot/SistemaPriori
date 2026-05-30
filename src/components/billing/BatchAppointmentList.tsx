@@ -103,7 +103,7 @@ export const BatchAppointmentList: React.FC<Props> = ({
         grouped.map(({ customer, appointments: apps }) => {
           const appTypes = [...new Set(apps.map(a => a.type))];
           const selectedForThisPatient = apps.filter(a => selectedAppointmentIds.includes(a.id));
-          const patientTotal = selectedForThisPatient.reduce((sum, a) => sum + getAppPrice(a), 0);
+          const patientTotal = selectedForThisPatient.reduce((sum, a) => sum + Math.round(getAppPrice(a) * 100), 0) / 100;
           const hasWarning   = appTypes.some(type => {
             const key   = `${customer?.id}-${type}`;
             const limit = sessionLimitMap.get(key);

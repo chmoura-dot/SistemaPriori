@@ -62,7 +62,7 @@ export function createBillingActions({
       const remainingIds = draft.appointmentIds.filter(id => !idsBeingMoved.includes(id));
       const remainingTotal = appointments
         .filter(a => remainingIds.includes(a.id))
-        .reduce((sum, a) => sum + getAppPrice(a), 0);
+        .reduce((sum, a) => sum + Math.round(getAppPrice(a) * 100), 0) / 100;
       await api.updateBillingBatch(draft.id, {
         appointmentIds: remainingIds,
         totalAmount: remainingTotal,
@@ -73,9 +73,10 @@ export function createBillingActions({
   /** Cria o lote diretamente como ENVIADO (via "Revisar e Gerar Lote"). */
   const handleCreateBatch = async () => {
     if (!batchNumber || selectedAppointmentIds.length === 0) return;
+    // Soma em centavos (inteiros) para evitar erros de floating-point
     const totalAmount = appointments
       .filter(a => selectedAppointmentIds.includes(a.id))
-      .reduce((sum, a) => sum + getAppPrice(a), 0);
+      .reduce((sum, a) => sum + Math.round(getAppPrice(a) * 100), 0) / 100;
     try {
       const batch = await api.createBillingBatch({
         batchNumber, sentAt: new Date().toISOString(),
@@ -99,9 +100,10 @@ export function createBillingActions({
   /** Salva como Rascunho (DRAFT). Mescla com rascunho existente se houver. */
   const handleSaveAsDraft = async () => {
     if (selectedAppointmentIds.length === 0) return;
+    // Soma em centavos (inteiros) para evitar erros de floating-point
     const totalAmount = appointments
       .filter(a => selectedAppointmentIds.includes(a.id))
-      .reduce((sum, a) => sum + getAppPrice(a), 0);
+      .reduce((sum, a) => sum + Math.round(getAppPrice(a) * 100), 0) / 100;
     try {
       if (editingDraftBatch) {
         // Libera atendimentos que estavam em OUTROS rascunhos (não o que está sendo editado)
@@ -119,7 +121,7 @@ export function createBillingActions({
         );
         if (existingDraft) {
           const mergedIds   = [...new Set([...existingDraft.appointmentIds, ...selectedAppointmentIds])];
-          const mergedTotal = appointments.filter(a => mergedIds.includes(a.id)).reduce((sum, a) => sum + getAppPrice(a), 0);
+          const mergedTotal = appointments.filter(a => mergedIds.includes(a.id)).reduce((sum, a) => sum + Math.round(getAppPrice(a) * 100), 0) / 100;
           // Libera atendimentos de outros rascunhos antes de adicionar ao rascunho atual
           await releaseFromOtherDrafts(selectedAppointmentIds, existingDraft.id);
           await syncAppointmentsBatch(existingDraft.id, existingDraft.appointmentIds, mergedIds);
@@ -188,7 +190,7 @@ export function createBillingActions({
   /** Finaliza um rascunho: status DRAFT → SENT. */
   const handleFinalizeBatch = async () => {
     if (!editingDraftBatch || !batchNumber || selectedAppointmentIds.length === 0) return;
-    const totalAmount      = appointments.filter(a => selectedAppointmentIds.includes(a.id)).reduce((sum, a) => sum + getAppPrice(a), 0);
+    const totalAmount      = appointments.filter(a => selectedAppointmentIds.includes(a.id)).reduce((sum, a) => sum + Math.round(getAppPrice(a) * 100), 0) / 100;
     const finalBatchNumber = batchNumber.startsWith('RASCUNHO-')
       ? generateBatchNumber(selectedPlan, monthFilter, false) : batchNumber;
     try {
