@@ -109,13 +109,13 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({
   return (
     <div
       className={cn(
-        'absolute left-0.5 right-0.5 border rounded-md p-1.5 flex flex-col justify-between transition-all z-20 shadow-sm overflow-hidden border-l-4 hover:shadow-md',
+        'absolute left-0.5 right-0.5 border rounded-md p-1.5 flex flex-col justify-between transition-all z-20 shadow-sm border-l-4 hover:shadow-md',
         appointment.isInternal
           ? 'bg-zinc-100 border-zinc-200 border-l-zinc-500/50 opacity-90'
           : statusColors[currentStatus]
       )}
       style={{
-        height: `calc(${slotCount * 100}% + ${Math.floor(slotCount) - 1}px)`,
+        minHeight: `calc(${slotCount * 100}% + ${Math.floor(slotCount) - 1}px)`,
         top: `calc(${topOffset}% + 2px)`,
       }}
     >

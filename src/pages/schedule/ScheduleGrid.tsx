@@ -176,7 +176,7 @@ export const ScheduleGrid: React.FC<ScheduleGridProps> = ({
                       return (
                         <div
                           key={`${slot}-${day}`}
-                          className="p-0.5 border-r border-zinc-100 last:border-r-0 min-h-[44px] relative group"
+                          className="p-0.5 border-r border-zinc-100 last:border-r-0 min-h-[80px] relative group"
                         >
                           {appointment ? (
                             isFirstSlot ? (
