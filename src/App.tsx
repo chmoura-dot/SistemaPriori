@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { Toaster } from 'react-hot-toast';
-import { Sidebar } from './components/Sidebar';
-import { RenewalAlert } from './components/RenewalAlert';
-import { DuplicateAppointmentAlert } from './components/DuplicateAppointmentAlert';
+const Sidebar                  = lazy(() => import('./components/Sidebar').then(m => ({ default: m.Sidebar })));
+const RenewalAlert             = lazy(() => import('./components/RenewalAlert').then(m => ({ default: m.RenewalAlert })));
+const DuplicateAppointmentAlert = lazy(() => import('./components/DuplicateAppointmentAlert').then(m => ({ default: m.DuplicateAppointmentAlert })));
 
 // ── Lazy loading de páginas (code splitting por rota) ──────────────────────
 // Cada página só é baixada quando o usuário navega até ela,

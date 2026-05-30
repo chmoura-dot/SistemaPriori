@@ -75,9 +75,13 @@ export const Sidebar = ({ currentPath, onNavigate }: SidebarProps) => {
         // silencioso
       }
     };
-    loadRenewalCount();
+    // Diferir a primeira chamada em 6s para não competir com a renderização da página principal
+    const startupDelay = setTimeout(loadRenewalCount, 6_000);
     const interval = setInterval(loadRenewalCount, 5 * 60 * 1000);
-    return () => clearInterval(interval);
+    return () => {
+      clearTimeout(startupDelay);
+      clearInterval(interval);
+    };
   }, []);
 
   const handleLogout = () => {

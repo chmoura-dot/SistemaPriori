@@ -48,6 +48,10 @@ export default defineConfig(() => {
             if (id.includes('node_modules/motion') || id.includes('node_modules/framer-motion')) {
               return 'vendor-motion';
             }
+            // Lucide icons — separado para cacheamento independente
+            if (id.includes('node_modules/lucide-react')) {
+              return 'vendor-icons';
+            }
             // Demais node_modules → vendor React/base
             if (id.includes('node_modules')) {
               return 'vendor';

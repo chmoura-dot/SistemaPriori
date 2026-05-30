@@ -75,9 +75,13 @@ export const RenewalAlert = () => {
   }, []);
 
   useEffect(() => {
-    loadData();
+    // Diferir a primeira chamada em 5s para não competir com a renderização da página principal
+    const startupDelay = setTimeout(loadData, 5_000);
     const interval = setInterval(loadData, 5 * 60 * 1000);
-    return () => clearInterval(interval);
+    return () => {
+      clearTimeout(startupDelay);
+      clearInterval(interval);
+    };
   }, [loadData]);
 
   // Navegação por teclado (setas esquerda/direita)

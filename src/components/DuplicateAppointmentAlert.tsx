@@ -147,10 +147,14 @@ export const DuplicateAppointmentAlert: React.FC<DuplicateAppointmentAlertProps>
   }, []);
 
   useEffect(() => {
-    loadData();
+    // Diferir a primeira chamada em 8s para não competir com a renderização da página principal
+    const startupDelay = setTimeout(loadData, 8_000);
     // Verifica a cada 10 minutos
     const interval = setInterval(loadData, 10 * 60 * 1000);
-    return () => clearInterval(interval);
+    return () => {
+      clearTimeout(startupDelay);
+      clearInterval(interval);
+    };
   }, [loadData]);
 
   // Navegação por teclado (setas esquerda/direita)
