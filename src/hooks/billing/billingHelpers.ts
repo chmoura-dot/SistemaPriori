@@ -289,10 +289,13 @@ export function createBillingHelpers({
     }).sort((a, b) => a.date.localeCompare(b.date));
   };
 
-  const calculateTotalSelectedAmount = (): number =>
-    appointments
+  const calculateTotalSelectedAmount = (): number => {
+    // Soma em centavos (inteiros) para evitar erros de floating-point em valores monetários
+    const totalCents = appointments
       .filter(a => selectedAppointmentIds.includes(a.id))
-      .reduce((sum, a) => sum + getAppPrice(a), 0);
+      .reduce((sum, a) => sum + Math.round(getAppPrice(a) * 100), 0);
+    return totalCents / 100;
+  };
 
   return {
     getNeuropsicoStatus,

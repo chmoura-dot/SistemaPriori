@@ -1,5 +1,6 @@
 // Funções auxiliares compartilhadas: mappers snake_case → camelCase e utilitários
 import { supabase } from '../../lib/supabase';
+import { logger } from '../../lib/logger';
 import {
   Psychologist, Room, Customer, Appointment, BillingBatch,
   Plan, Subscription, Payment, Expense, Settings, HealthPlan,
@@ -196,7 +197,17 @@ export const toSettings = (row: any): Settings => ({
 
 export async function throwOnError<T>(promise: PromiseLike<{ data: T | null; error: any }>): Promise<T> {
   const { data, error } = await promise;
-  if (error) throw new Error(error.message);
+  if (error) {
+    // Sessão expirada ou não autorizada → força logout e redirect
+    const status = (error as any)?.status ?? (error as any)?.code;
+    if (status === 401 || status === 403 || error.message?.includes('JWT expired')) {
+      logger.warn('[Auth] Sessão expirada, redirecionando para login.');
+      localStorage.removeItem('nucleo_user_v2');
+      await supabase.auth.signOut().catch(() => {});
+      window.location.hash = '/login';
+    }
+    throw new Error(error.message);
+  }
   if (data === null) throw new Error('No data returned from Supabase');
   return data;
 }

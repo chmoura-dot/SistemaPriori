@@ -1,15 +1,20 @@
 // Métodos de criação e atualização de agendamentos
 import { supabase, toAppointment, generateUUID } from './helpers';
+import { logger } from '../../lib/logger';
 import { Appointment, RecurrenceFrequency } from '../types';
 
-type AppointmentInput = Omit<Appointment, 'id' | 'createdAt' | 'confirmedPatient' | 'confirmedPsychologist'>;
+type AppointmentInput = Omit<Appointment, 'id' | 'createdAt' | 'confirmedPatient' | 'confirmedPsychologist'> & {
+  /** Número de ocorrências a criar (padrão: 4) */
+  recurrenceCount?: number;
+};
 
 function buildRecurringRows(a: AppointmentInput, groupId: string): any[] {
   const [startYear, startMonth, startDay] = a.date.split('-').map(Number);
   const intervalDays = a.recurrenceFrequency === RecurrenceFrequency.QUINZENAL ? 14 : 7;
   const rows = [];
 
-  for (let i = 0; i < 4; i++) {
+  const count = Math.min(a.recurrenceCount ?? 4, 52); // máximo 52 semanas (1 ano)
+  for (let i = 0; i < count; i++) {
     const currentDate = new Date(startYear, startMonth - 1, startDay + i * intervalDays);
     const y = currentDate.getFullYear();
     const m = String(currentDate.getMonth() + 1).padStart(2, '0');
@@ -32,7 +37,7 @@ function buildRecurringRows(a: AppointmentInput, groupId: string): any[] {
       is_recurring: true,
       recurrence_frequency: a.recurrenceFrequency ?? RecurrenceFrequency.SEMANAL,
       recurrence_group_id: groupId,
-      needs_renewal: i === 3,
+      needs_renewal: i === count - 1,
       custom_price: a.customPrice ?? null,
       custom_repass_amount: a.customRepassAmount ?? null,
       billing_batch_id: a.billingBatchId ?? null,
@@ -95,7 +100,7 @@ export const appointmentWriteService = {
       if (firstApp.date === getTodayISO()) {
         supabase.functions.invoke('agenda-change-notify', {
           body: { appointmentId: firstApp.id, changeType: 'new' }
-        }).catch((e: any) => console.warn('[AgendaChangeNotify]', e));
+        }).catch((e: any) => logger.warn('[AgendaChangeNotify]', e));
       }
 
       return toAppointment(data[0]);
@@ -153,7 +158,7 @@ export const appointmentWriteService = {
       if (data.date === getTodayISO()) {
         supabase.functions.invoke('agenda-change-notify', {
           body: { appointmentId: data.id, changeType: 'new' }
-        }).catch((e: any) => console.warn('[AgendaChangeNotify]', e));
+        }).catch((e: any) => logger.warn('[AgendaChangeNotify]', e));
       }
 
       return toAppointment(data);
@@ -213,7 +218,7 @@ export const appointmentWriteService = {
     if (hasRelevantChange && data.date === getTodayISO()) {
       supabase.functions.invoke('agenda-change-notify', {
         body: { appointmentId: data.id, changeType: 'updated' }
-      }).catch((e: any) => console.warn('[AgendaChangeNotify]', e));
+      }).catch((e: any) => logger.warn('[AgendaChangeNotify]', e));
     }
 
     return toAppointment(data);

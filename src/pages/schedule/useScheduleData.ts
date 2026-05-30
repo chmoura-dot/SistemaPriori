@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { api } from '../../services/api';
+import { logger } from '../../lib/logger';
 import {
   Appointment, Room, Psychologist, Customer, Plan,
   AttendanceMode, AppointmentType, RecurrenceFrequency,
@@ -95,13 +96,19 @@ export const useScheduleData = () => {
       setHolidays(h);
       setClosures(cl);
     } catch (err) {
-      console.error('[Agenda] Erro ao carregar dados:', err);
+      logger.error('[Agenda] Erro ao carregar dados:', err);
     } finally {
       setIsLoading(false);
     }
   };
 
-  useEffect(() => { loadData(date, true); }, []);
+  // Cleanup: cancela setState se o componente desmontar durante o carregamento
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    loadData(date, true);
+    return () => { mountedRef.current = false; };
+  }, []);
   useEffect(() => {
     if (loadedRange.start && (date < loadedRange.start || date > loadedRange.end)) {
       loadData(date, true);

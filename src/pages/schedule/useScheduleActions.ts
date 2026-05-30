@@ -3,6 +3,8 @@ import {
   Appointment, AppointmentStatus, AttendanceMode, RecurrenceFrequency,
 } from '../../services/types';
 import { supabase } from '../../lib/supabase';
+import { logger } from '../../lib/logger';
+import { hasTimeOverlap } from '../../lib/timeUtils';
 import { useScheduleData, makeDefaultForm } from './useScheduleData';
 import { ScheduleFormData } from './scheduleUtils';
 
@@ -25,9 +27,7 @@ export const useScheduleActions = (s: ScheduleData) => {
       const conflicts = appointments.filter(
         a => a.id !== editingId && a.date === formData.date &&
           a.status !== AppointmentStatus.CANCELED &&
-          ((formData.startTime >= a.startTime && formData.startTime < a.endTime) ||
-            (formData.endTime > a.startTime && formData.endTime <= a.endTime) ||
-            (formData.startTime <= a.startTime && formData.endTime >= a.endTime))
+          hasTimeOverlap(formData.startTime, formData.endTime, a.startTime, a.endTime)
       );
       if (conflicts.some(a => formData.mode === AttendanceMode.PRESENCIAL && a.mode === AttendanceMode.PRESENCIAL && a.roomId === formData.roomId))
         throw new Error('Já existe um agendamento para esta sala neste horário.');
@@ -43,9 +43,7 @@ export const useScheduleActions = (s: ScheduleData) => {
           const hasConflict = appointments.some(
             a => a.psychologistId === formData.psychologistId && a.date === targetDate &&
               a.status !== AppointmentStatus.CANCELED &&
-              ((formData.startTime >= a.startTime && formData.startTime < a.endTime) ||
-                (formData.endTime > a.startTime && formData.endTime <= a.endTime) ||
-                (formData.startTime <= a.startTime && formData.endTime >= a.endTime))
+              hasTimeOverlap(formData.startTime, formData.endTime, a.startTime, a.endTime)
           );
           if (hasConflict) throw new Error(`O psicólogo já possui agendamento conflitante em ${targetDate}.`);
         }
@@ -76,7 +74,13 @@ export const useScheduleActions = (s: ScheduleData) => {
       s.setEditingId(null);
       s.setUpdateFuture(false);
     } catch (error: any) {
-      alert(error.message || 'Erro ao salvar agendamento');
+      // Trata erros de overlap vindos do trigger do banco (race condition)
+      const msg = error?.message || '';
+      if (msg.includes('conflitante') || msg.includes('já possui') || msg.includes('overlap') || msg.includes('duplicate')) {
+        alert('O psicólogo selecionado já possui um agendamento neste horário.');
+      } else {
+        alert(msg || 'Erro ao salvar agendamento');
+      }
     } finally {
       s.setIsSaving(false);
     }
@@ -130,7 +134,7 @@ export const useScheduleActions = (s: ScheduleData) => {
         await supabase.functions.invoke('cancel-appointment-notify', {
           body: { reason: s.cancellationReason, appointmentData: { ...appointment, customer, psychologist } },
         });
-      } catch { console.error('Erro ao notificar cancelamento'); }
+      } catch { logger.error('Erro ao notificar cancelamento'); }
       if (appointment.isRecurring && appointment.recurrenceGroupId && s.updateFuture) {
         await api.deleteFutureAppointments(appointment.recurrenceGroupId, appointment.date);
       } else {
@@ -163,7 +167,7 @@ export const useScheduleActions = (s: ScheduleData) => {
         await supabase.functions.invoke('cancel-appointment-notify', {
           body: { appointmentId: s.cancellationModalAppId, reason: s.cancellationReason },
         });
-      } catch { console.error('Erro ao notificar'); }
+      } catch { logger.error('Erro ao notificar'); }
       await api.updateAppointment(s.cancellationModalAppId, { status: AppointmentStatus.CANCELED, cancellationBilling: billingMode });
       await s.loadData(s.date, true);
     } catch { alert('Erro ao cancelar agendamento'); }
@@ -190,9 +194,7 @@ export const useScheduleActions = (s: ScheduleData) => {
         const hasConflict = s.appointments.some(
           a => a.psychologistId === appointment.psychologistId && a.date === targetDate &&
             a.status !== AppointmentStatus.CANCELED &&
-            ((appointment.startTime >= a.startTime && appointment.startTime < a.endTime) ||
-              (appointment.endTime > a.startTime && appointment.endTime <= a.endTime) ||
-              (appointment.startTime <= a.startTime && appointment.endTime >= a.endTime))
+            hasTimeOverlap(appointment.startTime, appointment.endTime, a.startTime, a.endTime)
         );
         if (hasConflict) throw new Error(`Conflito na data ${targetDate}. Renovação cancelada.`);
       }

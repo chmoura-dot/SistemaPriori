@@ -1,5 +1,6 @@
 import { supabase } from './helpers';
 import { User, UserRole } from '../types';
+import { logger } from '../../lib/logger';
 
 let currentUser: User | null = null;
 
@@ -8,7 +9,7 @@ export const authService = {
     const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email, password });
 
     if (authError || !authData.user) {
-      console.error('Auth error:', authError);
+      logger.error('Auth error:', authError);
       return null;
     }
 
@@ -19,7 +20,7 @@ export const authService = {
       .single();
 
     if (profileError || !profile) {
-      console.error('Profile fetch error:', profileError);
+      logger.error('Profile fetch error:', profileError);
       return null;
     }
 

@@ -7,6 +7,7 @@ import {
   Psychologist,
   Appointment,
 } from '../../services/types';
+import { hasTimeOverlap, toMinutes } from '../../lib/timeUtils';
 
 // ─── Form data type ───────────────────────────────────────────────────────────
 export type ScheduleFormData = {
@@ -100,7 +101,7 @@ export const isPsychologistAvailable = (
 
   const isWithinAvailability = psy.availability.some(slot => {
     const dayAndTimeMatch =
-      slot.dayOfWeek === dayOfWeek && startTime >= slot.startTime && endTime <= slot.endTime;
+      slot.dayOfWeek === dayOfWeek && toMinutes(startTime) >= toMinutes(slot.startTime) && toMinutes(endTime) <= toMinutes(slot.endTime);
     if (!dayAndTimeMatch) return false;
     const slotMode = (slot as any).mode ?? 'Ambos';
     if (slotMode === 'Ambos') return true;
@@ -118,9 +119,7 @@ export const isPsychologistAvailable = (
       a.date === dateStr &&
       a.id !== editingId &&
       a.status !== AppointmentStatus.CANCELED &&
-      ((startTime >= a.startTime && startTime < a.endTime) ||
-        (endTime > a.startTime && endTime <= a.endTime) ||
-        (startTime <= a.startTime && endTime >= a.endTime))
+      hasTimeOverlap(startTime, endTime, a.startTime, a.endTime)
   );
 
   return !hasConflict;
@@ -150,9 +149,7 @@ export const hasMinSpace = (
         a.date === dateStr &&
         a.roomId === roomId &&
         a.status !== AppointmentStatus.CANCELED &&
-        ((slot >= a.startTime && slot < a.endTime) ||
-          (minEndTime > a.startTime && minEndTime <= a.endTime) ||
-          (slot <= a.startTime && minEndTime >= a.endTime))
+        hasTimeOverlap(slot, minEndTime, a.startTime, a.endTime)
     );
     if (hasConflict) return false;
   }
@@ -161,7 +158,7 @@ export const hasMinSpace = (
     const psy = psychologists.find(p => p.id === psyId);
     if (!psy || !psy.active) return false;
     const isWithinAvailability = psy.availability.some(
-      s => s.dayOfWeek === dayOfWeek && slot >= s.startTime && minEndTime <= s.endTime
+      s => s.dayOfWeek === dayOfWeek && toMinutes(slot) >= toMinutes(s.startTime) && toMinutes(minEndTime) <= toMinutes(s.endTime)
     );
     if (!isWithinAvailability) return false;
     const hasPsyConflict = appointments.some(
@@ -169,9 +166,7 @@ export const hasMinSpace = (
         a.date === dateStr &&
         a.psychologistId === psyId &&
         a.status !== AppointmentStatus.CANCELED &&
-        ((slot >= a.startTime && slot < a.endTime) ||
-          (minEndTime > a.startTime && minEndTime <= a.endTime) ||
-          (slot <= a.startTime && minEndTime >= a.endTime))
+        hasTimeOverlap(slot, minEndTime, a.startTime, a.endTime)
     );
     if (hasPsyConflict) return false;
   }

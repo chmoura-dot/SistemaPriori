@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { api } from '../services/api';
+import { logger } from '../lib/logger';
 import {
   BillingBatch, BillingBatchStatus, Appointment, AppointmentStatus,
   Customer, Plan, Psychologist, HealthPlan,
@@ -43,7 +44,14 @@ export function useBillingData() {
   const [batchToPay, setBatchToPay]                 = useState<BillingBatch | null>(null);
   const [appointmentStatuses, setAppointmentStatuses] = useState<Record<string, import('./billing/billingHelpers').AppointmentPaymentStatus>>({});
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      await fetchData();
+    };
+    load();
+    return () => { cancelled = true; };
+  }, []);
 
   // ─── Auto-save do rascunho quando selectedAppointmentIds muda ────────────
   useEffect(() => {
@@ -71,7 +79,7 @@ export function useBillingData() {
         setAutoSaveStatus('saved');
         setTimeout(() => setAutoSaveStatus('idle'), 2500);
       } catch (err) {
-        console.error('Auto-save error:', err);
+        logger.error('Auto-save error:', err);
         setAutoSaveStatus('idle');
       }
     }, 1000);
@@ -89,7 +97,7 @@ export function useBillingData() {
       setAppointments(appsData); setCustomers(customersData);
       setPlans(plansData); setPsychologists(psyData);
     } catch (error) {
-      console.error('Error fetching billing data:', error);
+      logger.error('Error fetching billing data:', error);
     } finally {
       setIsLoading(false);
     }
@@ -108,7 +116,7 @@ export function useBillingData() {
       await api.updateAppointment(id, { procedureCode: newCode || null } as any);
       setAppointments(prev => prev.map(a => a.id === id ? { ...a, procedureCode: newCode || undefined } : a));
     } catch (err) {
-      console.error('Erro ao atualizar código de procedimento:', err);
+      logger.error('Erro ao atualizar código de procedimento:', err);
     }
   };
 
