@@ -4,6 +4,7 @@ import { Button } from '../../components/Button';
 import { Modal } from '../../components/Modal';
 import { Customer, HealthPlan, Psychologist } from '../../services/types';
 import { cn } from '../../lib/utils';
+import { calcRepass } from '../../lib/repassRules';
 
 export type CustomerFormData = {
   name: string;
@@ -143,7 +144,17 @@ export const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
           </div>
           <div className="space-y-1">
             <label className={label}>Psicólogo Responsável</label>
-            <select className={input} value={formData.psychologistId} onChange={e => setFormData(p => ({ ...p, psychologistId: e.target.value }))}>
+            <select className={input} value={formData.psychologistId} onChange={e => {
+              const psyId = e.target.value;
+              const psy = psychologists.find(p => p.id === psyId);
+              setFormData(p => {
+                const updates: Partial<CustomerFormData> = { psychologistId: psyId };
+                if (p.healthPlan === HealthPlan.PARTICULAR && p.customPrice !== undefined && p.customPrice > 0) {
+                  updates.customRepassAmount = calcRepass(p.customPrice, psy);
+                }
+                return { ...p, ...updates };
+              });
+            }}>
               <option value="">Sem responsável</option>
               {psychologists.filter(p => p.active).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
@@ -155,7 +166,12 @@ export const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1">
               <label className={label}>Valor da Sessão (R$)</label>
-              <input type="number" min="0" step="0.01" className={input} value={formData.customPrice ?? ''} onChange={e => setFormData(p => ({ ...p, customPrice: e.target.value ? Number(e.target.value) : undefined }))} placeholder="0,00" />
+              <input type="number" min="0" step="0.01" className={input} value={formData.customPrice ?? ''} onChange={e => {
+                const price = e.target.value ? Number(e.target.value) : undefined;
+                const psy = psychologists.find(p => p.id === formData.psychologistId);
+                const repass = price !== undefined && price > 0 ? calcRepass(price, psy) : undefined;
+                setFormData(p => ({ ...p, customPrice: price, customRepassAmount: repass }));
+              }} placeholder="0,00" />
             </div>
             <div className="space-y-1">
               <label className={label}>Repasse Psicólogo (R$)</label>

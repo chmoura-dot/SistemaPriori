@@ -8,6 +8,7 @@ import { Modal } from '../../components/Modal';
 import { Button } from '../../components/Button';
 import { cn } from '../../lib/utils';
 import { matchPlanByHealthPlan } from '../../services/supabase/helpers';
+import { calcRepass } from '../../lib/repassRules';
 import { ScheduleFormData } from './scheduleUtils';
 import { CustomerSearchDropdown } from './CustomerSearchDropdown';
 import { DateTimePicker } from './DateTimePicker';
@@ -53,9 +54,12 @@ export const ScheduleFormModal: React.FC<ScheduleFormModalProps> = ({
     const procedure = plan?.procedures.find(proc => proc.type === formData.type || proc.code === formData.procedureCode);
 
     if (customerChanged && customer) {
-      if (customer.customPrice !== undefined) setFormData(prev => ({ ...prev, customPrice: customer.customPrice }));
-      if (customer.customRepassAmount !== undefined) setFormData(prev => ({ ...prev, customRepassAmount: customer.customRepassAmount }));
-      else if (procedure?.price) setFormData(prev => ({ ...prev, customPrice: procedure.price, customRepassAmount: procedure.repassAmount }));
+      const price = customer.customPrice ?? procedure?.price;
+      const repass = customer.customRepassAmount
+        ?? (customer.customPrice !== undefined && customer.customPrice > 0
+          ? calcRepass(customer.customPrice, psychologists.find(p => p.id === formData.psychologistId))
+          : procedure?.repassAmount);
+      if (price !== undefined) setFormData(prev => ({ ...prev, customPrice: price, customRepassAmount: repass }));
     }
 
     if (startChanged && formData.startTime) {
