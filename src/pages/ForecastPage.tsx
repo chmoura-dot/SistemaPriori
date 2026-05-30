@@ -38,8 +38,12 @@ export const ForecastPage = () => {
   const loadData = async () => {
     setIsLoading(true);
     try {
+      // Calcula primeiro e último dia do mês selecionado
+      const firstDay = `${year}-${String(month + 1).padStart(2, '0')}-01`;
+      const lastDay = new Date(year, month + 1, 0).toISOString().split('T')[0];
+
       const [apps, custs, pls] = await Promise.all([
-        api.getAppointments(),
+        api.getAppointmentsByRange(firstDay, lastDay),
         api.getCustomers(),
         api.getPlans(),
       ]);
@@ -55,7 +59,7 @@ export const ForecastPage = () => {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [month, year]);
 
   // ---------- Navegação de mês ----------
   const prevMonth = () => {
@@ -72,10 +76,10 @@ export const ForecastPage = () => {
     // Mês/ano selecionado no formato YYYY-MM
     const prefix = `${year}-${String(month + 1).padStart(2, '0')}`;
 
-    // Filtrar agendamentos do mês, ativos, não-internos
+    // Filtrar agendamentos do mês, não-cancelados, não-internos
     const monthApps = appointments.filter(a =>
       a.date.startsWith(prefix) &&
-      a.status === AppointmentStatus.ACTIVE &&
+      a.status !== AppointmentStatus.CANCELED &&
       !a.isInternal
     );
 
