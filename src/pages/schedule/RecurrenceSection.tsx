@@ -62,8 +62,8 @@ export const RecurrenceSection: React.FC<RecurrenceSectionProps> = ({
             value={formData.recurrenceFrequency}
             onChange={e => setFormData(prev => ({ ...prev, recurrenceFrequency: e.target.value as RecurrenceFrequency }))}
           >
-            <option value={RecurrenceFrequency.SEMANAL}>Semanal (4 sessões seguidas)</option>
-            <option value={RecurrenceFrequency.QUINZENAL}>Quinzenal (4 sessões a cada 15 dias)</option>
+            <option value={RecurrenceFrequency.SEMANAL}>Semanal (mês atual + próximo)</option>
+            <option value={RecurrenceFrequency.QUINZENAL}>Quinzenal (mês atual + próximo)</option>
           </select>
         </div>
       )}

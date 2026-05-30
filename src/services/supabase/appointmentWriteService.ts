@@ -3,19 +3,24 @@ import { supabase, toAppointment, generateUUID } from './helpers';
 import { logger } from '../../lib/logger';
 import { Appointment, RecurrenceFrequency } from '../types';
 
-type AppointmentInput = Omit<Appointment, 'id' | 'createdAt' | 'confirmedPatient' | 'confirmedPsychologist'> & {
-  /** Número de ocorrências a criar (padrão: 4) */
-  recurrenceCount?: number;
-};
+type AppointmentInput = Omit<Appointment, 'id' | 'createdAt' | 'confirmedPatient' | 'confirmedPsychologist'>;
 
 function buildRecurringRows(a: AppointmentInput, groupId: string): any[] {
   const [startYear, startMonth, startDay] = a.date.split('-').map(Number);
   const intervalDays = a.recurrenceFrequency === RecurrenceFrequency.QUINZENAL ? 14 : 7;
-  const rows = [];
 
-  const count = Math.min(a.recurrenceCount ?? 4, 52); // máximo 52 semanas (1 ano)
-  for (let i = 0; i < count; i++) {
+  // Data de corte: último dia do mês seguinte ao mês de início
+  const endMonth = startMonth === 12 ? 1 : startMonth + 1;
+  const endYear = startMonth === 12 ? startYear + 1 : startYear;
+  // new Date(ano, mês, 0) retorna o último dia do mês anterior → (endYear, endMonth, 0) = último dia de endMonth
+  const endDate = new Date(endYear, endMonth, 0); // último dia do mês seguinte
+
+  const rows: any[] = [];
+  let i = 0;
+  while (i < 52) { // safety cap
     const currentDate = new Date(startYear, startMonth - 1, startDay + i * intervalDays);
+    if (currentDate > endDate) break;
+
     const y = currentDate.getFullYear();
     const m = String(currentDate.getMonth() + 1).padStart(2, '0');
     const d = String(currentDate.getDate()).padStart(2, '0');
@@ -37,7 +42,7 @@ function buildRecurringRows(a: AppointmentInput, groupId: string): any[] {
       is_recurring: true,
       recurrence_frequency: a.recurrenceFrequency ?? RecurrenceFrequency.SEMANAL,
       recurrence_group_id: groupId,
-      needs_renewal: i === count - 1,
+      needs_renewal: false, // marcado abaixo no último
       custom_price: a.customPrice ?? null,
       custom_repass_amount: a.customRepassAmount ?? null,
       billing_batch_id: a.billingBatchId ?? null,
@@ -51,7 +56,12 @@ function buildRecurringRows(a: AppointmentInput, groupId: string): any[] {
       internal_title: a.isInternal ? (a.internalTitle ?? null) : null,
       internal_notes: a.isInternal ? (a.internalNotes ?? null) : null,
     });
+    i++;
   }
+
+  // Último agendamento do grupo dispara alerta de renovação
+  if (rows.length > 0) rows[rows.length - 1].needs_renewal = true;
+
   return rows;
 }
 

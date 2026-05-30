@@ -37,15 +37,22 @@ export const useScheduleActions = (s: ScheduleData) => {
       if (formData.isRecurring && !editingId) {
         const intervalDays = formData.recurrenceFrequency === RecurrenceFrequency.QUINZENAL ? 14 : 7;
         const [sy, sm, sd] = formData.date.split('-').map(Number);
-        for (let i = 1; i < 4; i++) {
+        // Corte = último dia do mês seguinte ao mês de início
+        const endM = sm === 12 ? 1 : sm + 1;
+        const endY = sm === 12 ? sy + 1 : sy;
+        const endDate = new Date(endY, endM, 0);
+        let i = 1;
+        while (i < 52) {
           const cur = new Date(sy, sm - 1, sd + i * intervalDays);
-          const targetDate = cur.toISOString().split('T')[0];
+          if (cur > endDate) break;
+          const targetDate = `${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, '0')}-${String(cur.getDate()).padStart(2, '0')}`;
           const hasConflict = appointments.some(
             a => a.psychologistId === formData.psychologistId && a.date === targetDate &&
               a.status !== AppointmentStatus.CANCELED &&
               hasTimeOverlap(formData.startTime, formData.endTime, a.startTime, a.endTime)
           );
           if (hasConflict) throw new Error(`O psicólogo já possui agendamento conflitante em ${targetDate}.`);
+          i++;
         }
       }
 
@@ -60,16 +67,8 @@ export const useScheduleActions = (s: ScheduleData) => {
       if (editingId) {
         const appt = appointments.find(a => a.id === editingId);
         if (appt?.isRecurring && appt.recurrenceGroupId && s.updateFuture) {
-          // Contar sessões futuras do grupo para preservar a mesma quantidade ao recriar
-          const remainingCount = appointments.filter(
-            a => a.recurrenceGroupId === appt.recurrenceGroupId &&
-                 a.date >= appt.date &&
-                 a.status !== AppointmentStatus.CANCELED
-          ).length;
-          const recurrenceCount = Math.max(remainingCount, 1);
-
           await api.deleteFutureAppointments(appt.recurrenceGroupId, appt.date);
-          await api.createAppointment({ ...payload as any, date: formData.date, dayOfWeek: new Date(formData.date + 'T12:00:00').getDay(), status: AppointmentStatus.ACTIVE, recurrenceCount });
+          await api.createAppointment({ ...payload as any, date: formData.date, dayOfWeek: new Date(formData.date + 'T12:00:00').getDay(), status: AppointmentStatus.ACTIVE });
         } else {
           await api.updateAppointment(editingId, payload as any);
         }
@@ -188,7 +187,7 @@ export const useScheduleActions = (s: ScheduleData) => {
   };
 
   const handleRenew = async (appointment: Appointment) => {
-    if (!confirm('Renovar este agendamento recorrente por mais 4 semanas?')) return;
+    if (!confirm('Renovar este agendamento recorrente para o mês atual e o próximo?')) return;
     s.setIsSaving(true);
     try {
       const intervalDays = appointment.recurrenceFrequency === RecurrenceFrequency.QUINZENAL ? 14 : 7;
@@ -196,15 +195,22 @@ export const useScheduleActions = (s: ScheduleData) => {
       d.setDate(d.getDate() + intervalDays);
       const nextDate = d.toISOString().split('T')[0];
       const [sy, sm, sd] = nextDate.split('-').map(Number);
-      for (let i = 0; i < 4; i++) {
+      // Corte = último dia do mês seguinte ao mês de início da renovação
+      const endM = sm === 12 ? 1 : sm + 1;
+      const endY = sm === 12 ? sy + 1 : sy;
+      const endDate = new Date(endY, endM, 0);
+      let i = 0;
+      while (i < 52) {
         const cur = new Date(sy, sm - 1, sd + i * intervalDays);
-        const targetDate = cur.toISOString().split('T')[0];
+        if (cur > endDate) break;
+        const targetDate = `${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, '0')}-${String(cur.getDate()).padStart(2, '0')}`;
         const hasConflict = s.appointments.some(
           a => a.psychologistId === appointment.psychologistId && a.date === targetDate &&
             a.status !== AppointmentStatus.CANCELED &&
             hasTimeOverlap(appointment.startTime, appointment.endTime, a.startTime, a.endTime)
         );
         if (hasConflict) throw new Error(`Conflito na data ${targetDate}. Renovação cancelada.`);
+        i++;
       }
       await api.createAppointment({
         customerId: appointment.customerId, psychologistId: appointment.psychologistId,
@@ -217,7 +223,7 @@ export const useScheduleActions = (s: ScheduleData) => {
       });
       await api.updateAppointment(appointment.id, { needsRenewal: false });
       await s.loadData(s.date, true);
-      alert('Agendamento renovado! Mais 4 semanas bloqueadas.');
+      alert('Agendamento renovado! Sessões criadas para o mês atual e o próximo.');
     } catch (error: any) {
       alert(error.message || 'Erro ao renovar agendamento');
     } finally { s.setIsSaving(false); }
