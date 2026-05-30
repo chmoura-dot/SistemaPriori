@@ -17,7 +17,7 @@ Deno.serve(async (req) => {
   try {
     const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
 
-    // Body: { appointmentId: string, changeType: "new" | "updated" }
+    // Body: { appointmentId: string, changeType: "new" | "rescheduled" | "canceled" | "patient_changed" | "updated" }
     const { appointmentId, changeType } = await req.json();
 
     if (!appointmentId || !changeType) {
@@ -103,10 +103,21 @@ Deno.serve(async (req) => {
 
     // 4. Montar mensagem conforme o tipo de alteração
     let message: string;
-    if (changeType === "new") {
-      message = `🗓️ *Atualização de Agenda - Núcleo Priori*\n\nOlá *${psychName}*, um novo atendimento foi adicionado à sua agenda de hoje (${formattedDate}):\n\n👤 ${atendimentoDesc}\n🕐 Horário: *${appData.start_time}* às *${appData.end_time}*\n\nFique atento à sua agenda atualizada. Qualquer dúvida, entre em contato com a secretaria.`;
-    } else {
-      message = `🔄 *Alteração na Agenda - Núcleo Priori*\n\nOlá *${psychName}*, houve uma alteração em um atendimento da sua agenda de hoje (${formattedDate}):\n\n👤 ${atendimentoDesc}\n🕐 Novo horário: *${appData.start_time}* às *${appData.end_time}*\n\nVerifique sua agenda atualizada. Qualquer dúvida, entre em contato com a secretaria.`;
+    switch (changeType) {
+      case "new":
+        message = `🗓️ *Novo Atendimento - Núcleo Priori*\n\nOlá *${psychName}*, um novo atendimento foi adicionado à sua agenda de hoje (${formattedDate}):\n\n👤 ${atendimentoDesc}\n🕐 Horário: *${appData.start_time}* às *${appData.end_time}*\n\nFique atento à sua agenda atualizada. Qualquer dúvida, entre em contato com a secretaria.`;
+        break;
+      case "rescheduled":
+        message = `⏰ *Remarcação na Agenda - Núcleo Priori*\n\nOlá *${psychName}*, houve uma alteração de horário em sua agenda de hoje (${formattedDate}):\n\n👤 ${atendimentoDesc}\n🕐 Novo horário: *${appData.start_time}* às *${appData.end_time}*\n\nVerifique sua agenda atualizada. Qualquer dúvida, entre em contato com a secretaria.`;
+        break;
+      case "canceled":
+        message = `❌ *Cancelamento na Agenda - Núcleo Priori*\n\nOlá *${psychName}*, um atendimento da sua agenda de hoje (${formattedDate}) foi *cancelado*:\n\n👤 ${atendimentoDesc}\n🕐 Horário: *${appData.start_time}* às *${appData.end_time}*\n\nQualquer dúvida, entre em contato com a secretaria.`;
+        break;
+      case "patient_changed":
+        message = `👤 *Troca de Paciente - Núcleo Priori*\n\nOlá *${psychName}*, houve uma troca de paciente em um atendimento da sua agenda de hoje (${formattedDate}):\n\n👤 Novo paciente: ${atendimentoDesc}\n🕐 Horário: *${appData.start_time}* às *${appData.end_time}*\n\nVerifique sua agenda atualizada. Qualquer dúvida, entre em contato com a secretaria.`;
+        break;
+      default:
+        message = `🔄 *Alteração na Agenda - Núcleo Priori*\n\nOlá *${psychName}*, houve uma alteração em um atendimento da sua agenda de hoje (${formattedDate}):\n\n👤 ${atendimentoDesc}\n🕐 Horário: *${appData.start_time}* às *${appData.end_time}*\n\nVerifique sua agenda atualizada. Qualquer dúvida, entre em contato com a secretaria.`;
     }
 
     // 5. Enviar via Z-API

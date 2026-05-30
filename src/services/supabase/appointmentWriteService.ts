@@ -226,8 +226,20 @@ export const appointmentWriteService = {
     const relevantFields = ['date', 'start_time', 'end_time', 'status', 'customer_id', 'room_id'];
     const hasRelevantChange = relevantFields.some(f => updates[f] !== undefined);
     if (hasRelevantChange && data.date === getTodayISO()) {
+      // Determina o tipo específico de alteração para mensagem contextual
+      let detailedChangeType: string;
+      if (updates.status === 'canceled') {
+        detailedChangeType = 'canceled';
+      } else if (updates.start_time !== undefined || updates.end_time !== undefined || updates.date !== undefined) {
+        detailedChangeType = 'rescheduled';
+      } else if (updates.customer_id !== undefined) {
+        detailedChangeType = 'patient_changed';
+      } else {
+        detailedChangeType = 'updated';
+      }
+
       supabase.functions.invoke('agenda-change-notify', {
-        body: { appointmentId: data.id, changeType: 'updated' }
+        body: { appointmentId: data.id, changeType: detailedChangeType }
       }).catch((e: any) => logger.warn('[AgendaChangeNotify]', e));
     }
 
