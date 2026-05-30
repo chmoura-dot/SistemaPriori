@@ -194,25 +194,8 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({
       </div>
 
       {appointment.needsRenewal && (
-        <div className="absolute left-0 right-0 z-50 p-1 bg-white border border-amber-300 rounded-md shadow-lg flex flex-col gap-1" style={{ top: '100%', marginTop: '2px' }}>
-          <div className="flex items-center gap-1 text-amber-600">
-            <AlertCircle size={8} />
-            <span className="text-[7px] font-bold uppercase whitespace-nowrap">Renovar +4 sem?</span>
-          </div>
-          <div className="flex gap-1">
-            <button
-              onClick={() => onRenew(appointment)}
-              className="flex-1 text-[7px] bg-amber-500 text-white px-1 py-0.5 rounded font-bold hover:bg-amber-600"
-            >
-              Sim
-            </button>
-            <button
-              onClick={() => onDismissRenewal(appointment.id)}
-              className="flex-1 text-[7px] bg-white border border-zinc-200 text-zinc-500 px-1 py-0.5 rounded font-bold hover:bg-zinc-50"
-            >
-              Não
-            </button>
-          </div>
+        <div className="absolute top-0.5 right-7 z-30" title="Precisa de renovação">
+          <AlertCircle size={12} className="text-amber-500 animate-pulse" />
         </div>
       )}
     </div>

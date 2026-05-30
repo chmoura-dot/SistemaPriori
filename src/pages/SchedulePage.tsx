@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import {
   ChevronLeft, ChevronRight, Plus, Home, User, ChevronDown,
 } from 'lucide-react';
@@ -12,6 +12,7 @@ import { CancellationModals } from './schedule/CancellationModals';
 import { OnlineAppointmentsPanel } from './schedule/OnlineAppointmentsPanel';
 import { useScheduleData } from './schedule/useScheduleData';
 import { useScheduleActions } from './schedule/useScheduleActions';
+import { RenewalModal } from './schedule/RenewalModal';
 
 export const SchedulePage = () => {
   const s = useScheduleData();
@@ -21,6 +22,19 @@ export const SchedulePage = () => {
     handleCancelBillingChoice, handleRenew, handleDismissRenewal,
     sendWhatsApp, handleReminder,
   } = useScheduleActions(s);
+
+  // ── Renewal Modal ──────────────────────────────────────────────────────
+  const [renewalModalOpen, setRenewalModalOpen] = useState(false);
+  const renewalAppointments = useMemo(
+    () => s.appointments.filter(a => a.needsRenewal),
+    [s.appointments]
+  );
+  // Abre automaticamente ao detectar renovações pendentes na data atual
+  useEffect(() => {
+    if (!s.isLoading && renewalAppointments.length > 0) {
+      setRenewalModalOpen(true);
+    }
+  }, [s.date, s.isLoading, renewalAppointments.length]);
 
   const changeDate = (days: number) => {
     const d = new Date(s.date + 'T12:00:00');
@@ -214,6 +228,18 @@ export const SchedulePage = () => {
           const appt = s.appointments.find(a => a.id === s.editingId);
           if (appt) { await handleDelete(appt); handleCloseModal(); }
         }}
+      />
+
+      {/* Renewal Modal */}
+      <RenewalModal
+        isOpen={renewalModalOpen}
+        onClose={() => setRenewalModalOpen(false)}
+        appointments={renewalAppointments}
+        customers={s.customers}
+        psychologists={s.psychologists}
+        onRenew={handleRenew}
+        onDismiss={handleDismissRenewal}
+        isSaving={s.isSaving}
       />
 
       {/* Cancellation + Delete Modals */}
