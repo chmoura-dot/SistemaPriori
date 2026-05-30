@@ -185,6 +185,8 @@ Deno.serve(async (_req) => {
             needs_renewal: false,
             custom_price: template.custom_price ?? null,
             custom_repass_amount: template.custom_repass_amount ?? null,
+            renewed_at: new Date().toISOString(),
+            renewed_by: "auto-renew-cron",
             confirmation_status: "pending",
             is_internal: template.is_internal ?? false,
             internal_type: template.is_internal ? (template.internal_type ?? null) : null,
@@ -197,6 +199,18 @@ Deno.serve(async (_req) => {
         if (insertErr) {
           errors.push(`${label}: ${insertErr.message}`);
           continue;
+        }
+
+        // Limpar flag needs_renewal dos appointments antigos do grupo
+        // para evitar falsos positivos no renewal-reminder-email
+        const { error: clearErr } = await supabase
+          .from("appointments")
+          .update({ needs_renewal: false })
+          .eq("recurrence_group_id", groupId)
+          .eq("needs_renewal", true);
+
+        if (clearErr) {
+          console.warn(`[AutoRenew] Aviso: falha ao limpar needs_renewal do grupo ${groupId}: ${clearErr.message}`);
         }
 
         console.log(`[AutoRenew] OK: ${label} → ${safeDates.length} sessões criadas (${safeDates[0]} a ${safeDates[safeDates.length - 1]})`);

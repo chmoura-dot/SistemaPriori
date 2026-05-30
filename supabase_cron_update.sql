@@ -1,3 +1,11 @@
+-- Aviso de Senhas AMS (Segunda-feira às 07:00 BRT / 10:00 UTC)
+DO $do$
+BEGIN
+  PERFORM cron.unschedule('ams-password-alert');
+EXCEPTION WHEN OTHERS THEN
+  NULL;
+END $do$;
+
 SELECT cron.schedule(
   'ams-password-alert',
   '0 10 * * 1',
@@ -10,7 +18,7 @@ SELECT cron.schedule(
   $body$
 );
 
--- 6. Aviso de Pendências de Agenda Atrasadas (Toda quarta-feira às 08:00 BRT / 11:00 UTC)
+-- 6. Aviso de Pendências de Agenda Atrasadas (Diariamente às 08:15 BRT / 11:15 UTC)
 DO $do$
 BEGIN
   PERFORM cron.unschedule('stale-confirmation-nag');
@@ -20,7 +28,7 @@ END $do$;
 
 SELECT cron.schedule(
   'stale-confirmation-nag',
-  '0 11 * * 3',
+  '15 11 * * *',
   $body$
     SELECT net.http_post(
         url := 'https://ntqkrxtesuaeobxpmznr.supabase.co/functions/v1/stale-confirmation-nag',
