@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { 
+import {
   LayoutDashboard, 
   Users, 
   CreditCard, 
@@ -21,6 +21,7 @@ import {
   CalendarOff,
   RefreshCw,
   SearchCheck,
+  CalendarSearch,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { api } from '../services/api';
@@ -37,6 +38,7 @@ const menuItems = [
   { icon: Package, label: 'Planos', path: '/planos' },
   { icon: BarChart3, label: 'Financeiro', path: '/financeiro' },
   { icon: FileText, label: 'Faturamento', path: '/faturamento' },
+  { icon: CalendarSearch, label: 'Previsão Atendimentos', path: '/previsao' },
   { icon: ArrowRightLeft, label: 'Repasse', path: '/repasse' },
   { icon: BarChart3, label: 'Capacidade', path: '/capacidade' },
   { icon: TrendingDown, label: 'Despesas', path: '/despesas' },
