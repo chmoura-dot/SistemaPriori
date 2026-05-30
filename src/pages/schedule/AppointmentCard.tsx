@@ -6,7 +6,6 @@ import {
   UserX,
   Edit2,
   Trash2,
-  AlertCircle,
   Globe,
   Calendar as CalendarIcon,
 } from 'lucide-react';
@@ -60,8 +59,6 @@ export interface AppointmentCardProps {
   onDelete: (app: Appointment) => void;
   onReminder: (app: Appointment) => void;
   onCancelBilling: (id: string) => void;
-  onRenew: (app: Appointment) => void;
-  onDismissRenewal: (id: string) => void;
 }
 
 export const AppointmentCard: React.FC<AppointmentCardProps> = ({
@@ -73,8 +70,6 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({
   onDelete,
   onReminder,
   onCancelBilling,
-  onRenew,
-  onDismissRenewal,
 }) => {
   const statusColors = {
     confirmed: 'bg-emerald-50/70 border-emerald-200 border-l-emerald-500',
@@ -193,11 +188,6 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({
         </div>
       </div>
 
-      {appointment.needsRenewal && (
-        <div className="absolute top-0.5 right-7 z-30" title="Precisa de renovação">
-          <AlertCircle size={12} className="text-amber-500 animate-pulse" />
-        </div>
-      )}
     </div>
   );
 };

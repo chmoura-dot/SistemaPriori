@@ -1,5 +1,5 @@
 import React from 'react';
-import { Globe, Calendar as CalendarIcon, Bell, MessageCircle, Edit2, Trash2, AlertCircle } from 'lucide-react';
+import { Globe, Calendar as CalendarIcon, Bell, MessageCircle, Edit2, Trash2 } from 'lucide-react';
 import { Appointment, AppointmentStatus, Customer, Psychologist } from '../../services/types';
 import { PLAN_COLORS } from './scheduleUtils';
 import { StatusIcons } from './AppointmentCard';
@@ -16,15 +16,13 @@ interface OnlineAppointmentsPanelProps {
   onDelete: (app: Appointment) => void;
   onConfirm: (id: string, type: 'patient' | 'psychologist') => void;
   onCancelBilling: (id: string) => void;
-  onRenew: (app: Appointment) => void;
-  onDismissRenewal: (id: string) => void;
   sendWhatsApp: (app: Appointment, target: 'patient' | 'psychologist') => void;
 }
 
 export const OnlineAppointmentsPanel: React.FC<OnlineAppointmentsPanelProps> = ({
   appointments, viewMode, selectedPsychologistId,
   customers, psychologists, onReminder, onEdit, onDelete, onConfirm,
-  onCancelBilling, onRenew, onDismissRenewal, sendWhatsApp,
+  onCancelBilling, sendWhatsApp,
 }) => {
   const visible = appointments.filter(a =>
     viewMode !== 'psychologist' || a.psychologistId === selectedPsychologistId
@@ -70,15 +68,6 @@ export const OnlineAppointmentsPanel: React.FC<OnlineAppointmentsPanelProps> = (
               <p className={cn('text-xs font-black truncate leading-tight', isCanceled ? 'text-zinc-500 line-through' : 'text-priori-navy')}>{customer?.name}</p>
               {viewMode !== 'psychologist' && <p className="text-[10px] text-zinc-600 font-medium truncate">{psychologist?.name}</p>}
               <StatusIcons appointment={app} />
-              {app.needsRenewal && (
-                <div className="mt-1.5 p-1.5 bg-white/60 border border-amber-200 rounded-lg flex flex-col gap-1.5">
-                  <div className="flex items-center gap-1 text-amber-600"><AlertCircle size={10} /><span className="text-[8px] font-bold uppercase whitespace-nowrap">Ciclo encerrado</span></div>
-                  <div className="flex gap-1">
-                    <button onClick={() => onRenew(app)} className="flex-1 text-[8px] bg-amber-500 text-white px-1.5 py-0.5 rounded font-bold hover:bg-amber-600">Renovar +4</button>
-                    <button onClick={() => onDismissRenewal(app.id)} className="flex-1 text-[8px] bg-white border border-zinc-200 text-zinc-500 px-1.5 py-0.5 rounded font-bold hover:bg-zinc-50">Ignorar</button>
-                  </div>
-                </div>
-              )}
               <div className="mt-2 flex gap-1.5">
                 <button onClick={() => onConfirm(app.id, 'patient')} className={cn('text-[8px] px-1.5 py-0.5 rounded border font-bold transition-all shadow-sm', app.confirmedPatient ? 'bg-white border-emerald-200 text-emerald-600' : 'bg-white border-zinc-200 text-zinc-400 hover:border-priori-navy/30')}>Pac {app.confirmedPatient ? '✓' : '?'}</button>
                 <button onClick={() => onConfirm(app.id, 'psychologist')} className={cn('text-[8px] px-1.5 py-0.5 rounded border font-bold transition-all shadow-sm', app.confirmedPsychologist ? 'bg-white border-emerald-200 text-emerald-600' : 'bg-white border-zinc-200 text-zinc-400 hover:border-priori-navy/30')}>Psi {app.confirmedPsychologist ? '✓' : '?'}</button>

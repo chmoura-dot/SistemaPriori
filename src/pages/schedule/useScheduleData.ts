@@ -61,7 +61,8 @@ export const useScheduleData = () => {
   // ── Cancellation / delete state ────────────────────────────────────────
   const [cancellationModalAppId, setCancellationModalAppId] = useState<string | null>(null);
   const [cancellationReason, setCancellationReason] = useState('');
-  const [cancellationStep, setCancellationStep] = useState<'reason' | 'billing'>('reason');
+  const [cancellationStep, setCancellationStep] = useState<'reason' | 'scope' | 'billing'>('reason');
+  const [cancellationScope, setCancellationScope] = useState<'single' | 'stop_treatment'>('single');
   const [deleteModalAppId, setDeleteModalAppId] = useState<string | null>(null);
 
   // ── Data loading ───────────────────────────────────────────────────────
@@ -131,6 +132,7 @@ export const useScheduleData = () => {
     cancellationModalAppId, setCancellationModalAppId,
     cancellationReason, setCancellationReason,
     cancellationStep, setCancellationStep,
+    cancellationScope, setCancellationScope,
     deleteModalAppId, setDeleteModalAppId,
     loadData,
   };

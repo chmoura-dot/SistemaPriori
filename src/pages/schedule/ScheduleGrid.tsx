@@ -22,8 +22,6 @@ interface ScheduleGridProps {
   onDelete: (app: Appointment) => void;
   onReminder: (app: Appointment) => void;
   onCancelBilling: (id: string) => void;
-  onRenew: (app: Appointment) => void;
-  onDismissRenewal: (id: string) => void;
 }
 
 export const ScheduleGrid: React.FC<ScheduleGridProps> = ({
@@ -42,10 +40,8 @@ export const ScheduleGrid: React.FC<ScheduleGridProps> = ({
   onDelete,
   onReminder,
   onCancelBilling,
-  onRenew,
-  onDismissRenewal,
 }) => {
-  const cardHandlers = { onEdit, onDelete, onReminder, onCancelBilling, onRenew, onDismissRenewal };
+  const cardHandlers = { onEdit, onDelete, onReminder, onCancelBilling };
 
   return (
     <div className="bg-white border border-zinc-100 rounded-2xl overflow-hidden shadow-sm">

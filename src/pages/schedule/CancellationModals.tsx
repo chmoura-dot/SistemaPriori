@@ -1,5 +1,5 @@
 import React from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, UserX, CalendarOff } from 'lucide-react';
 import { Button } from '../../components/Button';
 import { Modal } from '../../components/Modal';
 import { CANCELLATION_REASONS } from './scheduleUtils';
@@ -10,8 +10,11 @@ interface CancellationModalsProps {
   setCancellationModalAppId: (id: string | null) => void;
   cancellationReason: string;
   setCancellationReason: (r: string) => void;
-  cancellationStep: 'reason' | 'billing';
-  setCancellationStep: (s: 'reason' | 'billing') => void;
+  cancellationStep: 'reason' | 'scope' | 'billing';
+  setCancellationStep: (s: 'reason' | 'scope' | 'billing') => void;
+  cancellationScope: 'single' | 'stop_treatment';
+  setCancellationScope: (s: 'single' | 'stop_treatment') => void;
+  isRecurring: boolean;
   isSaving: boolean;
   handleCancelBillingChoice: (mode: 'none' | 'plan' | 'particular') => void;
   // ── Delete modal ──
@@ -27,6 +30,9 @@ export const CancellationModals: React.FC<CancellationModalsProps> = ({
   setCancellationReason,
   cancellationStep,
   setCancellationStep,
+  cancellationScope,
+  setCancellationScope,
+  isRecurring,
   isSaving,
   handleCancelBillingChoice,
   deleteModalAppId,
@@ -37,11 +43,20 @@ export const CancellationModals: React.FC<CancellationModalsProps> = ({
     setCancellationModalAppId(null);
     setCancellationStep('reason');
     setCancellationReason('');
+    setCancellationScope('single');
   };
 
   const closeDeleteModal = () => {
     setDeleteModalAppId(null);
     setCancellationReason('');
+  };
+
+  const handleNextAfterReason = () => {
+    if (isRecurring) {
+      setCancellationStep('scope');
+    } else {
+      setCancellationStep('billing');
+    }
   };
 
   return (
@@ -73,16 +88,59 @@ export const CancellationModals: React.FC<CancellationModalsProps> = ({
                 ))}
               </div>
               <div className="flex justify-end pt-4">
-                <Button onClick={() => setCancellationStep('billing')} disabled={!cancellationReason}>
+                <Button onClick={handleNextAfterReason} disabled={!cancellationReason}>
                   Próximo <ChevronRight size={16} className="ml-2" />
                 </Button>
+              </div>
+            </>
+          ) : cancellationStep === 'scope' ? (
+            <>
+              <p className="text-sm text-zinc-600 font-medium">
+                Este agendamento faz parte de uma série recorrente. O que deseja fazer?
+              </p>
+              <div className="grid grid-cols-1 gap-3">
+                <button
+                  onClick={() => { setCancellationScope('single'); setCancellationStep('billing'); }}
+                  className="flex items-center gap-3 p-4 border-2 border-zinc-200 rounded-xl hover:border-priori-navy/40 hover:bg-priori-navy/5 transition-all text-left"
+                >
+                  <CalendarOff size={20} className="text-zinc-500 shrink-0" />
+                  <div>
+                    <span className="block font-bold text-zinc-700 text-sm">Cancelar apenas esta sessão</span>
+                    <span className="block text-xs text-zinc-500 mt-0.5">As sessões futuras continuam normalmente</span>
+                  </div>
+                </button>
+                <button
+                  onClick={() => { setCancellationScope('stop_treatment'); setCancellationStep('billing'); }}
+                  className="flex items-center gap-3 p-4 border-2 border-red-200 rounded-xl hover:border-red-400 hover:bg-red-50 transition-all text-left"
+                >
+                  <UserX size={20} className="text-red-500 shrink-0" />
+                  <div>
+                    <span className="block font-bold text-red-700 text-sm">Paciente encerrou tratamento</span>
+                    <span className="block text-xs text-red-500 mt-0.5">Cancela esta e todas as sessões futuras desta série</span>
+                  </div>
+                </button>
+              </div>
+              <div className="flex justify-start pt-2">
+                <button
+                  onClick={() => setCancellationStep('reason')}
+                  className="text-sm text-zinc-500 hover:text-zinc-700 flex items-center"
+                >
+                  <ChevronLeft size={16} className="mr-1" /> Voltar
+                </button>
               </div>
             </>
           ) : (
             <>
               <p className="text-sm text-zinc-600">
-                O paciente faltou ou cancelou esta sessão. Como deseja registrar o faturamento?
+                {cancellationScope === 'stop_treatment'
+                  ? 'O paciente encerrou o tratamento. Como registrar o faturamento desta última sessão?'
+                  : 'O paciente faltou ou cancelou esta sessão. Como deseja registrar o faturamento?'}
               </p>
+              {cancellationScope === 'stop_treatment' && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                  <p className="text-xs text-red-700 font-bold">⚠️ Todas as sessões futuras desta série serão canceladas.</p>
+                </div>
+              )}
               <div className="grid grid-cols-1 gap-3">
                 <button
                   onClick={() => handleCancelBillingChoice('none')}
@@ -121,7 +179,7 @@ export const CancellationModals: React.FC<CancellationModalsProps> = ({
               </div>
               <div className="flex justify-start pt-2">
                 <button
-                  onClick={() => setCancellationStep('reason')}
+                  onClick={() => setCancellationStep(isRecurring ? 'scope' : 'reason')}
                   className="text-sm text-zinc-500 hover:text-zinc-700 flex items-center"
                 >
                   <ChevronLeft size={16} className="mr-1" /> Voltar
