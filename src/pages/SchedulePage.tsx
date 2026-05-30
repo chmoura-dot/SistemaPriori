@@ -164,6 +164,7 @@ export const SchedulePage = () => {
         psychologists={s.psychologists}
         onReminder={handleReminder}
         onEdit={handleEdit}
+        onDelete={handleDelete}
         onConfirm={handleConfirm}
         onCancelBilling={id => s.setCancellationModalAppId(id)}
         onRenew={handleRenew}

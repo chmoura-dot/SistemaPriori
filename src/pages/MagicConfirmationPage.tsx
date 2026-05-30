@@ -115,7 +115,7 @@ export const MagicConfirmationPage = () => {
     loadAppointments();
   }, [loadAppointments]);
 
-  const handleAction = async (appointmentId: string, action: 'confirm' | 'cancel' | 'pendency', billing?: string) => {
+  const handleAction = async (appointmentId: string, action: 'confirm' | 'cancel' | 'pendency' | 'discharge', billing?: string) => {
     if (!token) return;
     setIsProcessing(appointmentId);
 
@@ -127,7 +127,7 @@ export const MagicConfirmationPage = () => {
       app.id === appointmentId ? {
         ...app,
         confirmed_psychologist: action === 'confirm',
-        status: action === 'cancel' ? 'canceled' : 'active'
+        status: (action === 'cancel' || action === 'discharge') ? 'canceled' : 'active'
       } : app
     ));
     
@@ -147,12 +147,13 @@ export const MagicConfirmationPage = () => {
       if (!response.ok) throw new Error(data.error || 'Erro ao processar ação.');
 
       // Feedback visual de sucesso
-      const messages = {
+      const messages: Record<string, string> = {
         confirm: '✅ Presença confirmada!',
         cancel: '❌ Falta registrada.',
-        pendency: '↩️ Status desfeito.'
+        pendency: '↩️ Status desfeito.',
+        discharge: '🏥 Alta registrada. Agendamentos futuros cancelados.'
       };
-      showToast(messages[action], action === 'confirm' ? 'success' : action === 'cancel' ? 'error' : 'info');
+      showToast(messages[action], action === 'confirm' ? 'success' : (action === 'cancel' || action === 'discharge') ? 'error' : 'info');
       
       setCancellationModal(null);
     } catch (err: any) {
@@ -329,6 +330,18 @@ export const MagicConfirmationPage = () => {
               >
                 Cobrar Particular <span className="text-[10px] bg-priori-gold/20 px-2 py-1 rounded-md text-priori-gold">PARTICULAR</span>
               </button>
+
+              <div className="border-t border-zinc-100 pt-3 mt-1">
+                <button 
+                  onClick={() => handleAction(cancellationModal.id, 'discharge')}
+                  className="w-full p-4 border border-purple-200 rounded-2xl text-left hover:bg-purple-50 transition-colors font-bold text-priori-navy flex flex-col gap-1"
+                >
+                  <div className="flex items-center justify-between w-full">
+                    Alta / Interrompeu Tratamento <span className="text-[10px] bg-purple-100 px-2 py-1 rounded-md text-purple-600">ALTA</span>
+                  </div>
+                  <span className="text-[11px] font-normal text-zinc-400">Todos os agendamentos futuros serão cancelados</span>
+                </button>
+              </div>
             </div>
 
             <Button 

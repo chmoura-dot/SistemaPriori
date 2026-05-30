@@ -5,6 +5,7 @@ const Sidebar                  = lazy(() => import('./components/Sidebar').then(
 // Alertas globais carregados diretamente (sempre visíveis após login, componentes pequenos)
 import { RenewalAlert } from './components/RenewalAlert';
 import { DuplicateAppointmentAlert } from './components/DuplicateAppointmentAlert';
+import { DischargeNotificationAlert } from './components/DischargeNotificationAlert';
 
 // ── Lazy loading de páginas (code splitting por rota) ──────────────────────
 // Cada página só é baixada quando o usuário navega até ela,
@@ -238,6 +239,7 @@ export default function App() {
         <>
           <RenewalAlert />
           <DuplicateAppointmentAlert onNavigate={navigate} />
+          <DischargeNotificationAlert />
         </>
       )}
 

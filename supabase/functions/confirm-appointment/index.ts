@@ -284,9 +284,72 @@ Deno.serve(async (req) => {
           status: 'active',
           cancellation_billing: null
         };
+      } else if (action === 'discharge') {
+        // ── Alta / Interrupção de Tratamento ──────────────────────────────
+        // 1. Buscar dados completos do agendamento (customer_id)
+        const { data: fullApp, error: fullAppErr } = await supabase
+          .from('appointments')
+          .select(`
+            id, customer_id, psychologist_id,
+            customer:customers (name),
+            psychologist:psychologists (name)
+          `)
+          .eq('id', appointmentId)
+          .single();
+
+        if (fullAppErr || !fullApp) throw new Error('Agendamento não encontrado para alta.');
+
+        // 2. Cancelar o agendamento atual
+        const { error: cancelErr } = await supabase
+          .from('appointments')
+          .update({ status: 'canceled', cancellation_billing: 'none', confirmed_psychologist: false })
+          .eq('id', appointmentId);
+
+        if (cancelErr) throw new Error(cancelErr.message);
+
+        // 3. Cancelar todos os agendamentos futuros do mesmo paciente+psicólogo
+        const today = new Date().toISOString().split('T')[0];
+        const { data: futureApps, error: futureErr } = await supabase
+          .from('appointments')
+          .select('id')
+          .eq('customer_id', fullApp.customer_id)
+          .eq('psychologist_id', fullApp.psychologist_id)
+          .gte('date', today)
+          .neq('id', appointmentId)
+          .in('status', ['active', 'released']);
+
+        if (futureErr) throw new Error(futureErr.message);
+
+        const futureIds = (futureApps || []).map((a: any) => a.id);
+        if (futureIds.length > 0) {
+          const { error: batchErr } = await supabase
+            .from('appointments')
+            .update({ status: 'canceled', cancellation_billing: 'none' })
+            .in('id', futureIds);
+          if (batchErr) throw new Error(batchErr.message);
+        }
+
+        // 4. Registrar evento de alta na tabela discharge_events
+        const customerObj = Array.isArray(fullApp.customer) ? fullApp.customer[0] : fullApp.customer;
+        const psychObj = Array.isArray(fullApp.psychologist) ? fullApp.psychologist[0] : fullApp.psychologist;
+
+        await supabase.from('discharge_events').insert({
+          customer_id: fullApp.customer_id,
+          psychologist_id: fullApp.psychologist_id,
+          customer_name: customerObj?.name || 'Paciente',
+          psychologist_name: psychObj?.name || 'Psicólogo',
+          appointments_canceled: futureIds.length,
+        });
+
+        console.log(`[ConfirmAppointment] Alta registrada: Paciente ${customerObj?.name}, Psy ${psychObj?.name}, ${futureIds.length} agendamentos futuros cancelados`);
+
+        return new Response(JSON.stringify({ success: true, canceledCount: futureIds.length }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+        // ──────────────────────────────────────────────────────────────────
       }
 
-      // 4. Executar atualização
+      // 4. Executar atualização (confirm, cancel, pendency)
       const { data: updatedApp, error: updateError } = await supabase
         .from('appointments')
         .update(updates)
