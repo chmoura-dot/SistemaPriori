@@ -115,7 +115,7 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({
           : statusColors[currentStatus]
       )}
       style={{
-        minHeight: `calc(${slotCount * 100}% + ${Math.floor(slotCount) - 1}px)`,
+        height: `calc(${slotCount * 100}% + ${Math.floor(slotCount) - 1}px)`,
         top: `calc(${topOffset}% + 2px)`,
       }}
     >
@@ -194,7 +194,7 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({
       </div>
 
       {appointment.needsRenewal && (
-        <div className="mt-1 p-1 bg-white/60 border border-amber-200 rounded-md flex flex-col gap-1">
+        <div className="absolute left-0 right-0 z-50 p-1 bg-white border border-amber-300 rounded-md shadow-lg flex flex-col gap-1" style={{ top: '100%', marginTop: '2px' }}>
           <div className="flex items-center gap-1 text-amber-600">
             <AlertCircle size={8} />
             <span className="text-[7px] font-bold uppercase whitespace-nowrap">Renovar +4 sem?</span>
