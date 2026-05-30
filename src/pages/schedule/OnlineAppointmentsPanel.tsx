@@ -1,5 +1,5 @@
 import React from 'react';
-import { Globe, Calendar as CalendarIcon, Bell, MessageCircle, Edit2, AlertCircle } from 'lucide-react';
+import { Globe, Calendar as CalendarIcon, Bell, MessageCircle, Edit2, Trash2, AlertCircle } from 'lucide-react';
 import { Appointment, AppointmentStatus, Customer, Psychologist } from '../../services/types';
 import { PLAN_COLORS } from './scheduleUtils';
 import { StatusIcons } from './AppointmentCard';
@@ -13,6 +13,7 @@ interface OnlineAppointmentsPanelProps {
   psychologists: Psychologist[];
   onReminder: (app: Appointment) => void;
   onEdit: (app: Appointment) => void;
+  onDelete: (app: Appointment) => void;
   onConfirm: (id: string, type: 'patient' | 'psychologist') => void;
   onCancelBilling: (id: string) => void;
   onRenew: (app: Appointment) => void;
@@ -22,7 +23,7 @@ interface OnlineAppointmentsPanelProps {
 
 export const OnlineAppointmentsPanel: React.FC<OnlineAppointmentsPanelProps> = ({
   appointments, viewMode, selectedPsychologistId,
-  customers, psychologists, onReminder, onEdit, onConfirm,
+  customers, psychologists, onReminder, onEdit, onDelete, onConfirm,
   onCancelBilling, onRenew, onDismissRenewal, sendWhatsApp,
 }) => {
   const visible = appointments.filter(a =>
@@ -63,6 +64,7 @@ export const OnlineAppointmentsPanel: React.FC<OnlineAppointmentsPanelProps> = (
                   <button onClick={() => onReminder(app)} className={cn('p-0.5 transition-colors', app.reminderSentAt ? 'text-amber-600' : 'text-zinc-400 hover:text-priori-navy')}><Bell size={12} /></button>
                   <button onClick={() => sendWhatsApp(app, 'psychologist')} className="p-0.5 text-zinc-400 hover:text-priori-navy"><MessageCircle size={12} /></button>
                   <button onClick={() => onEdit(app)} className="p-0.5 text-zinc-400 hover:text-priori-navy"><Edit2 size={12} /></button>
+                  <button onClick={() => onDelete(app)} className="p-0.5 text-zinc-400 hover:text-red-500" title="Excluir"><Trash2 size={12} /></button>
                 </div>
               </div>
               <p className={cn('text-xs font-black truncate leading-tight', isCanceled ? 'text-zinc-500 line-through' : 'text-priori-navy')}>{customer?.name}</p>
