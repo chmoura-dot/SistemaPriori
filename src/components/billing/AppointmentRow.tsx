@@ -86,14 +86,14 @@ export const AppointmentRow: React.FC<Props> = memo(({
           !isIgnored && isAlreadyInDraft && !isSelected && 'bg-zinc-50/80',
           !isIgnored && isCanceledExempt
             ? 'opacity-60 cursor-not-allowed bg-red-50/30'
-            : !isIgnored && isConfirmed ? 'cursor-pointer' : !isIgnored ? 'opacity-70 cursor-not-allowed bg-zinc-50/50' : ''
+            : !isIgnored ? 'cursor-pointer' : ''
         )}
-        onClick={() => !isIgnored && !isCanceledExempt && isConfirmed && onToggleSelection(app.id)}
+        onClick={() => !isIgnored && !isCanceledExempt && onToggleSelection(app.id)}
       >
         <input
           type="checkbox"
           checked={isSelected}
-          disabled={isIgnored || !isConfirmed || isCanceledExempt}
+          disabled={isIgnored || isCanceledExempt}
           onChange={() => {}}
           className="rounded border-zinc-300 text-priori-navy focus:ring-priori-navy disabled:opacity-50 flex-shrink-0"
         />
@@ -239,7 +239,7 @@ export const AppointmentRow: React.FC<Props> = memo(({
             Confirmar
           </Button>
         )}
-        {!isIgnored && !isCanceledExempt && isConfirmed && !isDraftMode && (
+        {!isIgnored && !isCanceledExempt && !isDraftMode && (
           <button
             onClick={(e) => onQuickAddToDraft(app.id, e)}
             className="p-1 text-zinc-300 hover:text-amber-500 hover:bg-amber-50 rounded-lg transition-all flex-shrink-0"
