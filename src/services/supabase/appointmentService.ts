@@ -1,10 +1,10 @@
 // Métodos de leitura e exclusão de agendamentos
-import { supabase, toAppointment } from './helpers';
+import { supabase, toAppointment, APPOINTMENT_COLUMNS } from './helpers';
 import { Appointment } from '../types';
 
 export const appointmentReadService = {
   getAppointments: async (date?: string): Promise<Appointment[]> => {
-    let query = supabase.from('appointments').select('*');
+    let query = supabase.from('appointments').select(APPOINTMENT_COLUMNS);
 
     if (date) {
       query = query.eq('date', date);
@@ -37,7 +37,7 @@ export const appointmentReadService = {
     const [unbilledResult, billedResult] = await Promise.all([
       supabase
         .from('appointments')
-        .select('*')
+        .select(APPOINTMENT_COLUMNS)
         .is('billing_batch_id', null)
         .gte('date', minDate)
         .lte('date', today)
@@ -45,7 +45,7 @@ export const appointmentReadService = {
         .limit(5000),
       supabase
         .from('appointments')
-        .select('*')
+        .select(APPOINTMENT_COLUMNS)
         .not('billing_batch_id', 'is', null)
         .gte('date', minDate)
         .order('date', { ascending: false })
@@ -56,7 +56,7 @@ export const appointmentReadService = {
     if (billedResult.error) throw new Error(billedResult.error.message);
 
     const seen = new Set<string>();
-    const combined = [...(unbilledResult.data || []), ...(billedResult.data || [])].filter(row => {
+    const combined = [...((unbilledResult.data as any[]) || []), ...((billedResult.data as any[]) || [])].filter(row => {
       if (seen.has(row.id)) return false;
       seen.add(row.id);
       return true;
@@ -68,7 +68,7 @@ export const appointmentReadService = {
   getAppointmentsByRange: async (startDate: string, endDate: string): Promise<Appointment[]> => {
     const { data, error } = await supabase
       .from('appointments')
-      .select('*')
+      .select(APPOINTMENT_COLUMNS)
       .gte('date', startDate)
       .lte('date', endDate)
       .order('date')
@@ -81,7 +81,7 @@ export const appointmentReadService = {
   getAppointmentsByCustomer: async (customerId: string): Promise<Appointment[]> => {
     const { data, error } = await supabase
       .from('appointments')
-      .select('*')
+      .select(APPOINTMENT_COLUMNS)
       .eq('customer_id', customerId)
       .order('date', { ascending: false })
       .limit(10000);
@@ -93,7 +93,7 @@ export const appointmentReadService = {
     const sixtyDaysAgo = new Date(Date.now() - 60 * 86400000).toISOString().split('T')[0];
     const { data, error } = await supabase
       .from('appointments')
-      .select('*')
+      .select(APPOINTMENT_COLUMNS)
       .eq('needs_renewal', true)
       .in('status', ['active', 'canceled'])
       .gte('date', sixtyDaysAgo)

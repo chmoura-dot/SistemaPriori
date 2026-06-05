@@ -8,6 +8,37 @@ import {
 
 export { supabase };
 
+// ── Column projections (substituem SELECT * para segurança e performance) ────
+// Listar explicitamente as colunas protege contra vazamento de campos sensíveis
+// que possam ser adicionados no futuro (ex: prontuários, diagnósticos).
+
+export const APPOINTMENT_COLUMNS = [
+  'id', 'customer_id', 'psychologist_id', 'room_id',
+  'mode', 'type', 'procedure_code',
+  'date', 'day_of_week', 'start_time', 'end_time',
+  'status', 'confirmed_patient', 'confirmed_psychologist',
+  'confirmation_status', 'reminder_sent_at',
+  'patient_notes',
+  'is_recurring', 'recurrence_frequency', 'recurrence_group_id',
+  'needs_renewal', 'renewed_at', 'renewed_by',
+  'custom_price', 'custom_repass_amount',
+  'billing_batch_id', 'billing_status', 'billing_ignored',
+  'denial_reason', 'denial_resolution',
+  'cancellation_billing',
+  'is_internal', 'internal_type', 'internal_title', 'internal_notes',
+  'created_at',
+].join(', ');
+
+export const CUSTOMER_COLUMNS = [
+  'id', 'name', 'email', 'phone',
+  'health_plan', 'psychologist_id',
+  'status', 'inactivation_reason',
+  'notes', 'custom_price', 'custom_repass_amount',
+  'birth_date', 'gender',
+  'ams_password', 'ams_password_expiry',
+  'created_at',
+].join(', ');
+
 // ── Mapper functions ─────────────────────────────────────────────────────────
 
 export function toPsychologist(row: any): Psychologist {

@@ -1,10 +1,10 @@
-import { supabase, toCustomer, toPlan, toSubscription, toPayment, throwOnError } from './helpers';
+import { supabase, toCustomer, toPlan, toSubscription, toPayment, throwOnError, CUSTOMER_COLUMNS } from './helpers';
 import { Customer, Plan, Subscription, Payment } from '../types';
 
 export const customerService = {
   getCustomers: async (): Promise<Customer[]> => {
     const { data: customersData, error: customersError } = await supabase
-      .from('customers').select('*').order('name');
+      .from('customers').select(CUSTOMER_COLUMNS).order('name');
     if (customersError) throw new Error(customersError.message);
     if (!customersData) return [];
 
