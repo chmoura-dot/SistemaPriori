@@ -11,6 +11,7 @@ import {
   Plan, Expense, WaitingListEntry
 } from '../../services/types';
 import { calcRepass } from '../../lib/repassRules';
+import { calculateRevenueFromApps, PricingContext } from '../../lib/pricing';
 
 export function useDashboardBase() {
   // ─── Estado de dados ──────────────────────────────────────────────────────
@@ -133,28 +134,14 @@ export function useDashboardBase() {
     []
   );
 
+  // Contexto de precificação reutilizável (mesma lógica do faturamento)
+  const pricingCtx: PricingContext = useMemo(() => ({
+    customers, plans, appointments,
+  }), [customers, plans, appointments]);
+
   const calculateRevenue = useCallback((apps: Appointment[]): number => {
-    const grouped = apps.reduce((acc: Record<string, Appointment[]>, app) => {
-      const key = `${app.customerId}-${app.type}`;
-      if (!acc[key]) acc[key] = [];
-      acc[key].push(app);
-      return acc;
-    }, {});
-    return Object.values(grouped).reduce((total, customerApps) => {
-      const firstApp  = customerApps[0];
-      const customer  = customers.find(c => c.id === firstApp.customerId);
-      const plan      = findPlan(customer?.healthPlan);
-      const procedure = plan?.procedures?.find(proc => proc.type === firstApp.type);
-      const isOneTime = procedure?.isOneTimeCharge ||
-        (customer?.healthPlan === HealthPlan.PARTICULAR && firstApp.type === AppointmentType.NEUROPSICOLOGICA);
-      if (isOneTime) {
-        return total + (firstApp.customPrice ?? customer?.customPrice ?? procedure?.price ?? 0);
-      }
-      return total + customerApps.reduce((sum, app) =>
-        sum + (app.customPrice ?? customer?.customPrice ?? procedure?.price ?? 0), 0
-      );
-    }, 0);
-  }, [customers, findPlan]);
+    return calculateRevenueFromApps(apps, pricingCtx);
+  }, [pricingCtx]);
 
   // ─── Assinaturas e receita de assinaturas ─────────────────────────────────
   const activeSubs = useMemo(() =>
