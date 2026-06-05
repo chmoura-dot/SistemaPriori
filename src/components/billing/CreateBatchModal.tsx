@@ -5,6 +5,7 @@ import {
   AppointmentType, BillingBatch,
 } from '../../services/types';
 import { PlanProcedureInfo } from '../../hooks/billing/billingHelpers';
+import { NeuropsicoStatus } from '../../lib/pricing';
 import { Modal } from '../Modal';
 import { Button } from '../Button';
 import { Input } from '../Input';
@@ -17,11 +18,6 @@ const MONTH_NAMES = [
   'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
   'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro',
 ];
-
-type NeuropsicoStatus =
-  | { type: 'regular' }
-  | { type: 'billable'; diffDays?: number }
-  | { type: 'blocked'; diffDays: number };
 
 interface Props {
   isOpen: boolean;

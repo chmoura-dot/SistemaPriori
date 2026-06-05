@@ -67,10 +67,15 @@ export function getAmsNeuropsicoSessionIndex(
  * - 'billable': primeira sessão ou após 180 dias → pode faturar
  * - 'blocked': dentro de 180 dias → R$0
  */
+export type NeuropsicoStatus =
+  | { type: 'regular' }
+  | { type: 'billable'; diffDays?: number }
+  | { type: 'blocked'; diffDays: number };
+
 export function getNeuropsicoStatus(
   app: Appointment,
   ctx: PricingContext,
-): { type: 'regular' | 'billable' | 'blocked'; diffDays?: number } {
+): NeuropsicoStatus {
   if (app.type !== AppointmentType.NEUROPSICOLOGICA) return { type: 'regular' };
 
   const customer = ctx.customers.find(c => c.id === app.customerId);

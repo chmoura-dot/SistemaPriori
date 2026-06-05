@@ -1,7 +1,7 @@
 import React from 'react';
 import {
   Calendar, Target, DollarSign, Zap, Users, ShieldCheck,
-  AlertTriangle, TrendingUp, Activity, ArrowUpRight, ChevronRight,
+  AlertTriangle, TrendingUp, Activity, ArrowUpRight, ChevronRight, RefreshCw,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { fmt, getTrendText } from './utils';
@@ -13,7 +13,7 @@ type Props = ReturnType<typeof useDashboardData> & {
 
 export const DashboardResumoTab = (props: Props) => {
   const {
-    customers, psychologists,
+    customers, psychologists, isLoading, error, refreshData,
     today, todayApps, todayConfirmed, todayCanceled, upcomingToday,
     activeCustomersCount, revenueRealizado, revenueRealizadoPrev,
     attendanceRate, attendanceRatePrev, cancelationRate, cancelationRatePrev,
@@ -44,9 +44,18 @@ export const DashboardResumoTab = (props: Props) => {
               </p>
             </div>
           </div>
-          <button onClick={() => onNavigate('/agenda')} className="text-xs font-bold text-priori-gold hover:text-priori-navy transition-colors flex items-center gap-1">
-            Ver agenda completa <ChevronRight size={14} />
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={refreshData}
+              title="Atualizar agenda"
+              className="p-1.5 rounded-lg text-zinc-400 hover:text-priori-navy hover:bg-zinc-100 transition-colors"
+            >
+              <RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} />
+            </button>
+            <button onClick={() => onNavigate('/agenda')} className="text-xs font-bold text-priori-gold hover:text-priori-navy transition-colors flex items-center gap-1">
+              Ver agenda completa <ChevronRight size={14} />
+            </button>
+          </div>
         </div>
 
         <div className="grid grid-cols-3 gap-4 mb-5">
@@ -64,7 +73,21 @@ export const DashboardResumoTab = (props: Props) => {
           </div>
         </div>
 
-        {upcomingToday.length > 0 ? (
+        {error ? (
+          <div className="text-center py-6 text-red-400">
+            <AlertTriangle size={32} className="mx-auto mb-2 opacity-50" />
+            <p className="text-sm">Falha ao carregar agenda</p>
+            <button onClick={refreshData} className="mt-2 text-xs font-bold text-priori-gold hover:text-priori-navy transition-colors">
+              Tentar novamente
+            </button>
+          </div>
+        ) : isLoading ? (
+          <div className="space-y-2 animate-pulse">
+            {[1, 2, 3].map(i => (
+              <div key={i} className="h-14 bg-zinc-100 rounded-xl" />
+            ))}
+          </div>
+        ) : upcomingToday.length > 0 ? (
           <div className="space-y-2">
             <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-3">Próximos atendimentos</p>
             {upcomingToday.map(app => {

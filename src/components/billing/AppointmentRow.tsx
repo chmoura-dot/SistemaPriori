@@ -5,11 +5,7 @@ import { Appointment, AppointmentStatus } from '../../services/types';
 import { Button } from '../Button';
 import { cn, formatCurrency } from '../../lib/utils';
 import { PlanProcedureInfo } from '../../hooks/billing/billingHelpers';
-
-type NeuropsicoStatus =
-  | { type: 'regular' }
-  | { type: 'billable'; diffDays?: number }
-  | { type: 'blocked'; diffDays: number };
+import { NeuropsicoStatus } from '../../lib/pricing';
 
 interface Props {
   app: Appointment;

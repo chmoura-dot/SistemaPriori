@@ -9,11 +9,7 @@ import { Appointment, Customer, Plan, BillingBatch, AppointmentType } from '../.
 import { cn, formatCurrency } from '../../lib/utils';
 import { AppointmentRow } from './AppointmentRow';
 import { PlanProcedureInfo } from '../../hooks/billing/billingHelpers';
-
-type NeuropsicoStatus =
-  | { type: 'regular' }
-  | { type: 'billable'; diffDays?: number }
-  | { type: 'blocked'; diffDays: number };
+import { NeuropsicoStatus } from '../../lib/pricing';
 
 interface SessionWarning {
   customerName: string;

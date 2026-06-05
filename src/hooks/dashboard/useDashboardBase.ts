@@ -3,7 +3,7 @@
  * Responsável por: estado bruto, carregamento de dados, filtro de período
  * e callbacks utilitários compartilhados por todos os sub-hooks do dashboard.
  */
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef, type MutableRefObject } from 'react';
 import { api } from '../../services/api';
 import {
   Appointment, Subscription, HealthPlan, Psychologist, Customer,
@@ -35,25 +35,29 @@ export function useDashboardBase() {
   const [selectedYear, setSelectedYear]   = useState(today.getFullYear());
 
   // ─── Carregamento de dados ────────────────────────────────────────────────
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        setError(null);
-        const [c, s, p, a, psy, exp, wl] = await Promise.all([
-          api.getCustomers(), api.getSubscriptions(), api.getPlans(),
-          api.getAppointments(), api.getPsychologists(), api.getExpenses(), api.getWaitingList(),
-        ]);
-        setCustomers(c); setSubscriptions(s); setPlans(p); setAppointments(a);
-        setPsychologists(psy); setExpenses(exp); setWaitingList(wl);
-      } catch (err) {
-        console.error('[Dashboard] Erro ao carregar dados:', err);
-        setError('Falha ao carregar dados do dashboard. Verifique a conexão e tente novamente.');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    loadData();
+  const loadData = useCallback(async () => {
+    try {
+      setError(null);
+      const [c, s, p, a, psy, exp, wl] = await Promise.all([
+        api.getCustomers(), api.getSubscriptions(), api.getPlans(),
+        api.getAppointments(), api.getPsychologists(), api.getExpenses(), api.getWaitingList(),
+      ]);
+      setCustomers(c); setSubscriptions(s); setPlans(p); setAppointments(a);
+      setPsychologists(psy); setExpenses(exp); setWaitingList(wl);
+    } catch (err) {
+      console.error('[Dashboard] Erro ao carregar dados:', err);
+      setError('Falha ao carregar dados do dashboard. Verifique a conexão e tente novamente.');
+    } finally {
+      setIsLoading(false);
+    }
   }, []);
+
+  // Carga inicial + auto-refresh a cada 5 minutos
+  useEffect(() => {
+    loadData();
+    const interval = setInterval(loadData, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [loadData]);
 
   // ─── Helpers de período ───────────────────────────────────────────────────
   const isInSelectedPeriod = useCallback((dateStr: string) => {
@@ -158,7 +162,7 @@ export function useDashboardBase() {
 
   return {
     customers, subscriptions, plans, appointments, expenses, psychologists, waitingList,
-    isLoading, error,
+    isLoading, error, refreshData: loadData,
     today, todayStr,
     filterMode, setFilterMode,
     selectedMonth, setSelectedMonth,
