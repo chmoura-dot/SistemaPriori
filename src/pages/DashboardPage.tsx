@@ -2,25 +2,26 @@ import React, { useState } from 'react';
 import {
   Activity, AlertCircle, RefreshCw, Calendar, Bell,
   Clock, UserMinus, ListOrdered,
+  DollarSign, BarChart3, UserPlus, Stethoscope,
 } from 'lucide-react';
 import { useDashboardData } from '../hooks/useDashboardData';
 import { cn } from '../lib/utils';
-import { DashboardResumoTab }     from './dashboard/DashboardResumoTab';
-import { DashboardClinicoTab }    from './dashboard/DashboardClinicoTab';
-import { DashboardFinanceiroTab } from './dashboard/DashboardFinanceiroTab';
-import { DashboardEquipeTab }     from './dashboard/DashboardEquipeTab';
+import { DashboardFinanceiroV2Tab } from './dashboard/DashboardFinanceiroV2Tab';
+import { DashboardOperacionalTab }  from './dashboard/DashboardOperacionalTab';
+import { DashboardCaptacaoTab }     from './dashboard/DashboardCaptacaoTab';
+import { DashboardQualitativoTab }  from './dashboard/DashboardQualitativoTab';
 
-type TabId = 'resumo' | 'clinico' | 'financeiro' | 'equipe';
+type TabId = 'financeiro' | 'operacional' | 'captacao' | 'clinico';
 
-const TABS: { id: TabId; label: string }[] = [
-  { id: 'resumo',     label: 'Resumo'     },
-  { id: 'clinico',    label: 'Clínico'    },
-  { id: 'financeiro', label: 'Financeiro' },
-  { id: 'equipe',     label: 'Equipe'     },
+const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
+  { id: 'financeiro',  label: 'Financeiro',  icon: <DollarSign size={14} />   },
+  { id: 'operacional', label: 'Operacional', icon: <BarChart3 size={14} />    },
+  { id: 'captacao',    label: 'Captação',    icon: <UserPlus size={14} />     },
+  { id: 'clinico',     label: 'Clínico',     icon: <Stethoscope size={14} />  },
 ];
 
 export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => void }) => {
-  const [activeTab, setActiveTab] = useState<TabId>('resumo');
+  const [activeTab, setActiveTab] = useState<TabId>('financeiro');
   const data = useDashboardData();
 
   const {
@@ -64,8 +65,8 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
       {/* ── Header + Filtro de Período ── */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-priori-navy">Visão Geral</h2>
-          <p className="text-zinc-500">Acompanhe o desempenho da clínica em tempo real.</p>
+          <h2 className="text-2xl font-bold text-priori-navy">Dashboard Gerencial</h2>
+          <p className="text-zinc-500">Visão completa da operação e saúde financeira da clínica.</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap justify-end">
           {/* Toggle de modo */}
@@ -175,22 +176,46 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
             className={cn(
-              'flex-1 px-4 py-2.5 text-xs font-bold uppercase tracking-wider rounded-xl transition-all',
+              'flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 text-xs font-bold uppercase tracking-wider rounded-xl transition-all',
               activeTab === tab.id
                 ? 'bg-white text-priori-navy shadow-sm'
                 : 'text-zinc-500 hover:text-priori-navy'
             )}
           >
-            {tab.label}
+            {tab.icon}
+            <span className="hidden sm:inline">{tab.label}</span>
           </button>
         ))}
       </div>
 
       {/* ── Conteúdo das Abas ── */}
-      {activeTab === 'resumo'     && <DashboardResumoTab     {...data} onNavigate={onNavigate} />}
-      {activeTab === 'clinico'    && <DashboardClinicoTab    {...data} />}
-      {activeTab === 'financeiro' && <DashboardFinanceiroTab {...data} />}
-      {activeTab === 'equipe'     && <DashboardEquipeTab     {...data} />}
+      {activeTab === 'financeiro' && (
+        <DashboardFinanceiroV2Tab
+          {...data.financeiro}
+          filterMode={data.filterMode}
+        />
+      )}
+      {activeTab === 'operacional' && (
+        <DashboardOperacionalTab
+          {...data.operacional}
+        />
+      )}
+      {activeTab === 'captacao' && (
+        <DashboardCaptacaoTab
+          {...data.captacao}
+          filterMode={data.filterMode}
+        />
+      )}
+      {activeTab === 'clinico' && (
+        <DashboardQualitativoTab
+          appointments={data.appointments}
+          appointmentsFiltered={data.appointmentsFiltered}
+          appsRealizados={data.appsRealizados}
+          customers={data.customers}
+          psychologists={data.psychologists}
+          activeCustomersCount={data.activeCustomersCount}
+        />
+      )}
 
       {/* ── Footer ── */}
       <div className="bg-white border border-zinc-100 rounded-2xl p-6 shadow-sm flex flex-col justify-center items-center text-center space-y-4">
