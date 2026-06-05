@@ -52,12 +52,10 @@ export function useDashboardFinanceiro({
     appsRealizados.reduce((total, app) => {
       const customer = customers.find(c => c.id === app.customerId);
       const psy = psychologists.find(p => p.id === app.psychologistId);
-      const plan = findPlan(customer?.healthPlan);
-      const procedure = plan?.procedures?.find(proc => proc.type === app.type);
-      const appPrice = app.customPrice ?? customer?.customPrice ?? procedure?.price ?? 0;
+      const appPrice = getAppPrice(app, pricingCtx);
       return total + (app.customRepassAmount ?? customer?.customRepassAmount ?? calcRepass(appPrice, psy));
     }, 0),
-    [appsRealizados, customers, psychologists, findPlan]
+    [appsRealizados, customers, psychologists, pricingCtx]
   );
 
   // ─── IMPOSTOS + TAXAS (das despesas reais) ──────────────────────────────
@@ -95,9 +93,7 @@ export function useDashboardFinanceiro({
       const bruto = calculateRevenue(psyApps);
       const repasse = psyApps.reduce((total, app) => {
         const customer = customers.find(c => c.id === app.customerId);
-        const plan = findPlan(customer?.healthPlan);
-        const procedure = plan?.procedures?.find(proc => proc.type === app.type);
-        const appPrice = app.customPrice ?? customer?.customPrice ?? procedure?.price ?? 0;
+        const appPrice = getAppPrice(app, pricingCtx);
         return total + (app.customRepassAmount ?? customer?.customRepassAmount ?? calcRepass(appPrice, psy));
       }, 0);
       const regra = psy.repassFixedAmount && psy.repassFixedAmount > 0
@@ -185,14 +181,11 @@ export function useDashboardFinanceiro({
         const key = d.toLocaleString('pt-BR', { month: 'short', year: '2-digit' });
         const sortKey = d.getFullYear() * 100 + d.getMonth();
         if (!data[key]) data[key] = { month: key, sortKey, bruta: 0, repasses: 0, liquida: 0, impostos: 0 };
-        const price = getAppPrice(app, pricingCtx);
         const customer = customers.find(c => c.id === app.customerId);
         const psy = psychologists.find(p => p.id === app.psychologistId);
-        const plan = findPlan(customer?.healthPlan);
-        const procedure = plan?.procedures?.find(proc => proc.type === app.type);
-        const appPrice = app.customPrice ?? customer?.customPrice ?? procedure?.price ?? 0;
+        const appPrice = getAppPrice(app, pricingCtx);
         const repasse = app.customRepassAmount ?? customer?.customRepassAmount ?? calcRepass(appPrice, psy);
-        data[key].bruta += price;
+        data[key].bruta += appPrice;
         data[key].repasses += repasse;
       });
     // Adiciona despesas fiscais por mês
