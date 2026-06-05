@@ -57,14 +57,16 @@ export function useDashboardBase() {
   // ─── Helpers de período ───────────────────────────────────────────────────
   const isInSelectedPeriod = useCallback((dateStr: string) => {
     if (filterMode === 'all') return true;
-    const d = new Date(dateStr + 'T12:00:00');
+    const safe = (dateStr ?? '').substring(0, 10);
+    const d = new Date(safe + 'T12:00:00');
     if (filterMode === 'year') return d.getFullYear() === selectedYear;
     return d.getMonth() === selectedMonth && d.getFullYear() === selectedYear;
   }, [filterMode, selectedMonth, selectedYear]);
 
   const isInPrevPeriod = useCallback((dateStr: string) => {
     if (filterMode === 'all') return false;
-    const d = new Date(dateStr + 'T12:00:00');
+    const safe = (dateStr ?? '').substring(0, 10);
+    const d = new Date(safe + 'T12:00:00');
     if (filterMode === 'year') return d.getFullYear() === selectedYear - 1;
     const prevMonth = selectedMonth === 0 ? 11 : selectedMonth - 1;
     const prevYear  = selectedMonth === 0 ? selectedYear - 1 : selectedYear;

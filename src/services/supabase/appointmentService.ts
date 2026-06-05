@@ -9,12 +9,14 @@ export const appointmentReadService = {
     if (date) {
       query = query.eq('date', date);
     } else {
-      const today = new Date();
-      const past = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
-      const future = new Date(today.getTime() + 180 * 24 * 60 * 60 * 1000);
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const toLocal = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+      const now = new Date();
+      const past = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      const future = new Date(now.getTime() + 180 * 24 * 60 * 60 * 1000);
       query = query
-        .gte('date', past.toISOString().split('T')[0])
-        .lte('date', future.toISOString().split('T')[0]);
+        .gte('date', toLocal(past))
+        .lte('date', toLocal(future));
     }
 
     query = (query as any).order('date').order('start_time').limit(10000);

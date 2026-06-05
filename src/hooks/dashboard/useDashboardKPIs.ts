@@ -142,7 +142,7 @@ export function useDashboardKPIs({
 
   // ─── Agenda do Dia ────────────────────────────────────────────────────────
   const todayApps = useMemo(() =>
-    appointments.filter(a => a.date === todayStr && !a.isInternal),
+    appointments.filter(a => (a.date ?? '').substring(0, 10) === todayStr && !a.isInternal),
     [appointments, todayStr]
   );
   const todayConfirmed = useMemo(() =>
