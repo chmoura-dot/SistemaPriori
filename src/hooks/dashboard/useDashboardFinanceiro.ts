@@ -90,12 +90,15 @@ export function useDashboardFinanceiro({
   const repassePorPsicologo = useMemo(() =>
     psychologists.filter(p => p.active).map(psy => {
       const psyApps = appsRealizados.filter(a => a.psychologistId === psy.id);
-      const bruto = calculateRevenue(psyApps);
-      const repasse = psyApps.reduce((total, app) => {
+      // Mesma lógica da RepassePage: bruto e repasse usam a mesma base de preço
+      const { bruto, repasse } = psyApps.reduce((acc, app) => {
         const customer = customers.find(c => c.id === app.customerId);
-        const appPrice = getAppPrice(app, pricingCtx);
-        return total + (app.customRepassAmount ?? customer?.customRepassAmount ?? calcRepass(appPrice, psy));
-      }, 0);
+        const plan = findPlan(customer?.healthPlan);
+        const procedure = plan?.procedures?.find(proc => proc.type === app.type);
+        const gross = app.customPrice ?? customer?.customPrice ?? procedure?.price ?? 0;
+        const repasseVal = app.customRepassAmount ?? customer?.customRepassAmount ?? calcRepass(gross, psy);
+        return { bruto: acc.bruto + gross, repasse: acc.repasse + repasseVal };
+      }, { bruto: 0, repasse: 0 });
       const regra = psy.repassFixedAmount && psy.repassFixedAmount > 0
         ? `R$ ${psy.repassFixedAmount.toFixed(0)} fixo`
         : `${((psy.repassRate ?? 0.5) * 100).toFixed(0)}%`;
