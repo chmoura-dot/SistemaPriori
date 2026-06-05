@@ -87,10 +87,6 @@ export function useDashboardKPIs({
     calculateRevenue(appsRealizados) + subscriptionRevenue,
     [appsRealizados, subscriptionRevenue, calculateRevenue]
   );
-  const revenuePrevisto = useMemo(() =>
-    calculateRevenue(appsPrevistos),
-    [appsPrevistos, calculateRevenue]
-  );
   const revenueRealizadoPrev = useMemo(() =>
     calculateRevenue(appsRealizadosPrev),
     [appsRealizadosPrev, calculateRevenue]
@@ -129,7 +125,19 @@ export function useDashboardKPIs({
   const newPatientsCountPrev = useMemo(() => customers.filter(c => isInPrevPeriod(c.createdAt)).length, [customers, isInPrevPeriod]);
 
   // ─── Forecast de Receita ──────────────────────────────────────────────────
-  const forecastRevenue  = revenueRealizado + revenuePrevisto;
+  // Calcula a projeção em UMA ÚNICA chamada a calculateRevenue para agrupar
+  // corretamente por customerId-type (evita dupla contagem de one-time charges).
+  const appsForecast = useMemo(() =>
+    appointmentsFiltered.filter(
+      a => a.status !== AppointmentStatus.CANCELED || isCanceledButBilled(a)
+    ),
+    [appointmentsFiltered, isCanceledButBilled]
+  );
+  const forecastRevenue  = useMemo(() =>
+    calculateRevenue(appsForecast) + subscriptionRevenue,
+    [appsForecast, subscriptionRevenue, calculateRevenue]
+  );
+  const revenuePrevisto  = Math.max(0, forecastRevenue - revenueRealizado);
   const forecastProgress = forecastRevenue > 0 ? (revenueRealizado / forecastRevenue) * 100 : 0;
 
   // ─── Agenda do Dia ────────────────────────────────────────────────────────
