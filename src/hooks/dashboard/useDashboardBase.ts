@@ -5,7 +5,6 @@
  */
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { api } from '../../services/api';
-import { appointmentReadService } from '../../services/supabase/appointmentService';
 import {
   Appointment, Subscription, HealthPlan, Psychologist, Customer,
   SubscriptionStatus, AppointmentStatus, AppointmentType,
@@ -39,17 +38,9 @@ export function useDashboardBase() {
     const loadData = async () => {
       try {
         setError(null);
-        // Dashboard precisa de 13 meses de histórico para comparativos e gráficos
-        const pad = (n: number) => String(n).padStart(2, '0');
-        const toDateStr = (d: Date) =>
-          `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-        const rangeStart = new Date(today.getFullYear(), today.getMonth() - 13, 1);
-        const rangeEnd   = new Date(today.getFullYear(), today.getMonth() + 7, 0);
-
         const [c, s, p, a, psy, exp, wl] = await Promise.all([
           api.getCustomers(), api.getSubscriptions(), api.getPlans(),
-          appointmentReadService.getAppointmentsByRange(toDateStr(rangeStart), toDateStr(rangeEnd)),
-          api.getPsychologists(), api.getExpenses(), api.getWaitingList(),
+          api.getAppointments(), api.getPsychologists(), api.getExpenses(), api.getWaitingList(),
         ]);
         setCustomers(c); setSubscriptions(s); setPlans(p); setAppointments(a);
         setPsychologists(psy); setExpenses(exp); setWaitingList(wl);
