@@ -135,6 +135,7 @@ export function useBillingData() {
   // ─── Handlers de UI (seleção, toggle, abertura de modal) ─────────────────
   const toggleAppointmentSelection = (id: string) => {
     const app = appointments.find(a => a.id === id);
+    if (app?.billingIgnored) return;
     if (app?.status === AppointmentStatus.CANCELED && app?.cancellationBilling === 'none') return;
     setSelectedAppointmentIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
   };
