@@ -63,14 +63,32 @@ export function useDashboardKPIs({
     [appointmentsPrevMonth]
   );
 
+  // ─── Período encerrado (para forecast) ──────────────────────────────────
+  const isPeriodClosed = useMemo(() => {
+    if (filterMode === 'all') return false;
+    if (filterMode === 'year') return selectedYear < today.getFullYear();
+    const currentYM  = today.getFullYear() * 12 + today.getMonth();
+    const selectedYM = selectedYear * 12 + selectedMonth;
+    return selectedYM < currentYM;
+  }, [filterMode, selectedMonth, selectedYear, today]);
+
   // ─── KPIs de taxas ───────────────────────────────────────────────────────
   const totalAppsScheduled = appointmentsFiltered.length;
   const totalAppsCanceled = useMemo(() =>
     appointmentsFiltered.filter(app => app.status === AppointmentStatus.CANCELED).length,
     [appointmentsFiltered]
   );
+  // Apenas confirmados de verdade (sem cancelados cobráveis) para taxa de comparecimento
+  const appsConfirmados = useMemo(() =>
+    appointmentsFiltered.filter(app => app.confirmedPsychologist),
+    [appointmentsFiltered]
+  );
+  const appsConfirmadosPrev = useMemo(() =>
+    appointmentsPrevMonth.filter(app => app.confirmedPsychologist),
+    [appointmentsPrevMonth]
+  );
   const cancelationRate    = totalAppsScheduled > 0 ? (totalAppsCanceled / totalAppsScheduled) * 100 : 0;
-  const attendanceRate     = totalAppsScheduled > 0 ? (appsRealizados.length / totalAppsScheduled) * 100 : 0;
+  const attendanceRate     = totalAppsScheduled > 0 ? (appsConfirmados.length / totalAppsScheduled) * 100 : 0;
   const cancelationRatePrev = useMemo(() =>
     appointmentsPrevMonth.length === 0 ? 0
       : (appointmentsPrevMonth.filter(a => a.status === AppointmentStatus.CANCELED).length / appointmentsPrevMonth.length) * 100,
@@ -78,8 +96,8 @@ export function useDashboardKPIs({
   );
   const attendanceRatePrev = useMemo(() =>
     appointmentsPrevMonth.length === 0 ? 0
-      : (appsRealizadosPrev.length / appointmentsPrevMonth.length) * 100,
-    [appointmentsPrevMonth, appsRealizadosPrev]
+      : (appsConfirmadosPrev.length / appointmentsPrevMonth.length) * 100,
+    [appointmentsPrevMonth, appsConfirmadosPrev]
   );
 
   // ─── Receitas e despesas ──────────────────────────────────────────────────
@@ -146,7 +164,10 @@ export function useDashboardKPIs({
     [appointments, todayStr]
   );
   const todayConfirmed = useMemo(() =>
-    todayApps.filter(a => a.confirmedPsychologist || a.confirmedPatient),
+    todayApps.filter(a =>
+      (a.confirmedPsychologist || a.confirmedPatient) &&
+      a.status !== AppointmentStatus.CANCELED
+    ),
     [todayApps]
   );
   const todayPending = useMemo(() =>
@@ -157,13 +178,23 @@ export function useDashboardKPIs({
     todayApps.filter(a => a.status === AppointmentStatus.CANCELED),
     [todayApps]
   );
-  const upcomingToday = useMemo(() =>
-    todayApps
-      .filter(a => a.status !== AppointmentStatus.CANCELED)
+  const upcomingToday = useMemo(() => {
+    const now      = new Date();
+    const nowTime  = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    // Prioriza consultas que ainda não começaram
+    const upcoming = todayApps
+      .filter(a => a.status !== AppointmentStatus.CANCELED && a.startTime >= nowTime)
       .sort((a, b) => a.startTime.localeCompare(b.startTime))
-      .slice(0, 5),
-    [todayApps]
-  );
+      .slice(0, 5);
+    // Fallback: se já não houver próximas, mostra as primeiras do dia
+    if (upcoming.length === 0) {
+      return todayApps
+        .filter(a => a.status !== AppointmentStatus.CANCELED)
+        .sort((a, b) => a.startTime.localeCompare(b.startTime))
+        .slice(0, 5);
+    }
+    return upcoming;
+  }, [todayApps]);
 
   // ─── Dias úteis no mês (para ocupação) ───────────────────────────────────
   const workingDaysInMonth = useMemo(() => {
@@ -219,7 +250,7 @@ export function useDashboardKPIs({
     activeCustomersCount, ticketMedioConsulta, ticketMedioPaciente, ticketMedioConsultaPrev,
     newPatientsCount, newPatientsCountPrev,
     // Forecast
-    forecastRevenue, forecastProgress,
+    forecastRevenue, forecastProgress, isPeriodClosed,
     // Agenda do dia
     todayApps, todayConfirmed, todayPending, todayCanceled, upcomingToday,
     // Ocupação

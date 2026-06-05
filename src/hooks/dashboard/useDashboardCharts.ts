@@ -157,11 +157,14 @@ export function useDashboardCharts({
 
   // ─── Receita mensal (realizado vs previsto) ───────────────────────────────
   const monthlyData = useMemo(() => {
-    const monthlyRevenue = appointments
+    const monthlyRevenue: Record<string, { realizado: number; previsto: number; sortKey: number }> = {};
+    appointments
       .filter(app => app.status !== AppointmentStatus.CANCELED || isCanceledButBilled(app))
-      .reduce((acc: Record<string, { realizado: number; previsto: number }>, app) => {
-        const month = new Date(app.date + 'T12:00:00').toLocaleString('pt-BR', { month: 'long', year: 'numeric' });
-        if (!acc[month]) acc[month] = { realizado: 0, previsto: 0 };
+      .forEach(app => {
+        const d       = new Date(app.date + 'T12:00:00');
+        const month   = d.toLocaleString('pt-BR', { month: 'long', year: 'numeric' });
+        const sortKey = d.getFullYear() * 100 + d.getMonth();
+        if (!monthlyRevenue[month]) monthlyRevenue[month] = { realizado: 0, previsto: 0, sortKey };
         const customer  = customers.find(c => c.id === app.customerId);
         const plan      = findPlan(customer?.healthPlan);
         const procedure = plan?.procedures?.find(proc => proc.type === app.type);
@@ -177,13 +180,15 @@ export function useDashboardCharts({
         } else {
           amount = app.customPrice ?? customer?.customPrice ?? procedure?.price ?? 0;
         }
-        if (app.confirmedPsychologist || isCanceledButBilled(app)) acc[month].realizado += amount;
-        else acc[month].previsto += amount;
-        return acc;
-      }, {});
-    return Object.entries(monthlyRevenue).map(([month, data]) => ({
-      month, realizado: data.realizado, previsto: data.previsto, total: data.realizado + data.previsto
-    }));
+        if (app.confirmedPsychologist || isCanceledButBilled(app)) monthlyRevenue[month].realizado += amount;
+        else monthlyRevenue[month].previsto += amount;
+      });
+    return Object.entries(monthlyRevenue)
+      .map(([month, data]) => ({
+        month, realizado: data.realizado, previsto: data.previsto,
+        total: data.realizado + data.previsto, sortKey: data.sortKey,
+      }))
+      .sort((a, b) => a.sortKey - b.sortKey);
   }, [appointments, customers, findPlan, isCanceledButBilled]);
 
   // ─── Modalidade ───────────────────────────────────────────────────────────
@@ -195,21 +200,24 @@ export function useDashboardCharts({
   // ─── Crescimento da clínica ───────────────────────────────────────────────
   const growthData = useMemo(() => {
     const months: Record<string, { month: string; patients: number; psychologists: number; timestamp: number }> = {};
-    const getInfo = (dateStr?: string) => {
+    const getInfo = (dateStr?: string | null) => {
       if (!dateStr) return null;
       const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return null; // proteção contra datas inválidas
       return { key: d.toLocaleString('pt-BR', { month: 'short', year: '2-digit' }), sortKey: d.getFullYear() * 100 + d.getMonth() };
     };
+    // Extrai createdAt de psicólogo de forma segura (campo pode não existir no tipo)
+    const getPsyCreatedAt = (p: any): string | undefined => p?.createdAt ?? p?.created_at;
     customers.forEach(c => {
       const info = getInfo(c.createdAt);
       if (info && !months[info.key]) months[info.key] = { month: info.key, patients: 0, psychologists: 0, timestamp: info.sortKey };
     });
     psychologists.forEach(p => {
-      const info = getInfo((p as any).createdAt);
+      const info = getInfo(getPsyCreatedAt(p));
       if (info && !months[info.key]) months[info.key] = { month: info.key, patients: 0, psychologists: 0, timestamp: info.sortKey };
     });
-    customers.forEach(c => { const i = getInfo(c.createdAt); if (i) months[i.key].patients++; });
-    psychologists.forEach(p => { const i = getInfo((p as any).createdAt); if (i) months[i.key].psychologists++; });
+    customers.forEach(c => { const i = getInfo(c.createdAt); if (i && months[i.key]) months[i.key].patients++; });
+    psychologists.forEach(p => { const i = getInfo(getPsyCreatedAt(p)); if (i && months[i.key]) months[i.key].psychologists++; });
     const sorted = Object.values(months).sort((a, b) => a.timestamp - b.timestamp);
     let accP = 0, accPsy = 0;
     return sorted.map(m => { accP += m.patients; accPsy += m.psychologists; return { ...m, patients: accP, psychologists: accPsy }; });
@@ -219,12 +227,18 @@ export function useDashboardCharts({
   const planGrowthData = useMemo(() => {
     const data: Record<string, Record<string, any>> = {};
     const planNames = Array.from(new Set(plans.map(p => p.name)));
+    // Mapa de normalização: healthPlan (upper) → nome canônico do plano
+    const planNameMap: Record<string, string> = {};
+    plans.forEach(p => { planNameMap[p.name.toUpperCase()] = p.name; });
+
     appointments.forEach(app => {
       const d        = new Date(app.date + 'T12:00:00');
       const monthKey = d.toLocaleString('pt-BR', { month: 'short', year: '2-digit' });
       const sortKey  = d.getFullYear() * 100 + d.getMonth();
       const customer = customers.find(c => c.id === app.customerId);
-      const planName = (customer?.healthPlan as string) || 'Não Identificado';
+      const raw      = (customer?.healthPlan as string) || '';
+      // Normaliza para o nome canônico do plano (garante que o dataKey do gráfico bate)
+      const planName = planNameMap[raw.toUpperCase()] || raw || 'Não Identificado';
       if (!data[monthKey]) { data[monthKey] = { month: monthKey, sortKey }; planNames.forEach(n => { data[monthKey][n] = 0; }); }
       if (data[monthKey][planName] !== undefined) data[monthKey][planName]++;
       else data[monthKey][planName] = 1;

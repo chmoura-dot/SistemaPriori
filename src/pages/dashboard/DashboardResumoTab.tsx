@@ -22,9 +22,12 @@ export const DashboardResumoTab = (props: Props) => {
     retentionRate, inactivatedThisMonth,
     forecastRevenue, forecastProgress, revenuePrevisto,
     totalRepasseRealizado, totalExpenses, netProfit,
-    selectedMonthLabel,
+    selectedMonthLabel, filterMode, isPeriodClosed,
     onNavigate,
   } = props;
+
+  const trendOpts = { filterMode };
+  const trendOptsInvert = { filterMode, invertColors: true };
 
   return (
     <div className="space-y-6">
@@ -107,19 +110,19 @@ export const DashboardResumoTab = (props: Props) => {
             label: 'Faturamento Realizado', value: `R$ ${fmt(revenueRealizado)}`,
             prevValue: revenueRealizadoPrev, currentNum: revenueRealizado,
             icon: TrendingUp, color: 'text-emerald-500', bg: 'bg-emerald-500/10', path: '/financeiro',
-            extra: getTrendText(revenueRealizado, revenueRealizadoPrev),
+            extra: getTrendText(revenueRealizado, revenueRealizadoPrev, trendOpts),
           },
           {
             label: 'Taxa de Comparecimento', value: `${attendanceRate.toFixed(1)}%`,
             prevValue: attendanceRatePrev, currentNum: attendanceRate,
             icon: ShieldCheck, color: 'text-priori-gold', bg: 'bg-priori-gold/10', path: '/agenda',
-            extra: getTrendText(attendanceRate, attendanceRatePrev),
+            extra: getTrendText(attendanceRate, attendanceRatePrev, trendOpts),
           },
           {
             label: 'Taxa de Cancelamentos', value: `${cancelationRate.toFixed(1)}%`,
             prevValue: cancelationRatePrev, currentNum: cancelationRate,
             icon: AlertTriangle, color: 'text-red-500', bg: 'bg-red-500/10', path: '/agenda',
-            extra: getTrendText(cancelationRate, cancelationRatePrev),
+            extra: getTrendText(cancelationRate, cancelationRatePrev, trendOptsInvert),
           },
         ].map(stat => (
           <div
@@ -149,7 +152,7 @@ export const DashboardResumoTab = (props: Props) => {
             <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Ticket Médio / Consulta</p>
           </div>
           <p className="text-2xl font-black text-priori-navy">R$ {fmt(ticketMedioConsulta)}</p>
-          <div className="mt-1">{getTrendText(ticketMedioConsulta, ticketMedioConsultaPrev)}</div>
+          <div className="mt-1">{getTrendText(ticketMedioConsulta, ticketMedioConsultaPrev, trendOpts)}</div>
         </div>
 
         <div className="bg-white border border-zinc-100 p-6 rounded-2xl shadow-sm">
@@ -192,19 +195,23 @@ export const DashboardResumoTab = (props: Props) => {
           <div className="flex items-center gap-3">
             <div className="p-2.5 bg-emerald-50 rounded-xl"><Target size={18} className="text-emerald-500" /></div>
             <div>
-              <h3 className="text-sm font-bold text-priori-navy">Forecast de Receita — {selectedMonthLabel}</h3>
-              <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">Realizado + Previsto (agendamentos futuros)</p>
+              <h3 className="text-sm font-bold text-priori-navy">
+                {isPeriodClosed ? 'Resultado Final' : 'Forecast de Receita'} — {selectedMonthLabel}
+              </h3>
+              <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">
+                {isPeriodClosed ? 'Período encerrado — somente consultas realizadas' : 'Realizado + Previsto (agendamentos futuros)'}
+              </p>
             </div>
           </div>
           <div className="text-right">
-            <p className="text-xs text-zinc-400">Projeção total</p>
-            <p className="text-lg font-black text-priori-navy">R$ {fmt(forecastRevenue)}</p>
+            <p className="text-xs text-zinc-400">{isPeriodClosed ? 'Total realizado' : 'Projeção total'}</p>
+            <p className="text-lg font-black text-priori-navy">R$ {fmt(isPeriodClosed ? revenueRealizado : forecastRevenue)}</p>
           </div>
         </div>
         <div className="h-3 w-full bg-zinc-100 rounded-full overflow-hidden mb-3">
           <div
             className="h-full bg-gradient-to-r from-emerald-400 to-emerald-600 rounded-full transition-all duration-700"
-            style={{ width: `${forecastProgress}%` }}
+            style={{ width: `${isPeriodClosed ? 100 : forecastProgress}%` }}
           />
         </div>
         <div className="flex items-center justify-between text-xs">
@@ -212,11 +219,15 @@ export const DashboardResumoTab = (props: Props) => {
             <span className="w-3 h-3 rounded-full bg-emerald-500 inline-block" />
             <span className="text-zinc-600">Realizado: <strong className="text-emerald-600">R$ {fmt(revenueRealizado)}</strong></span>
           </div>
-          <span className="font-bold text-zinc-400">{forecastProgress.toFixed(1)}% concluído</span>
-          <div className="flex items-center gap-2">
-            <span className="w-3 h-3 rounded-full bg-zinc-200 inline-block" />
-            <span className="text-zinc-600">Previsto: <strong className="text-priori-gold">R$ {fmt(revenuePrevisto)}</strong></span>
-          </div>
+          <span className="font-bold text-zinc-400">
+            {isPeriodClosed ? '100% — encerrado' : `${forecastProgress.toFixed(1)}% concluído`}
+          </span>
+          {!isPeriodClosed && (
+            <div className="flex items-center gap-2">
+              <span className="w-3 h-3 rounded-full bg-zinc-200 inline-block" />
+              <span className="text-zinc-600">Previsto: <strong className="text-priori-gold">R$ {fmt(revenuePrevisto)}</strong></span>
+            </div>
+          )}
         </div>
       </div>
 

@@ -44,11 +44,19 @@ export function useDashboardClinico({
       app.date < todayStr &&
       app.status !== AppointmentStatus.CANCELED &&
       !app.confirmedPsychologist &&
+      !app.confirmedPatient &&
       !app.isInternal
     ),
     [appointmentsFiltered, todayStr]
   );
-  const noShowRate = totalAppsScheduled > 0 ? (noShowApps.length / totalAppsScheduled) * 100 : 0;
+  // Denominador: apenas consultas passadas não canceladas (excluindo futuras e canceladas)
+  const pastNonCanceled = useMemo(() =>
+    appointmentsFiltered.filter(a =>
+      a.date <= todayStr && a.status !== AppointmentStatus.CANCELED && !a.isInternal
+    ).length,
+    [appointmentsFiltered, todayStr]
+  );
+  const noShowRate = pastNonCanceled > 0 ? (noShowApps.length / pastNonCanceled) * 100 : 0;
 
   // ─── Tempo médio em terapia ───────────────────────────────────────────────
   const avgTherapyDurationDays = useMemo(() => {

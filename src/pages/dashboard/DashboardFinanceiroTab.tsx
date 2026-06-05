@@ -19,6 +19,7 @@ export const DashboardFinanceiroTab = (props: Props) => {
     expensesFiltered,
     totalExpenses,
     totalExpensesPrev,
+    filterMode,
   } = props;
 
   return (
@@ -134,7 +135,7 @@ export const DashboardFinanceiroTab = (props: Props) => {
             <h3 className="text-sm font-bold text-zinc-400 uppercase tracking-widest">Resumo de Despesas por Categoria</h3>
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold text-red-500">Total: R$ {fmtShort(totalExpenses)}</span>
-              {getTrendText(totalExpenses, totalExpensesPrev)}
+              {getTrendText(totalExpenses, totalExpensesPrev, { invertColors: true, filterMode })}
             </div>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">

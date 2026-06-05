@@ -10,6 +10,7 @@ type Props = ReturnType<typeof useDashboardData>;
 export const DashboardClinicoTab = (props: Props) => {
   const {
     selectedMonthLabel,
+    filterMode,
     newPatientsCount,
     newPatientsCountPrev,
     avgSessionsPerPatient,
@@ -47,7 +48,7 @@ export const DashboardClinicoTab = (props: Props) => {
             <p className="text-2xl font-black text-priori-navy">{newPatientsCount}</p>
             <div className="mt-1 flex items-center gap-1">
               {getTrendIcon(newPatientsCount, newPatientsCountPrev)}
-              {getTrendText(newPatientsCount, newPatientsCountPrev)}
+              {getTrendText(newPatientsCount, newPatientsCountPrev, { filterMode })}
             </div>
           </div>
 
