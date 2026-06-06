@@ -26,13 +26,24 @@ export const appointmentReadService = {
   },
 
   getAppointmentsForBilling: async (): Promise<Appointment[]> => {
-    const today = new Date().toISOString().split('T')[0];
+    // Usa componentes LOCAIS (não UTC) — Supabase armazena DATE sem timezone,
+    // e o app cria datas com horário local. Misturar UTC aqui causa off-by-one.
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const toLocal = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
-    // Limita a janela de busca a 3 meses atrás para garantir que os atendimentos
-    // do mês corrente não sejam cortados pelo limite de registros.
-    const threeMonthsAgo = new Date();
-    threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
-    const minDate = threeMonthsAgo.toISOString().split('T')[0];
+    const now   = new Date();
+    const today = toLocal(now);
+
+    // 6 meses atrás — aritmética explícita no nível de ano/mês
+    // evita o bug de setMonth() com overflow de dia (ex: 31/mar - 1 mês ≠ 31/fev).
+    // Usa dia 01 do mês-alvo para nunca ter overflow e cobrir o mês inteiro.
+    let targetYear  = now.getFullYear();
+    let targetMonth = now.getMonth() - 6; // 0-indexed, pode ser negativo
+    if (targetMonth < 0) {
+      targetMonth += 12;
+      targetYear  -= 1;
+    }
+    const minDate = `${targetYear}-${pad(targetMonth + 1)}-01`;
 
     const [unbilledResult, billedResult] = await Promise.all([
       supabase
@@ -42,14 +53,14 @@ export const appointmentReadService = {
         .gte('date', minDate)
         .lte('date', today)
         .order('date', { ascending: false })
-        .limit(5000),
+        .limit(10000),
       supabase
         .from('appointments')
         .select(APPOINTMENT_COLUMNS)
         .not('billing_batch_id', 'is', null)
         .gte('date', minDate)
         .order('date', { ascending: false })
-        .limit(5000),
+        .limit(10000),
     ]);
 
     if (unbilledResult.error) throw new Error(unbilledResult.error.message);
