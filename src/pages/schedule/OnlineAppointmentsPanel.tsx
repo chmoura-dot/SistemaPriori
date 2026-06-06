@@ -1,7 +1,7 @@
 import React from 'react';
 import { Globe, Calendar as CalendarIcon, Bell, MessageCircle, Edit2, Trash2 } from 'lucide-react';
 import { Appointment, AppointmentStatus, Customer, Psychologist } from '../../services/types';
-import { PLAN_COLORS } from './scheduleUtils';
+import { PLAN_COLORS, PLAN_LABELS, PLAN_BADGE_COLORS } from './scheduleUtils';
 import { StatusIcons } from './AppointmentCard';
 import { cn } from '../../lib/utils';
 
@@ -67,6 +67,14 @@ export const OnlineAppointmentsPanel: React.FC<OnlineAppointmentsPanelProps> = (
               </div>
               <p className={cn('text-xs font-black truncate leading-tight', isCanceled ? 'text-zinc-500 line-through' : 'text-priori-navy')}>{customer?.name}</p>
               {viewMode !== 'psychologist' && <p className="text-[10px] text-zinc-600 font-medium truncate">{psychologist?.name}</p>}
+              {customer && (
+                <span className={cn(
+                  'text-[7px] font-black uppercase tracking-tight px-1 py-0.5 rounded-sm mt-1 inline-block leading-none',
+                  PLAN_BADGE_COLORS[customer.healthPlan] ?? 'bg-zinc-100 text-zinc-500'
+                )}>
+                  {PLAN_LABELS[customer.healthPlan] ?? customer.healthPlan}
+                </span>
+              )}
               <StatusIcons appointment={app} />
               <div className="mt-2 flex gap-1.5">
                 <button onClick={() => onConfirm(app.id, 'patient')} className={cn('text-[8px] px-1.5 py-0.5 rounded border font-bold transition-all shadow-sm', app.confirmedPatient ? 'bg-white border-emerald-200 text-emerald-600' : 'bg-white border-zinc-200 text-zinc-400 hover:border-priori-navy/30')}>Pac {app.confirmedPatient ? '✓' : '?'}</button>
