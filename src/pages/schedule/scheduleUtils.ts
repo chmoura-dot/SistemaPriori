@@ -50,6 +50,32 @@ export const PLAN_COLORS: Record<string, string> = {
   [HealthPlan.SAUDE_CAIXA]: 'border-l-cyan-600',
 };
 
+export const PLAN_LABELS: Record<string, string> = {
+  [HealthPlan.PARTICULAR]:     'Particular',
+  [HealthPlan.AMS_PETROBRAS]:  'AMS',
+  [HealthPlan.PAE]:            'PAE',
+  [HealthPlan.PORTO_SAUDE]:    'Porto',
+  [HealthPlan.MEDSENIOR]:      'Médsen.',
+  [HealthPlan.REAL_GRANDEZA]:  'R. Grandeza',
+  [HealthPlan.SAUDE_BLUE]:     'S. Blue',
+  [HealthPlan.GAMA]:           'Gama',
+  [HealthPlan.SAUDE_CAIXA]:    'S. Caixa',
+  [HealthPlan.FUNDACAO_SAUDE]: 'Fund. Itaú',
+};
+
+export const PLAN_BADGE_COLORS: Record<string, string> = {
+  [HealthPlan.PARTICULAR]:     'bg-blue-100 text-blue-700',
+  [HealthPlan.AMS_PETROBRAS]:  'bg-emerald-100 text-emerald-700',
+  [HealthPlan.PAE]:            'bg-orange-100 text-orange-700',
+  [HealthPlan.PORTO_SAUDE]:    'bg-sky-100 text-sky-700',
+  [HealthPlan.MEDSENIOR]:      'bg-indigo-100 text-indigo-700',
+  [HealthPlan.REAL_GRANDEZA]:  'bg-purple-100 text-purple-700',
+  [HealthPlan.SAUDE_BLUE]:     'bg-teal-100 text-teal-700',
+  [HealthPlan.GAMA]:           'bg-rose-100 text-rose-700',
+  [HealthPlan.SAUDE_CAIXA]:    'bg-cyan-100 text-cyan-700',
+  [HealthPlan.FUNDACAO_SAUDE]: 'bg-amber-100 text-amber-700',
+};
+
 export const INTERNAL_LABELS: Record<string, string> = {
   SUPERVISAO: 'Supervisão',
   RESPONSAVEIS: 'Reunião c/ Pais',

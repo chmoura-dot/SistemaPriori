@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { Appointment, Customer, AppointmentStatus, AttendanceMode } from '../../services/types';
 import { cn } from '../../lib/utils';
-import { PLAN_COLORS, INTERNAL_LABELS, getSlotCount } from './scheduleUtils';
+import { PLAN_COLORS, PLAN_LABELS, PLAN_BADGE_COLORS, INTERNAL_LABELS, getSlotCount } from './scheduleUtils';
 
 // ─── StatusIcons ──────────────────────────────────────────────────────────────
 interface StatusIconsProps {
@@ -145,6 +145,14 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({
               <Globe size={8} className={appointment.isInternal ? 'text-zinc-400' : 'text-emerald-500'} />
             )}
           </div>
+          {!appointment.isInternal && customer && (
+            <span className={cn(
+              'text-[7px] font-black uppercase tracking-tight px-1 py-0.5 rounded-sm mt-0.5 self-start leading-none',
+              PLAN_BADGE_COLORS[customer.healthPlan] ?? 'bg-zinc-100 text-zinc-500'
+            )}>
+              {PLAN_LABELS[customer.healthPlan] ?? customer.healthPlan}
+            </span>
+          )}
           {!appointment.isInternal && <StatusIcons appointment={appointment} />}
         </div>
         <div className="flex flex-col gap-1">
