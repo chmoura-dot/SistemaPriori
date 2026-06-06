@@ -173,11 +173,7 @@ export function createBillingHelpers({
       // Exclui horários internos (supervisão, reunião, etc.) — não são faturáveis
       if (a.isInternal) return false;
 
-      // Exclui atendimentos cancelados sem cobrança definida
-      if (
-        a.status === AppointmentStatus.CANCELED &&
-        (!a.cancellationBilling || a.cancellationBilling === 'none')
-      ) return false;
+      // Cancelados sem cobrança continuam na lista (visíveis, mas não selecionáveis)
 
       const customer         = customers.find(c => c.id === a.customerId);
       const matchesMonth     = monthsToInclude.length === 0 || monthsToInclude.some(m => a.date.startsWith(m));

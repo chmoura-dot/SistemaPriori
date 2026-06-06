@@ -64,7 +64,7 @@ export const AppointmentRow: React.FC<Props> = memo(({
   const isConfirmed = app.confirmedPsychologist === true;
   const isCanceledExempt =
     app.status === AppointmentStatus.CANCELED &&
-    app.cancellationBilling === 'none';
+    (!app.cancellationBilling || app.cancellationBilling === 'none');
 
   const appMonth = app.date.substring(0, 7);
   const isFromOtherMonth = (includePrevMonth || includeNextMonth) && appMonth !== monthFilter;
