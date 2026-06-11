@@ -79,7 +79,7 @@ export const DashboardOperacionalTab = (props: Props) => {
       {/* ── GRÁFICO: Ocupação por Psicólogo ── */}
       <div className="bg-white border border-zinc-100 rounded-2xl p-6 shadow-sm">
         <h3 className="text-sm font-bold text-zinc-400 uppercase tracking-widest text-center mb-1">
-          Capacidade × Agendados × Realizado por Psicólogo
+          Agendamentos × Capacidade Livre por Psicólogo
         </h3>
         <p className="text-[10px] text-zinc-400 text-center mb-4">Barra completa = capacidade do psicólogo</p>
         <div style={{ height: Math.max(300, ocupacaoPorPsicologo.length * 52 + 60) }} className="w-full">
@@ -98,8 +98,7 @@ export const DashboardOperacionalTab = (props: Props) => {
                   }}
                 />
                 <Legend verticalAlign="top" height={36} iconType="circle" />
-                <Bar dataKey="horasUsadas" name="Realizado" stackId="cap" fill="#10b981" radius={[0, 0, 0, 0]} />
-                <Bar dataKey="pendente" name="Pendente" stackId="cap" fill="#fbbf24" radius={[0, 0, 0, 0]} />
+                <Bar dataKey="horasAgendadas" name="Agendamentos" stackId="cap" fill="#10b981" radius={[0, 0, 0, 0]} />
                 <Bar dataKey="ociosidade" name="Capacidade livre" stackId="cap" fill="#e4e4e7" radius={[0, 8, 8, 0]} />
               </BarChart>
             </ResponsiveContainer>
