@@ -17,7 +17,7 @@ interface Props {
   churnPerda: number;
   churnAlta: number;
   churnFantasma: any[];
-  ocupacaoPorPsicologo: { nome: string; horasAgendadas: number; horasUsadas: number; capacidade: number; ociosidade: number; taxa: number; sessoes: number; cancelados: number }[];
+  ocupacaoPorPsicologo: { nome: string; horasAgendadas: number; horasUsadas: number; pendente: number; capacidade: number; ociosidade: number; taxa: number; sessoes: number; cancelados: number }[];
   noShowPorPsicologo: { nome: string; noShows: number; total: number; taxa: number; 'impactoR$': number }[];
   noShowTendencia: { month: string; noShows: number; total: number; taxa: number }[];
   pacientesRiscoChurn: { nome: string; psicologo: string; ultimaConsulta: string; diasAusente: number; receitaPerdidaEstimada: number }[];
@@ -81,19 +81,26 @@ export const DashboardOperacionalTab = (props: Props) => {
         <h3 className="text-sm font-bold text-zinc-400 uppercase tracking-widest text-center mb-1">
           Capacidade × Agendados × Realizado por Psicólogo
         </h3>
-        <p className="text-[10px] text-zinc-400 text-center mb-4">Em horas no período</p>
-        <div className="h-[300px] w-full">
+        <p className="text-[10px] text-zinc-400 text-center mb-4">Barra completa = capacidade do psicólogo</p>
+        <div style={{ height: Math.max(300, ocupacaoPorPsicologo.length * 52 + 60) }} className="w-full">
           {ocupacaoPorPsicologo.length > 0 ? (
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={ocupacaoPorPsicologo} layout="vertical" margin={{ left: 80 }}>
+              <BarChart data={ocupacaoPorPsicologo} layout="vertical" margin={{ left: 30 }} barSize={20}>
                 <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f0f0f0" />
                 <XAxis type="number" fontSize={10} tickFormatter={v => `${v}h`} tickLine={false} axisLine={false} />
-                <YAxis type="category" dataKey="nome" fontSize={10} fontWeight="bold" tickLine={false} axisLine={false} width={75} />
-                <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} formatter={(v: any, name: any) => [`${Number(v).toFixed(1)}h`, name]} />
+                <YAxis type="category" dataKey="nome" fontSize={11} fontWeight="bold" tickLine={false} axisLine={false} width={120} />
+                <Tooltip
+                  contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                  formatter={(v: any, name: any, entry: any) => {
+                    const d = entry.payload;
+                    if (name === 'Capacidade livre') return [`${Number(v).toFixed(1)}h (de ${d.capacidade}h total)`, name];
+                    return [`${Number(v).toFixed(1)}h`, name];
+                  }}
+                />
                 <Legend verticalAlign="top" height={36} iconType="circle" />
-                <Bar dataKey="capacidade" name="Capacidade" fill="#93c5fd" radius={[0, 8, 8, 0]} />
-                <Bar dataKey="horasAgendadas" name="Agendados" fill="#fbbf24" radius={[0, 8, 8, 0]} />
-                <Bar dataKey="horasUsadas" name="Realizado" fill="#10b981" radius={[0, 8, 8, 0]} />
+                <Bar dataKey="horasUsadas" name="Realizado" stackId="cap" fill="#10b981" radius={[0, 0, 0, 0]} />
+                <Bar dataKey="pendente" name="Pendente" stackId="cap" fill="#fbbf24" radius={[0, 0, 0, 0]} />
+                <Bar dataKey="ociosidade" name="Capacidade livre" stackId="cap" fill="#e4e4e7" radius={[0, 8, 8, 0]} />
               </BarChart>
             </ResponsiveContainer>
           ) : <EmptyState />}

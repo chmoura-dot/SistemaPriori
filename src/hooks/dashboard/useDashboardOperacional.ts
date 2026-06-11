@@ -131,10 +131,12 @@ export function useDashboardOperacional({
       const cancelados = appointmentsFiltered.filter(
         a => a.psychologistId === psy.id && a.status === AppointmentStatus.CANCELED && !a.isInternal
       ).length;
+      const pendente = Math.max(0, horasAgendadas - horasUsadas);
       return {
         nome: psy.name,
         horasAgendadas: Math.round(horasAgendadas * 10) / 10,
         horasUsadas: Math.round(horasUsadas * 10) / 10,
+        pendente: Math.round(pendente * 10) / 10,
         capacidade: Math.round(capacidade * 10) / 10,
         ociosidade: Math.round(Math.max(0, capacidade - horasAgendadas) * 10) / 10,
         taxa: capacidade > 0 ? Math.min((horasAgendadas / capacidade) * 100, 100) : 0,
