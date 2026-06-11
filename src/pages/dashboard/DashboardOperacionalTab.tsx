@@ -17,7 +17,7 @@ interface Props {
   churnPerda: number;
   churnAlta: number;
   churnFantasma: any[];
-  ocupacaoPorPsicologo: { nome: string; horasUsadas: number; capacidade: number; ociosidade: number; taxa: number; sessoes: number; cancelados: number }[];
+  ocupacaoPorPsicologo: { nome: string; horasAgendadas: number; horasUsadas: number; capacidade: number; ociosidade: number; taxa: number; sessoes: number; cancelados: number }[];
   noShowPorPsicologo: { nome: string; noShows: number; total: number; taxa: number; 'impactoR$': number }[];
   noShowTendencia: { month: string; noShows: number; total: number; taxa: number }[];
   pacientesRiscoChurn: { nome: string; psicologo: string; ultimaConsulta: string; diasAusente: number; receitaPerdidaEstimada: number }[];
@@ -79,7 +79,7 @@ export const DashboardOperacionalTab = (props: Props) => {
       {/* ── GRÁFICO: Ocupação por Psicólogo ── */}
       <div className="bg-white border border-zinc-100 rounded-2xl p-6 shadow-sm">
         <h3 className="text-sm font-bold text-zinc-400 uppercase tracking-widest text-center mb-1">
-          Capacidade × Realizado × Ociosidade por Psicólogo
+          Capacidade × Agendados × Realizado por Psicólogo
         </h3>
         <p className="text-[10px] text-zinc-400 text-center mb-4">Em horas no período</p>
         <div className="h-[300px] w-full">
@@ -91,8 +91,9 @@ export const DashboardOperacionalTab = (props: Props) => {
                 <YAxis type="category" dataKey="nome" fontSize={10} fontWeight="bold" tickLine={false} axisLine={false} width={75} />
                 <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} formatter={(v: any, name: any) => [`${Number(v).toFixed(1)}h`, name]} />
                 <Legend verticalAlign="top" height={36} iconType="circle" />
-                <Bar dataKey="horasUsadas" name="Realizado" stackId="stack" fill="#10b981" radius={[0, 0, 0, 0]} />
-                <Bar dataKey="ociosidade" name="Ociosidade" stackId="stack" fill="#e4e4e7" radius={[0, 8, 8, 0]} />
+                <Bar dataKey="capacidade" name="Capacidade" fill="#93c5fd" radius={[0, 8, 8, 0]} />
+                <Bar dataKey="horasAgendadas" name="Agendados" fill="#fbbf24" radius={[0, 8, 8, 0]} />
+                <Bar dataKey="horasUsadas" name="Realizado" fill="#10b981" radius={[0, 8, 8, 0]} />
               </BarChart>
             </ResponsiveContainer>
           ) : <EmptyState />}

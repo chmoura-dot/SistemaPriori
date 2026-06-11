@@ -98,10 +98,17 @@ export function useDashboardOperacional({
   // ─── OCUPAÇÃO POR PSICÓLOGO ────────────────────────────────────────────
   const ocupacaoPorPsicologo = useMemo(() =>
     activePsychologists.map(psy => {
-      const psyApps = appointmentsFiltered.filter(
+      // Agendados = todos não cancelados no período
+      const psyAppsAgendados = appointmentsFiltered.filter(
         a => a.psychologistId === psy.id && a.status !== AppointmentStatus.CANCELED && !a.isInternal
       );
-      const horasUsadas = psyApps.reduce((t, a) => {
+      const horasAgendadas = psyAppsAgendados.reduce((t, a) => {
+        const mins = diffMinutes(a.startTime, a.endTime);
+        return t + (mins > 0 ? mins / 60 : 0.83);
+      }, 0);
+      // Realizado = apenas confirmados pelo psicólogo
+      const psyAppsRealizados = psyAppsAgendados.filter(a => a.confirmedPsychologist);
+      const horasUsadas = psyAppsRealizados.reduce((t, a) => {
         const mins = diffMinutes(a.startTime, a.endTime);
         return t + (mins > 0 ? mins / 60 : 0.83);
       }, 0);
@@ -126,11 +133,12 @@ export function useDashboardOperacional({
       ).length;
       return {
         nome: psy.name,
+        horasAgendadas: Math.round(horasAgendadas * 10) / 10,
         horasUsadas: Math.round(horasUsadas * 10) / 10,
         capacidade: Math.round(capacidade * 10) / 10,
-        ociosidade: Math.round(Math.max(0, capacidade - horasUsadas) * 10) / 10,
-        taxa: capacidade > 0 ? Math.min((horasUsadas / capacidade) * 100, 100) : 0,
-        sessoes: psyApps.length,
+        ociosidade: Math.round(Math.max(0, capacidade - horasAgendadas) * 10) / 10,
+        taxa: capacidade > 0 ? Math.min((horasAgendadas / capacidade) * 100, 100) : 0,
+        sessoes: psyAppsAgendados.length,
         cancelados,
       };
     }).sort((a, b) => b.taxa - a.taxa),
