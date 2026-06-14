@@ -10,6 +10,7 @@ import { ScheduleGrid } from './schedule/ScheduleGrid';
 import { ScheduleFormModal } from './schedule/ScheduleFormModal';
 import { CancellationModals } from './schedule/CancellationModals';
 import { OnlineAppointmentsPanel } from './schedule/OnlineAppointmentsPanel';
+import { RenewalAlertBanner } from './schedule/RenewalAlertBanner';
 import { useScheduleData } from './schedule/useScheduleData';
 import { useScheduleActions } from './schedule/useScheduleActions';
 
@@ -87,6 +88,12 @@ export const SchedulePage = () => {
           <div><p className="text-sm font-bold">Ponto Facultativo: {holiday.name}</p><p className="text-xs text-amber-600">A clínica está aberta normalmente.</p></div>
         </div>
       )}
+
+      {/* Alerta de renovações pendentes */}
+      <RenewalAlertBanner
+        customers={s.customers}
+        onNavigateToDate={(date) => s.setDate(date)}
+      />
 
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
