@@ -1,23 +1,49 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { AlertTriangle, ChevronDown, ChevronUp, Eye, XCircle, RefreshCw, UserX, Clock } from 'lucide-react';
 import { api } from '../../services/api';
-import { Appointment, Customer } from '../../services/types';
+import { Appointment, Customer, Psychologist, RecurrenceFrequency } from '../../services/types';
 import { cn } from '../../lib/utils';
 
 interface RenewalAlertBannerProps {
   customers: Customer[];
+  psychologists: Psychologist[];
+  allAppointments: Appointment[];
   onNavigateToDate: (date: string) => void;
+}
+
+interface ConflictInfo {
+  conflictName: string; // nome do paciente ou bloqueio conflitante
+  conflictTime: string; // ex: "14:00–15:00"
+  conflictDate: string; // data formatada
 }
 
 interface RenewalItem {
   appointment: Appointment;
   customer: Customer | undefined;
+  psychologistName: string;
   reason: 'inactive' | 'conflict';
   daysUntil: number;
+  conflict?: ConflictInfo;
+  nextDate?: string; // YYYY-MM-DD da próxima ocorrência
+}
+
+/** Calcula a próxima data de ocorrência a partir da data base + frequência */
+function getNextOccurrenceDate(dateStr: string, frequency?: RecurrenceFrequency): string {
+  const d = new Date(dateStr + 'T12:00:00');
+  const interval = frequency === RecurrenceFrequency.QUINZENAL ? 14 : 7;
+  d.setDate(d.getDate() + interval);
+  return d.toISOString().split('T')[0];
+}
+
+/** Verifica se dois intervalos de tempo se sobrepõem */
+function timesOverlap(s1: string, e1: string, s2: string, e2: string): boolean {
+  return s1 < e2 && s2 < e1;
 }
 
 export const RenewalAlertBanner: React.FC<RenewalAlertBannerProps> = ({
   customers,
+  psychologists,
+  allAppointments,
   onNavigateToDate,
 }) => {
   const [items, setItems] = useState<RenewalItem[]>([]);
@@ -28,25 +54,56 @@ export const RenewalAlertBanner: React.FC<RenewalAlertBannerProps> = ({
   const loadRenewals = useCallback(async () => {
     try {
       setIsLoading(true);
-      const appointments = await api.getAppointmentsNeedingRenewal();
-      if (appointments.length === 0) { setItems([]); return; }
+      const renewalApps = await api.getAppointmentsNeedingRenewal();
+      if (renewalApps.length === 0) { setItems([]); return; }
 
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
-      const mapped: RenewalItem[] = appointments.map(app => {
+      const mapped: RenewalItem[] = renewalApps.map(app => {
         const customer = customers.find(c => c.id === app.customerId);
+        const psych = psychologists.find(p => p.id === app.psychologistId);
         const appDate = new Date(app.date + 'T12:00:00');
         appDate.setHours(0, 0, 0, 0);
         const daysUntil = Math.ceil((appDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 
         // Detectar motivo: se paciente não está na lista de ativos, é inativo
         const isInactive = !customer;
+
+        // Para conflitos: calcular a próxima data e encontrar quem está no horário
+        let conflict: ConflictInfo | undefined;
+        let nextDate: string | undefined;
+        if (!isInactive) {
+          nextDate = getNextOccurrenceDate(app.date, app.recurrenceFrequency);
+          // Buscar agendamento conflitante na próxima data
+          const conflicting = allAppointments.find(other =>
+            other.id !== app.id &&
+            other.psychologistId === app.psychologistId &&
+            other.date === nextDate &&
+            other.status !== 'canceled' &&
+            timesOverlap(app.startTime, app.endTime, other.startTime, other.endTime)
+          );
+          if (conflicting) {
+            const conflictCustomer = customers.find(c => c.id === conflicting.customerId);
+            const conflictName = conflicting.isInternal
+              ? (conflicting.internalTitle || 'Bloqueio Interno')
+              : (conflictCustomer?.name || 'Outro paciente');
+            conflict = {
+              conflictName,
+              conflictTime: `${conflicting.startTime}–${conflicting.endTime}`,
+              conflictDate: new Date(nextDate + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' }),
+            };
+          }
+        }
+
         return {
           appointment: app,
           customer,
+          psychologistName: psych?.name || '—',
           reason: isInactive ? 'inactive' as const : 'conflict' as const,
           daysUntil,
+          conflict,
+          nextDate,
         };
       });
 
@@ -58,7 +115,7 @@ export const RenewalAlertBanner: React.FC<RenewalAlertBannerProps> = ({
     } finally {
       setIsLoading(false);
     }
-  }, [customers]);
+  }, [customers, psychologists, allAppointments]);
 
   useEffect(() => {
     if (customers.length > 0) loadRenewals();
@@ -131,13 +188,14 @@ export const RenewalAlertBanner: React.FC<RenewalAlertBannerProps> = ({
                     <span className="text-xs font-black text-priori-navy truncate">
                       {item.customer?.name || 'Paciente não encontrado'}
                     </span>
+                    <span className="text-[10px] text-zinc-400">({item.psychologistName})</span>
                     <span className={cn('text-[10px] font-bold', urgency.color)}>
                       {urgency.text}
                     </span>
                   </div>
                   <div className="flex items-center gap-2 mt-0.5">
                     <span className="text-[10px] text-zinc-500">
-                      {new Date(item.appointment.date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' })} às {item.appointment.startTime}
+                      Última sessão: {new Date(item.appointment.date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' })} às {item.appointment.startTime}
                     </span>
                     <span className="text-[10px] text-zinc-300">•</span>
                     <span className={cn(
@@ -149,6 +207,21 @@ export const RenewalAlertBanner: React.FC<RenewalAlertBannerProps> = ({
                       {isInactive ? '⛔ Paciente inativo' : '⚠️ Conflito de horário'}
                     </span>
                   </div>
+                  {/* Detalhe do conflito */}
+                  {!isInactive && item.conflict && (
+                    <div className="flex items-center gap-1.5 mt-1">
+                      <span className="text-[10px] text-orange-700 font-bold">
+                        → Próxima data ({item.conflict.conflictDate}) ocupada por: <strong>{item.conflict.conflictName}</strong> ({item.conflict.conflictTime})
+                      </span>
+                    </div>
+                  )}
+                  {!isInactive && !item.conflict && item.nextDate && (
+                    <div className="flex items-center gap-1.5 mt-1">
+                      <span className="text-[10px] text-zinc-500">
+                        → Próxima data: {new Date(item.nextDate + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' })} — ver na agenda para detalhes
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Actions */}

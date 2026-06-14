@@ -92,6 +92,8 @@ export const SchedulePage = () => {
       {/* Alerta de renovações pendentes */}
       <RenewalAlertBanner
         customers={s.customers}
+        psychologists={s.psychologists}
+        allAppointments={s.appointments}
         onNavigateToDate={(date) => s.setDate(date)}
       />
 

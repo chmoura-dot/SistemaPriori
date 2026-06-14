@@ -44,6 +44,7 @@ Deno.serve(async (_req) => {
         customer_id,
         psychologist_id,
         recurrence_group_id,
+        recurrence_frequency,
         customer:customers (name, health_plan, status, inactivation_reason),
         psychologist:psychologists (name)
       `)
@@ -90,17 +91,55 @@ Deno.serve(async (_req) => {
       });
     }
 
+    // Para detectar conflitos: buscar agendamentos futuros dos psicólogos envolvidos
+    const psychIds = [...new Set(genuineAlerts.map((a: any) => a.psychologist_id).filter(Boolean))];
+    const { data: psychApps } = await supabase
+      .from('appointments')
+      .select('date, start_time, end_time, psychologist_id, customer_id, is_internal, internal_title, customer:customers(name)')
+      .in('psychologist_id', psychIds as string[])
+      .neq('status', 'canceled')
+      .gte('date', todayStr);
+
     // Diagnosticar motivo de cada pendência
     const diagnosed = genuineAlerts.map((app: any) => {
       const customer = Array.isArray(app.customer) ? app.customer[0] : app.customer;
       const isInactive = customer?.status === 'inactive';
+
+      let conflictDetail = '';
+      if (!isInactive) {
+        // Calcular próxima data
+        const freq = app.recurrence_frequency;
+        const interval = freq === 'QUINZENAL' ? 14 : 7;
+        const nextD = new Date(app.date + 'T12:00:00');
+        nextD.setDate(nextD.getDate() + interval);
+        const nextDateStr = nextD.toISOString().split('T')[0];
+        const nextDateFmt = nextD.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' });
+
+        // Buscar conflito
+        const conflicting = (psychApps ?? []).find((o: any) =>
+          o.psychologist_id === app.psychologist_id &&
+          o.date === nextDateStr &&
+          o.start_time < app.end_time &&
+          o.end_time > app.start_time
+        );
+        if (conflicting) {
+          const cName = conflicting.is_internal
+            ? (conflicting.internal_title || 'Bloqueio Interno')
+            : ((Array.isArray(conflicting.customer) ? conflicting.customer[0]?.name : conflicting.customer?.name) || 'Outro paciente');
+          conflictDetail = `Ocupado por <strong>${cName}</strong> (${conflicting.start_time}–${conflicting.end_time}) em ${nextDateFmt}`;
+        } else {
+          conflictDetail = `Próxima data: ${nextDateFmt}`;
+        }
+      }
+
       return {
         ...app,
         _customer: customer,
         _reason: isInactive ? 'inactive' : 'conflict',
         _reasonLabel: isInactive
           ? `⛔ Paciente inativo (${customer?.inactivation_reason || 'motivo não informado'})`
-          : '⚠️ Conflito de horário com outro agendamento',
+          : '⚠️ Conflito de horário',
+        _conflictDetail: conflictDetail,
       };
     });
 
@@ -134,6 +173,7 @@ Deno.serve(async (_req) => {
           </td>
           <td style="padding: 12px 10px;">
             <span style="color: ${reasonColor}; font-weight: bold; font-size: 11px;">${app._reasonLabel}</span>
+            ${app._conflictDetail ? `<br><small style="color: #b45309; font-size: 11px;">→ ${app._conflictDetail}</small>` : ''}
           </td>
         </tr>
       `;
