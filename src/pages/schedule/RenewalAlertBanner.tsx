@@ -21,7 +21,7 @@ interface RenewalItem {
   appointment: Appointment;
   customer: Customer | undefined;
   psychologistName: string;
-  reason: 'inactive' | 'conflict';
+  reason: 'inactive' | 'conflict' | 'pending';
   daysUntil: number;
   conflict?: ConflictInfo;
   nextDate?: string; // YYYY-MM-DD da próxima ocorrência
@@ -96,20 +96,34 @@ export const RenewalAlertBanner: React.FC<RenewalAlertBannerProps> = ({
           }
         }
 
+        // Determinar motivo correto:
+        // - inactive: paciente não está na lista de ativos
+        // - conflict: conflito real detectado na próxima data
+        // - pending: sem conflito detectado — o cron auto-renew vai resolver
+        const reason: 'inactive' | 'conflict' | 'pending' = isInactive
+          ? 'inactive'
+          : conflict
+            ? 'conflict'
+            : 'pending';
+
         return {
           appointment: app,
           customer,
           psychologistName: psych?.name || '—',
-          reason: isInactive ? 'inactive' as const : 'conflict' as const,
+          reason,
           daysUntil,
           conflict,
           nextDate,
         };
       });
 
+      // Filtrar: só mostrar itens que precisam de ação humana (inactive + conflict)
+      // "pending" = o auto-renew vai resolver, não precisa mostrar no banner
+      const actionable = mapped.filter(i => i.reason !== 'pending');
+
       // Ordenar: vencidos primeiro, depois por proximidade
-      mapped.sort((a, b) => a.daysUntil - b.daysUntil);
-      setItems(mapped);
+      actionable.sort((a, b) => a.daysUntil - b.daysUntil);
+      setItems(actionable);
     } catch {
       // silencioso
     } finally {
