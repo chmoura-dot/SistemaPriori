@@ -1,8 +1,8 @@
-import React, { useEffect, useRef } from 'react';
-import { Trash2, Wifi, Building2, Lock, User } from 'lucide-react';
+import React, { useEffect, useRef, useMemo } from 'react';
+import { Trash2, Wifi, Building2, Lock, User, AlertTriangle } from 'lucide-react';
 import {
   Appointment, Psychologist, Customer, Plan, Room,
-  AttendanceMode, AppointmentStatus,
+  AttendanceMode, AppointmentStatus, RecurrenceFrequency,
 } from '../../services/types';
 import { Modal } from '../../components/Modal';
 import { Button } from '../../components/Button';
@@ -96,6 +96,72 @@ export const ScheduleFormModal: React.FC<ScheduleFormModalProps> = ({
     return !conflict;
   });
 
+  // Count hidden psychologists (for warning)
+  const hiddenPsychCount = psychologists.filter(p => p.active).length - availablePsychologists.length;
+
+  // Psicólogos ocultos: detalhar quem e com qual conflito
+  const hiddenPsychDetails = useMemo(() => {
+    if (!formData.date || !formData.startTime || !formData.endTime || hiddenPsychCount <= 0) return [];
+    return psychologists.filter(p => p.active && !availablePsychologists.some(ap => ap.id === p.id)).map(p => {
+      const conflicting = appointments.find(a =>
+        a.psychologistId === p.id && a.date === formData.date && a.id !== editingId &&
+        a.status !== AppointmentStatus.CANCELED &&
+        ((formData.startTime >= a.startTime && formData.startTime < a.endTime) ||
+          (formData.endTime > a.startTime && formData.endTime <= a.endTime) ||
+          (formData.startTime <= a.startTime && formData.endTime >= a.endTime))
+      );
+      const conflictCustomer = conflicting ? customers.find(c => c.id === conflicting.customerId) : undefined;
+      const conflictName = conflicting?.isInternal
+        ? (conflicting.internalTitle || 'Bloqueio Interno')
+        : (conflictCustomer?.name || 'Outro paciente');
+      return { psychName: p.name, conflictName, conflictTime: conflicting ? `${conflicting.startTime}–${conflicting.endTime}` : '' };
+    });
+  }, [formData.date, formData.startTime, formData.endTime, hiddenPsychCount]);
+
+  // Recurring series conflict detection
+  const seriesConflicts = useMemo(() => {
+    if (!formData.isRecurring || !formData.psychologistId || !formData.date || !formData.startTime || !formData.endTime) return [];
+    const [startYear, startMonth, startDay] = formData.date.split('-').map(Number);
+    const interval = formData.recurrenceFrequency === RecurrenceFrequency.QUINZENAL ? 14 : 7;
+    const endMonth = startMonth === 12 ? 1 : startMonth + 1;
+    const endYear = startMonth === 12 ? startYear + 1 : startYear;
+    const endDate = new Date(endYear, endMonth, 0);
+
+    const conflicts: { date: string; formatted: string; conflictName: string; conflictTime: string }[] = [];
+    let i = 1; // skip first date (already checked by dropdown filter)
+    while (i < 52) {
+      const cur = new Date(startYear, startMonth - 1, startDay + i * interval);
+      if (cur > endDate) break;
+      const y = cur.getFullYear();
+      const m = String(cur.getMonth() + 1).padStart(2, '0');
+      const d = String(cur.getDate()).padStart(2, '0');
+      const dateStr = `${y}-${m}-${d}`;
+
+      const conflicting = appointments.find(a =>
+        a.id !== editingId && a.psychologistId === formData.psychologistId && a.date === dateStr &&
+        a.status !== AppointmentStatus.CANCELED &&
+        ((formData.startTime >= a.startTime && formData.startTime < a.endTime) ||
+          (formData.endTime > a.startTime && formData.endTime <= a.endTime) ||
+          (formData.startTime <= a.startTime && formData.endTime >= a.endTime))
+      );
+
+      if (conflicting) {
+        const cc = customers.find(c => c.id === conflicting.customerId);
+        const cName = conflicting.isInternal
+          ? (conflicting.internalTitle || 'Bloqueio Interno')
+          : (cc?.name || 'Outro paciente');
+        conflicts.push({
+          date: dateStr,
+          formatted: cur.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' }),
+          conflictName: cName,
+          conflictTime: `${conflicting.startTime}–${conflicting.endTime}`,
+        });
+      }
+      i++;
+    }
+    return conflicts;
+  }, [formData.isRecurring, formData.psychologistId, formData.date, formData.startTime, formData.endTime, formData.recurrenceFrequency, appointments]);
+
   // Available rooms (no conflict)
   const availableRooms = rooms.filter(room => {
     if (!formData.date || !formData.startTime || !formData.endTime) return true;
@@ -185,6 +251,24 @@ export const ScheduleFormModal: React.FC<ScheduleFormModalProps> = ({
               {availablePsychologists.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               {availablePsychologists.length === 0 && <option disabled>Nenhum psicólogo disponível neste horário</option>}
             </select>
+            {/* Aviso de psicólogos ocultos por conflito */}
+            {hiddenPsychCount > 0 && (
+              <div className="mt-2 p-2.5 bg-amber-50 border border-amber-200 rounded-lg">
+                <div className="flex items-center gap-1.5 text-amber-700">
+                  <AlertTriangle size={13} />
+                  <span className="text-[11px] font-bold">
+                    {hiddenPsychCount} psicólogo(s) indisponível(is) neste horário:
+                  </span>
+                </div>
+                <div className="mt-1.5 space-y-0.5">
+                  {hiddenPsychDetails.map((d, i) => (
+                    <p key={i} className="text-[10px] text-amber-800">
+                      • <strong>{d.psychName}</strong> — ocupado por {d.conflictName} ({d.conflictTime})
+                    </p>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -217,6 +301,28 @@ export const ScheduleFormModal: React.FC<ScheduleFormModalProps> = ({
           updateFuture={updateFuture}
           setUpdateFuture={setUpdateFuture}
         />
+
+        {/* Alerta de conflitos na série recorrente */}
+        {seriesConflicts.length > 0 && (
+          <div className="p-3 bg-red-50 border border-red-200 rounded-xl animate-in fade-in duration-300">
+            <div className="flex items-center gap-2 text-red-700">
+              <AlertTriangle size={16} />
+              <span className="text-xs font-bold">
+                ⚠️ Atenção: esta série terá conflito em {seriesConflicts.length} data(s) futura(s)
+              </span>
+            </div>
+            <div className="mt-2 space-y-1 max-h-32 overflow-y-auto">
+              {seriesConflicts.map((c, i) => (
+                <p key={i} className="text-[11px] text-red-800">
+                  • <strong>{c.formatted}</strong> — ocupado por <strong>{c.conflictName}</strong> ({c.conflictTime})
+                </p>
+              ))}
+            </div>
+            <p className="mt-2 text-[10px] text-red-600 italic">
+              As sessões nessas datas não serão criadas automaticamente. Será necessário ajuste manual.
+            </p>
+          </div>
+        )}
 
         {/* Footer */}
         <div className="flex justify-between items-center pt-4 border-t border-zinc-100">
