@@ -169,6 +169,15 @@ export function createBillingHelpers({
       batches.filter(b => b.status === BillingBatchStatus.DRAFT).map(b => b.id)
     );
 
+    // Fonte de verdade: IDs que estão efetivamente nos appointmentIds de lotes SENT/PAID.
+    // Protege contra "estado zumbi" — atendimentos cujo billingBatchId aponta para um lote
+    // do qual foram removidos (ou cujo lote foi excluído sem limpar a referência).
+    const billedAppointmentIds = new Set(
+      batches
+        .filter(b => b.status !== BillingBatchStatus.DRAFT)
+        .flatMap(b => b.appointmentIds)
+    );
+
     return appointments.filter(a => {
       // Exclui horários internos (supervisão, reunião, etc.) — não são faturáveis
       if (a.isInternal) return false;
@@ -180,8 +189,12 @@ export function createBillingHelpers({
       const isInCurrentDraft = editingDraftId ? a.billingBatchId === editingDraftId : false;
       // Um atendimento é "disponível" se:
       //   a) não tem billingBatchId (nunca foi associado a lote), OU
-      //   b) está num lote RASCUNHO (draft) — ainda não foi enviado à operadora
-      const isAvailable = !a.billingBatchId || (!!a.billingBatchId && draftBatchIds.has(a.billingBatchId));
+      //   b) está num lote RASCUNHO (draft) — ainda não foi enviado à operadora, OU
+      //   c) tem billingBatchId mas NÃO está nos appointmentIds de nenhum lote SENT/PAID
+      //      (referência órfã após exclusão de lote ou estado zumbi do auto-save)
+      const isAvailable = !a.billingBatchId
+        || draftBatchIds.has(a.billingBatchId)
+        || !billedAppointmentIds.has(a.id);
 
       return (
         customer?.healthPlan === selectedPlan &&

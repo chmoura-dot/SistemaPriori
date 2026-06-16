@@ -76,6 +76,12 @@ export function useBillingData() {
         await import('../services/api').then(({ api }) =>
           api.updateBillingBatch(editingDraftBatch.id, { appointmentIds: selectedAppointmentIds, totalAmount })
         );
+        // Sincroniza prevIds para que o próximo auto-save use a referência correta.
+        // Sem isso, atendimentos adicionados e depois desselecionados ficam com
+        // billingBatchId "zumbi" porque o diff não consegue identificá-los para remoção.
+        setEditingDraftBatch(prev =>
+          prev ? { ...prev, appointmentIds: [...selectedAppointmentIds] } : prev
+        );
         setAutoSaveStatus('saved');
         setTimeout(() => setAutoSaveStatus('idle'), 2500);
       } catch (err) {
