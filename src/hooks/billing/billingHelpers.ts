@@ -213,6 +213,28 @@ export function createBillingHelpers({
     return totalCents / 100;
   };
 
+  /** Conta atendimentos disponíveis (não faturados) por plano de saúde. */
+  const getPendingCountByPlan = (): Map<HealthPlan, number> => {
+    const today = new Date().toISOString().split('T')[0];
+    const billedIds = new Set(
+      batches.filter(b => b.status !== BillingBatchStatus.DRAFT).flatMap(b => b.appointmentIds)
+    );
+    const draftIds = new Set(
+      batches.filter(b => b.status === BillingBatchStatus.DRAFT).map(b => b.id)
+    );
+    const counts = new Map<HealthPlan, number>();
+    for (const a of appointments) {
+      if (a.isInternal || a.date > today) continue;
+      const avail = !a.billingBatchId || draftIds.has(a.billingBatchId) || !billedIds.has(a.id);
+      if (!avail) continue;
+      const c = customers.find(cx => cx.id === a.customerId);
+      if (!c?.healthPlan) continue;
+      const plan = c.healthPlan as HealthPlan;
+      counts.set(plan, (counts.get(plan) || 0) + 1);
+    }
+    return counts;
+  };
+
   return {
     getNeuropsicoStatus,
     getAmsNeuropsicoSessionIndex,
@@ -224,6 +246,7 @@ export function createBillingHelpers({
     getPlansWithEarlierDrafts,
     getEligibleAppointments,
     calculateTotalSelectedAmount,
+    getPendingCountByPlan,
   };
 }
 

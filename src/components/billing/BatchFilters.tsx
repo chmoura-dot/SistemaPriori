@@ -24,6 +24,7 @@ interface Props {
   includeNextMonth: boolean;
   isDraftMode: boolean;
   blockedPlans?: Map<HealthPlan, string>;
+  pendingCountByPlan?: Map<HealthPlan, number>;
   onPlanChange: (plan: HealthPlan) => void;
   onMonthChange: (month: number) => void;
   onYearChange: (year: number) => void;
@@ -42,6 +43,7 @@ export const BatchFilters: React.FC<Props> = ({
   includeNextMonth,
   isDraftMode,
   blockedPlans,
+  pendingCountByPlan,
   onPlanChange,
   onMonthChange,
   onYearChange,
@@ -61,9 +63,10 @@ export const BatchFilters: React.FC<Props> = ({
         >
           {Object.values(HealthPlan).map(plan => {
             const blockLabel = !isDraftMode ? blockedPlans?.get(plan) : undefined;
+            const pending = pendingCountByPlan?.get(plan) ?? 0;
             return (
               <option key={plan} value={plan} disabled={!!blockLabel}>
-                {plan}{blockLabel ? ` — ⚠️ rascunho de ${blockLabel} pendente` : ''}
+                {plan}{pending > 0 ? ` (${pending} pendente${pending > 1 ? 's' : ''})` : ''}{blockLabel ? ` — ⚠️ rascunho de ${blockLabel} pendente` : ''}
               </option>
             );
           })}

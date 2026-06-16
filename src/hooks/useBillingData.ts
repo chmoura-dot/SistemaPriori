@@ -249,6 +249,7 @@ export function useBillingData() {
     getEligibleAppointments:          helpers.getEligibleAppointments,
     getPlansWithEarlierDrafts:        helpers.getPlansWithEarlierDrafts,
     calculateTotalSelectedAmount:     helpers.calculateTotalSelectedAmount,
+    getPendingCountByPlan:            helpers.getPendingCountByPlan,
     toggleAppointmentSelection,
     handleOverrideProcedureCode,
     // Handlers

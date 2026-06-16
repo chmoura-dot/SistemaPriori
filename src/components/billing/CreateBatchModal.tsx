@@ -35,6 +35,7 @@ interface Props {
   editingDraftBatch?: BillingBatch | null;
   includePrevMonth: boolean;
   blockedPlans?: Map<HealthPlan, string>;
+  pendingCountByPlan?: Map<HealthPlan, number>;
   getNeuropsicoStatus: (app: Appointment) => NeuropsicoStatus;
   getAppPrice: (app: Appointment) => number;
   getTussCode: (app: Appointment) => string;
@@ -73,6 +74,7 @@ export const CreateBatchModal: React.FC<Props> = ({
   isOpen, selectedPlan, batchNumber, patientFilter, monthFilter,
   selectedAppointmentIds, neuropsicoDecisions, customers, psychologists, plans,
   eligibleAppointments, totalSelectedAmount, editingDraftBatch, includePrevMonth, blockedPlans,
+  pendingCountByPlan,
   getNeuropsicoStatus, getAppPrice, getTussCode, getAmsNeuropsicoSessionIndex, getPlanProcedures,
   onClose, onPlanChange, onBatchNumberChange,
   onPatientFilterChange, onMonthFilterChange, onToggleSelection, onSelectAll,
@@ -211,6 +213,7 @@ export const CreateBatchModal: React.FC<Props> = ({
           monthLabel={monthLabel} prevMonthLabel={prevMonthLabel} nextMonthLabel={nextMonthLabel}
           includePrevMonth={includePrevMonth} includeNextMonth={includeNextMonth}
           isDraftMode={isDraftMode} blockedPlans={blockedPlans}
+          pendingCountByPlan={pendingCountByPlan}
           onPlanChange={onPlanChange} onMonthChange={handleMonthChange} onYearChange={handleYearChange}
           onIncludePrevMonthChange={onIncludePrevMonthChange} onIncludeNextMonthChange={onIncludeNextMonthChange}
         />

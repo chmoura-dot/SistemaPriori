@@ -76,6 +76,7 @@ export const BillingPage = () => {
         editingDraftBatch={billing.editingDraftBatch}
         includePrevMonth={billing.includePrevMonth}
         blockedPlans={billing.getPlansWithEarlierDrafts(billing.monthFilter)}
+        pendingCountByPlan={billing.getPendingCountByPlan()}
         getNeuropsicoStatus={billing.getNeuropsicoStatus}
         getAppPrice={billing.getAppPrice}
         getTussCode={billing.getTussCode}
