@@ -24,6 +24,7 @@ import {
 import { Button } from '../components/Button';
 import { cn } from '../lib/utils';
 import { calcRepass } from '../lib/repassRules';
+import { getAppPrice, PricingContext } from '../lib/pricing';
 
 const fmt = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 
@@ -37,15 +38,20 @@ function generateRepassePDF(
   customers: Customer[],
   plans: Plan[],
 ) {
-  const rows = repasse.appointmentIds.map(id => {
-    const app = appointments.find(a => a.id === id);
-    const customer = customers.find(c => c.id === app?.customerId);
-    const plan = plans.find(p => p.name.toUpperCase() === (customer?.healthPlan ?? '').toUpperCase());
-    const procedure = plan?.procedures?.find(proc => proc.type === app?.type);
-    const gross = app?.customPrice ?? customer?.customPrice ?? procedure?.price ?? 0;
-    const repassVal = calcRepass(gross, psy);
-    return { app, customer, procedure, repassVal };
-  });
+  const pricingCtx: PricingContext = { customers, plans, appointments };
+  const rows = repasse.appointmentIds
+    .map(id => {
+      const app = appointments.find(a => a.id === id);
+      // Filtro de segurança: excluir atendimentos glosados do PDF
+      if (!app || app.billingStatus === 'denied') return null;
+      const customer = customers.find(c => c.id === app.customerId);
+      const plan = plans.find(p => p.name.toUpperCase() === (customer?.healthPlan ?? '').toUpperCase());
+      const procedure = plan?.procedures?.find(proc => proc.type === app.type);
+      const gross = getAppPrice(app, pricingCtx);
+      const repassVal = calcRepass(gross, psy);
+      return { app, customer, procedure, repassVal };
+    })
+    .filter((r): r is NonNullable<typeof r> => r !== null);
 
   const today = format(new Date(), 'dd/MM/yyyy');
   const planName = batch?.healthPlan ?? '—';
@@ -188,7 +194,7 @@ export const RepassePage = () => {
       const [rData, bData, aData, cData, plData, psyData] = await Promise.all([
         api.getRepasses(),
         api.getBillingBatches(),
-        api.getAppointments(),
+        api.getAppointmentsForBilling(),
         api.getCustomers(),
         api.getPlans(),
         api.getPsychologists(),
@@ -226,19 +232,27 @@ export const RepassePage = () => {
         const exists = repasses.some(r => r.psychologistId === psyId && r.billingBatchId === batch.id);
         if (exists) return;
 
-        // Calculate total
-        let total = 0;
-        appIds.forEach(appId => {
+        // Filtrar apenas atendimentos pagos (excluir glosas)
+        const paidAppIds = appIds.filter(appId => {
           const app = appointments.find(a => a.id === appId);
-          const customer = customers.find(c => c.id === app?.customerId);
-          const plan = plans.find(p => p.name.toUpperCase() === (customer?.healthPlan ?? '').toUpperCase());
-          const procedure = plan?.procedures?.find(proc => proc.type === app?.type);
-          const gross = app?.customPrice ?? customer?.customPrice ?? procedure?.price ?? 0;
+          return app?.billingStatus !== 'denied';
+        });
+
+        // Se todos os atendimentos foram glosados, não gera repasse
+        if (paidAppIds.length === 0) return;
+
+        // Calcular total usando a mesma função de pricing do Faturamento
+        const pricingCtx: PricingContext = { customers, plans, appointments };
+        let total = 0;
+        paidAppIds.forEach(appId => {
+          const app = appointments.find(a => a.id === appId);
+          if (!app) return;
+          const gross = getAppPrice(app, pricingCtx);
           const psy = psychologists.find(p => p.id === psyId);
           total += calcRepass(gross, psy);
         });
 
-        groups.push({ psyId, batch, appIds, total });
+        groups.push({ psyId, batch, appIds: paidAppIds, total });
       });
     });
 
