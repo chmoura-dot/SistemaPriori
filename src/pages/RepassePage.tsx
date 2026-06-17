@@ -103,18 +103,32 @@ function generateRepassePDF(
   const sentAt = batch?.sentAt ? format(new Date(batch.sentAt), 'dd/MM/yyyy') : '—';
   const paidAt = batch?.paidAt ? format(new Date(batch.paidAt), 'dd/MM/yyyy') : '—';
 
-  const tableRows = rows
-    .map(({ app, customer, procedure, repassVal }) => {
-      const dateStr = app ? format(new Date(app.date + 'T12:00:00'), 'dd/MM/yyyy') : '—';
-      return `
+  // Agrupar por paciente + procedimento
+  const grouped: Record<string, { name: string; code: string; description: string; qty: number; total: number }> = {};
+  rows.forEach(({ customer, procedure, repassVal }) => {
+    const key = `${customer?.id ?? 'unknown'}-${procedure?.code ?? 'no-code'}`;
+    if (!grouped[key]) {
+      grouped[key] = {
+        name: customer?.name ?? '—',
+        code: procedure?.code ?? '—',
+        description: procedure?.description ?? '—',
+        qty: 0,
+        total: 0,
+      };
+    }
+    grouped[key].qty += 1;
+    grouped[key].total += repassVal;
+  });
+
+  const tableRows = Object.values(grouped)
+    .map(g => `
         <tr>
-          <td class="cell">${customer?.name ?? '—'}</td>
-          <td class="cell">${dateStr}</td>
-          <td class="cell">${procedure?.code ?? '—'}</td>
-          <td class="cell">${procedure?.description ?? '—'}</td>
-          <td class="cell right">${fmt.format(repassVal)}</td>
-        </tr>`;
-    })
+          <td class="cell">${g.name}</td>
+          <td class="cell">${g.qty}</td>
+          <td class="cell">${g.code}</td>
+          <td class="cell">${g.description}</td>
+          <td class="cell right">${fmt.format(g.total)}</td>
+        </tr>`)
     .join('');
 
   const total = rows.reduce((s, r) => s + r.repassVal, 0);
@@ -190,10 +204,10 @@ function generateRepassePDF(
     <thead>
       <tr>
         <th>Paciente</th>
-        <th>Data do Atendimento</th>
-        <th>Cód TUSS</th>
+        <th>Quantidade</th>
+        <th>COD TUSS</th>
         <th>Procedimento</th>
-        <th style="text-align:right">Valor Repasse</th>
+        <th style="text-align:right">Valor do Repasse</th>
       </tr>
     </thead>
     <tbody>
