@@ -224,10 +224,14 @@ export function useDashboardOperacional({
     customers.filter(c => c.status === CustomerStatus.INACTIVE && c.inactivationReason === InactivationReason.ALTA_PSICOLOGO).length,
     [customers]
   );
-  // Churn fantasma: ativos mas sem consulta há >30 dias
+  // Churn fantasma: ativos (sem alta) mas sem consulta há >30 dias
   const churnFantasma = useMemo(() =>
     customers.filter(c => {
-      if (c.status !== CustomerStatus.ACTIVE || !c.lastAppointmentDate) return false;
+      if (
+        c.status !== CustomerStatus.ACTIVE ||
+        c.inactivationReason === InactivationReason.ALTA_PSICOLOGO ||
+        !c.lastAppointmentDate
+      ) return false;
       const last = new Date(c.lastAppointmentDate + 'T12:00:00');
       return Math.ceil((today.getTime() - last.getTime()) / (1000 * 60 * 60 * 24)) > 30;
     }),
