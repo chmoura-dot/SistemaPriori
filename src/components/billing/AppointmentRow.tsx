@@ -97,10 +97,10 @@ export const AppointmentRow: React.FC<Props> = memo(({
           onChange={() => {}}
           className="rounded border-zinc-300 text-priori-navy focus:ring-priori-navy disabled:opacity-50 flex-shrink-0"
         />
-        <div className="text-xs font-semibold text-zinc-600 w-20 flex-shrink-0">
+        <div className={cn("text-xs w-20 flex-shrink-0", isIgnored ? "line-through text-zinc-400 font-normal" : "font-semibold text-zinc-600")}>
           {format(new Date(app.date + 'T12:00:00'), 'dd/MM/yy')} {app.startTime}
         </div>
-        <div className="text-xs text-zinc-400 flex-1 truncate min-w-0">
+        <div className={cn("text-xs flex-1 truncate min-w-0", isIgnored ? "line-through text-zinc-400" : "text-zinc-600")}>
           {psychologistName}
         </div>
 
@@ -226,7 +226,7 @@ export const AppointmentRow: React.FC<Props> = memo(({
         <div className="text-sm font-semibold w-20 text-right flex-shrink-0">
           {isAmsBlocked
             ? <span className="text-zinc-400 font-normal text-xs">—</span>
-            : <span className="text-priori-navy">{formatCurrency(basePrice)}</span>
+            : <span className={isIgnored ? "line-through text-zinc-400" : "text-priori-navy"}>{formatCurrency(basePrice)}</span>
           }
         </div>
 
