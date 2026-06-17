@@ -35,9 +35,8 @@ const fmt = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' 
  * Calcula o valor de repasse para um atendimento respeitando a hierarquia:
  *  1. Override manual no atendimento (customRepassAmount)
  *  2. Override manual no paciente (customRepassAmount)
- *  3. Psicólogo com regra própria (repassFixedAmount ou repassRate) → calcRepass
- *  4. Valor cadastrado no plano (procedure.repassAmount) — REGRA PADRÃO
- *  5. Fallback → 0
+ *  3. Valor cadastrado no plano (procedure.repassAmount) — REGRA PADRÃO
+ *  4. Fallback: regra do psicólogo (repassRate/repassFixedAmount) — ex: Michelly = 92%
  */
 function getRepassValue(
   app: Appointment,
@@ -57,17 +56,7 @@ function getRepassValue(
     return customer.customRepassAmount;
   }
 
-  // 3. Psicólogo com regra própria (repassFixedAmount ou repassRate definidos)
-  const hasCustomPsyRule =
-    (psy?.repassFixedAmount != null && psy.repassFixedAmount > 0) ||
-    (psy?.repassRate != null && psy.repassRate > 0);
-
-  if (hasCustomPsyRule) {
-    const gross = getAppPrice(app, pricingCtx);
-    return calcRepass(gross, psy);
-  }
-
-  // 4. Valor cadastrado no plano (procedure.repassAmount)
+  // 3. Valor cadastrado no plano (procedure.repassAmount) — prioridade máxima
   const plan = matchPlanByHealthPlan(plans, customer?.healthPlan);
   const procedure = app.procedureCode
     ? plan?.procedures?.find(p => p.code === app.procedureCode)
@@ -77,8 +66,9 @@ function getRepassValue(
     return procedure.repassAmount;
   }
 
-  // 5. Fallback
-  return 0;
+  // 4. Fallback: regra do psicólogo (para planos sem repassAmount, ex: Michelly = gross * 0.92)
+  const gross = getAppPrice(app, pricingCtx);
+  return calcRepass(gross, psy);
 }
 
 // ─── PDF Generation ──────────────────────────────────────────────────────────
