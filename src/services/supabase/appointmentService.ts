@@ -52,14 +52,14 @@ export const appointmentReadService = {
         .is('billing_batch_id', null)
         .gte('date', minDate)
         .lte('date', today)
-        .order('date', { ascending: false })
+        .order('date', { ascending: true })
         .limit(10000),
       supabase
         .from('appointments')
         .select(APPOINTMENT_COLUMNS)
         .not('billing_batch_id', 'is', null)
         .gte('date', minDate)
-        .order('date', { ascending: false })
+        .order('date', { ascending: true })
         .limit(10000),
     ]);
 
