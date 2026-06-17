@@ -59,6 +59,7 @@ interface Props {
   onSaveAsDraft: () => void;
   onQuickAddToDraft: (id: string, e: React.MouseEvent) => void;
   onOverrideProcedureCode: (id: string, newCode: string) => void;
+  onOverridePrice?: (id: string, newPrice: number) => void;
   onSubmit: () => void;
   onFinalizeDraft?: () => void;
 }
@@ -80,7 +81,7 @@ export const CreateBatchModal: React.FC<Props> = ({
   onPatientFilterChange, onMonthFilterChange, onToggleSelection, onSelectAll,
   onConfirmAppointment, onIgnoreAppointment, onUnignoreAppointment, onToggleNeuropsico, onIncludePrevMonthChange,
   includeNextMonth, onIncludeNextMonthChange, autoSaveStatus, onSaveAsDraft, onQuickAddToDraft,
-  onOverrideProcedureCode, onSubmit, onFinalizeDraft,
+  onOverrideProcedureCode, onOverridePrice, onSubmit, onFinalizeDraft,
 }) => {
   const [showConfirm, setShowConfirm] = useState<false | 'send' | 'finalize'>(false);
   const isDraftMode = !!editingDraftBatch;
@@ -236,6 +237,7 @@ export const CreateBatchModal: React.FC<Props> = ({
           onToggleNeuropsico={onToggleNeuropsico}
           onQuickAddToDraft={onQuickAddToDraft}
           onOverrideProcedureCode={onOverrideProcedureCode}
+          onOverridePrice={onOverridePrice}
         />
 
         {/* Número do lote + ações */}

@@ -1,5 +1,5 @@
 import React, { memo, useState } from 'react';
-import { Ban, BookmarkPlus, CheckCircle2, Pencil, RotateCcw } from 'lucide-react';
+import { Ban, BookmarkPlus, Check, CheckCircle2, Pencil, RotateCcw, X } from 'lucide-react';
 import { format } from 'date-fns';
 import { Appointment, AppointmentStatus } from '../../services/types';
 import { Button } from '../Button';
@@ -32,6 +32,10 @@ interface Props {
   onToggleNeuropsico: (id: string, value: boolean) => void;
   onQuickAddToDraft: (id: string, e: React.MouseEvent) => void;
   onOverrideProcedureCode: (id: string, newCode: string) => void;
+  /** Se definido, habilita edição inline do valor para atendimentos particulares */
+  onOverridePrice?: (id: string, newPrice: number) => void;
+  /** Indica se o paciente é particular (habilita botão de edição de valor) */
+  isParticular?: boolean;
 }
 
 export const AppointmentRow: React.FC<Props> = memo(({
@@ -57,8 +61,12 @@ export const AppointmentRow: React.FC<Props> = memo(({
   onToggleNeuropsico,
   onQuickAddToDraft,
   onOverrideProcedureCode,
+  onOverridePrice,
+  isParticular,
 }) => {
   const [showOverride, setShowOverride] = useState(false);
+  const [editingPrice, setEditingPrice] = useState(false);
+  const [priceInput, setPriceInput] = useState('');
 
   const isIgnored = app.billingIgnored === true;
   const isConfirmed = app.confirmedPsychologist === true;
@@ -223,11 +231,55 @@ export const AppointmentRow: React.FC<Props> = memo(({
           )}
         </div>
 
-        <div className="text-sm font-semibold w-20 text-right flex-shrink-0">
-          {isAmsBlocked
-            ? <span className="text-zinc-400 font-normal text-xs">—</span>
-            : <span className={isIgnored ? "line-through text-zinc-400" : "text-priori-navy"}>{formatCurrency(basePrice)}</span>
-          }
+        <div className="text-sm font-semibold text-right flex-shrink-0 flex items-center gap-0.5" onClick={e => e.stopPropagation()}>
+          {isAmsBlocked ? (
+            <span className="text-zinc-400 font-normal text-xs w-20 text-right">—</span>
+          ) : editingPrice ? (
+            <div className="flex items-center gap-0.5">
+              <span className="text-[10px] text-zinc-400">R$</span>
+              <input
+                type="text"
+                value={priceInput}
+                onChange={e => setPriceInput(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    const parsed = parseFloat(priceInput.replace(',', '.'));
+                    if (!isNaN(parsed) && parsed >= 0 && onOverridePrice) onOverridePrice(app.id, parsed);
+                    setEditingPrice(false);
+                  }
+                  if (e.key === 'Escape') setEditingPrice(false);
+                }}
+                autoFocus
+                className="w-16 text-right text-xs font-medium border border-priori-navy/30 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-priori-navy"
+              />
+              <button
+                onClick={() => {
+                  const parsed = parseFloat(priceInput.replace(',', '.'));
+                  if (!isNaN(parsed) && parsed >= 0 && onOverridePrice) onOverridePrice(app.id, parsed);
+                  setEditingPrice(false);
+                }}
+                className="p-0.5 text-emerald-600 hover:bg-emerald-50 rounded"
+              ><Check size={12} /></button>
+              <button onClick={() => setEditingPrice(false)} className="p-0.5 text-red-400 hover:bg-red-50 rounded">
+                <X size={12} />
+              </button>
+            </div>
+          ) : (
+            <>
+              <span className={cn("w-20 text-right", isIgnored ? "line-through text-zinc-400" : "text-priori-navy")}>
+                {formatCurrency(basePrice)}
+              </span>
+              {isParticular && onOverridePrice && !isIgnored && !isCanceledExempt && (
+                <button
+                  onClick={() => { setPriceInput(String(basePrice)); setEditingPrice(true); }}
+                  className="p-0.5 text-zinc-300 hover:text-priori-navy hover:bg-priori-navy/5 rounded transition-colors"
+                  title="Corrigir valor deste atendimento"
+                >
+                  <Pencil size={11} />
+                </button>
+              )}
+            </>
+          )}
         </div>
 
         {!isIgnored && !isCanceledExempt && !isConfirmed && (

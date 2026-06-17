@@ -116,6 +116,42 @@ export const CustomersPage = () => {
       } as any;
       if (editingId) await api.updateCustomer(editingId, payload);
       else await api.createCustomer(payload);
+
+      // ── Propagação automática de valor para atendimentos não faturados ──
+      if (editingId && formData.healthPlan === HealthPlan.PARTICULAR && formData.customPrice !== undefined) {
+        const existing = customers.find(c => c.id === editingId);
+        if (existing && existing.customPrice !== formData.customPrice) {
+          try {
+            // Busca lotes já enviados/pagos para excluí-los
+            const { data: sentBatches } = await supabase
+              .from('billing_batches')
+              .select('appointment_ids')
+              .in('status', ['SENT', 'PAID']);
+
+            const lockedAppIds = new Set<string>();
+            sentBatches?.forEach(b => (b.appointment_ids as string[])?.forEach(id => lockedAppIds.add(id)));
+
+            // Busca atendimentos não faturados desse paciente
+            const { data: apps } = await supabase
+              .from('appointments')
+              .select('id')
+              .eq('customer_id', editingId)
+              .is('billing_batch_id', null);
+
+            const idsToUpdate = (apps || []).map(a => a.id).filter(id => !lockedAppIds.has(id));
+
+            if (idsToUpdate.length > 0) {
+              await supabase
+                .from('appointments')
+                .update({ custom_price: formData.customPrice })
+                .in('id', idsToUpdate);
+            }
+          } catch {
+            // Erro silencioso — propagação é best-effort
+          }
+        }
+      }
+
       await loadData();
       setIsFormOpen(false);
     } catch (err: any) { alert(err.message || 'Erro ao salvar paciente'); }

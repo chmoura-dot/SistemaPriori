@@ -5,7 +5,7 @@
  */
 import React from 'react';
 import { AlertTriangle, Users } from 'lucide-react';
-import { Appointment, Customer, Plan, BillingBatch, AppointmentType } from '../../services/types';
+import { Appointment, Customer, Plan, BillingBatch, AppointmentType, HealthPlan } from '../../services/types';
 import { cn, formatCurrency } from '../../lib/utils';
 import { AppointmentRow } from './AppointmentRow';
 import { PlanProcedureInfo } from '../../hooks/billing/billingHelpers';
@@ -53,6 +53,7 @@ interface Props {
   onToggleNeuropsico: (id: string, value: boolean) => void;
   onQuickAddToDraft: (id: string, e: React.MouseEvent) => void;
   onOverrideProcedureCode: (id: string, newCode: string) => void;
+  onOverridePrice?: (id: string, newPrice: number) => void;
 }
 
 export const BatchAppointmentList: React.FC<Props> = ({
@@ -65,7 +66,7 @@ export const BatchAppointmentList: React.FC<Props> = ({
   getAmsNeuropsicoSessionIndex, getPlanProcedures,
   onPatientFilterChange, onSelectAll, onToggleSelection,
   onConfirmAppointment, onIgnoreAppointment, onUnignoreAppointment, onToggleNeuropsico, onQuickAddToDraft,
-  onOverrideProcedureCode,
+  onOverrideProcedureCode, onOverridePrice,
 }) => (
   <div className="border-t border-zinc-100 pt-3">
     {/* Filtro por paciente + Selecionar todos */}
@@ -166,6 +167,8 @@ export const BatchAppointmentList: React.FC<Props> = ({
                   onToggleNeuropsico={onToggleNeuropsico}
                   onQuickAddToDraft={onQuickAddToDraft}
                   onOverrideProcedureCode={onOverrideProcedureCode}
+                  isParticular={customer?.healthPlan === HealthPlan.PARTICULAR}
+                  onOverridePrice={onOverridePrice}
                 />
               ))}
             </div>

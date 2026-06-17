@@ -108,6 +108,7 @@ export const BillingPage = () => {
         onSaveAsDraft={billing.handleSaveAsDraft}
         onQuickAddToDraft={billing.handleQuickAddToDraft}
         onOverrideProcedureCode={billing.handleOverrideProcedureCode}
+        onOverridePrice={billing.handleUpdateAppointmentPrice}
         onSubmit={billing.handleCreateBatch}
         onFinalizeDraft={billing.handleFinalizeBatch}
       />
