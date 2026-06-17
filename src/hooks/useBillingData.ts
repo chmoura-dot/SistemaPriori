@@ -116,6 +116,16 @@ export function useBillingData() {
     includePrevMonth, includeNextMonth, selectedAppointmentIds, editingDraftBatch,
   });
 
+  /** Corrige o valor (customPrice) de um atendimento já faturado, persistindo no banco. */
+  const handleUpdateAppointmentPrice = async (id: string, newPrice: number) => {
+    try {
+      await api.updateAppointment(id, { customPrice: newPrice });
+      setAppointments(prev => prev.map(a => a.id === id ? { ...a, customPrice: newPrice } : a));
+    } catch (err) {
+      logger.error('Erro ao atualizar valor do atendimento:', err);
+    }
+  };
+
   /** Override manual do código TUSS de um atendimento (persiste no banco). */
   const handleOverrideProcedureCode = async (id: string, newCode: string) => {
     try {
@@ -252,6 +262,7 @@ export function useBillingData() {
     getPendingCountByPlan:            helpers.getPendingCountByPlan,
     toggleAppointmentSelection,
     handleOverrideProcedureCode,
+    handleUpdateAppointmentPrice,
     // Handlers
     ...actions,
     handlePlanChange,

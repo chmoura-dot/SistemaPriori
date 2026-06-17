@@ -119,6 +119,7 @@ export const BillingPage = () => {
         customers={billing.customers}
         psychologists={billing.psychologists}
         getAppPrice={billing.getAppPrice}
+        onUpdatePrice={billing.handleUpdateAppointmentPrice}
         onClose={() => billing.setSelectedBatch(null)}
         onExport={billing.handleExportBatch}
       />

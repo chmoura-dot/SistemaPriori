@@ -70,6 +70,34 @@ export function createBillingActions({
     }
   };
 
+  /**
+   * Congela o preço calculado nos atendimentos particulares que ainda não têm
+   * customPrice definido. Isso evita que alterações futuras no cadastro do
+   * paciente (customer.customPrice) afetem retroativamente atendimentos já faturados.
+   */
+  const snapshotParticularPrices = async (appIds: string[]) => {
+    const updates: Promise<any>[] = [];
+    for (const id of appIds) {
+      const app = appointments.find(a => a.id === id);
+      if (!app) continue;
+      // Só congela se o atendimento ainda não tem preço fixo definido
+      if (app.customPrice != null) continue;
+      const customer = customers.find(c => c.id === app.customerId);
+      if (customer?.healthPlan !== HealthPlan.PARTICULAR) continue;
+      const price = getAppPrice(app);
+      if (price <= 0) continue;
+      updates.push(
+        api.updateAppointment(id, { customPrice: price }).then(() => {
+          // Atualiza o estado local para refletir o snapshot
+          setAppointments(prev =>
+            prev.map(a => a.id === id ? { ...a, customPrice: price } : a)
+          );
+        })
+      );
+    }
+    if (updates.length > 0) await Promise.all(updates);
+  };
+
   /** Cria o lote diretamente como ENVIADO (via "Revisar e Gerar Lote"). */
   const handleCreateBatch = async () => {
     if (!batchNumber || selectedAppointmentIds.length === 0) return;
@@ -78,6 +106,8 @@ export function createBillingActions({
       .filter(a => selectedAppointmentIds.includes(a.id))
       .reduce((sum, a) => sum + Math.round(getAppPrice(a) * 100), 0) / 100;
     try {
+      // Congela preço dos atendimentos particulares antes de criar o lote
+      await snapshotParticularPrices(selectedAppointmentIds);
       const batch = await api.createBillingBatch({
         batchNumber, sentAt: new Date().toISOString(),
         status: BillingBatchStatus.SENT, healthPlan: selectedPlan,
@@ -194,6 +224,8 @@ export function createBillingActions({
     const finalBatchNumber = batchNumber.startsWith('RASCUNHO-')
       ? generateBatchNumber(selectedPlan, monthFilter, false) : batchNumber;
     try {
+      // Congela preço dos atendimentos particulares antes de finalizar o lote
+      await snapshotParticularPrices(selectedAppointmentIds);
       await syncAppointmentsBatch(editingDraftBatch.id, editingDraftBatch.appointmentIds, selectedAppointmentIds);
       await api.updateBillingBatch(editingDraftBatch.id, {
         batchNumber: finalBatchNumber, sentAt: new Date().toISOString(),
