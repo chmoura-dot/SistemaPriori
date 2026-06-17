@@ -14,8 +14,7 @@ interface ForecastRow {
   procedureCode: string;
   procedureDescription: string;
   count: number;
-  firstDate: string;
-  lastDate: string;
+  dates: string[];
 }
 
 interface PlanGroup {
@@ -95,8 +94,6 @@ export const ForecastPage = () => {
       if (!cust) continue;
 
       const hp = cust.healthPlan;
-      // Ignorar particular — não precisa autorização
-      if (hp === HealthPlan.PARTICULAR) continue;
 
       if (!grouped.has(hp)) grouped.set(hp, new Map());
       const planBucket = grouped.get(hp)!;
@@ -125,8 +122,7 @@ export const ForecastPage = () => {
           procedureCode: proc?.code || data.app.procedureCode || '—',
           procedureDescription: proc?.description || data.app.type,
           count: data.dates.length,
-          firstDate: sortedDates[0],
-          lastDate: sortedDates[sortedDates.length - 1],
+          dates: sortedDates,
         });
       }
 
@@ -257,7 +253,7 @@ export const ForecastPage = () => {
                       <th className="px-6 py-3 text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Paciente</th>
                       <th className="px-4 py-3 text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Cód. TUSS</th>
                       <th className="px-4 py-3 text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Procedimento</th>
-                      <th className="px-4 py-3 text-[10px] font-bold text-zinc-400 uppercase tracking-wider text-center">Período</th>
+                      <th className="px-4 py-3 text-[10px] font-bold text-zinc-400 uppercase tracking-wider text-center">Datas</th>
                       <th className="px-4 py-3 text-[10px] font-bold text-zinc-400 uppercase tracking-wider text-center">Qtd.</th>
                     </tr>
                   </thead>
@@ -274,10 +270,7 @@ export const ForecastPage = () => {
                         <td className="px-4 py-3 font-mono text-xs text-zinc-600">{row.procedureCode}</td>
                         <td className="px-4 py-3 text-zinc-600">{row.procedureDescription}</td>
                         <td className="px-4 py-3 text-center text-zinc-500 text-xs">
-                          {row.count === 1
-                            ? fmtDate(row.firstDate)
-                            : `${fmtDate(row.firstDate)} → ${fmtDate(row.lastDate)}`
-                          }
+                          {row.dates.map(d => fmtDate(d)).join(', ')}
                         </td>
                         <td className="px-4 py-3 text-center">
                           <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-priori-navy/10 text-priori-navy font-bold text-xs">
