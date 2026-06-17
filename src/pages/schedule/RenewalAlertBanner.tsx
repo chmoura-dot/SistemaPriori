@@ -140,8 +140,10 @@ export const RenewalAlertBanner: React.FC<RenewalAlertBannerProps> = ({
     try {
       await api.updateAppointment(appointmentId, { needsRenewal: false });
       setItems(prev => prev.filter(i => i.appointment.id !== appointmentId));
-    } catch {
-      // silencioso
+      // Notifica Sidebar para atualizar badge imediatamente
+      window.dispatchEvent(new CustomEvent('renewal-updated'));
+    } catch (err) {
+      console.warn('[RenewalBanner] Falha ao dispensar renovação:', err);
     } finally {
       setDismissing(null);
     }

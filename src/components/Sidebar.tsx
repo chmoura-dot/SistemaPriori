@@ -73,16 +73,22 @@ export const Sidebar = ({ currentPath, onNavigate }: SidebarProps) => {
           return daysUntil <= 7;
         }).length;
         setRenewalCount(count);
-      } catch {
-        // silencioso
+      } catch (err) {
+        console.warn('[Sidebar] Falha ao carregar contagem de renovações:', err);
       }
     };
     // Diferir a primeira chamada em 6s para não competir com a renderização da página principal
     const startupDelay = setTimeout(loadRenewalCount, 6_000);
     const interval = setInterval(loadRenewalCount, 5 * 60 * 1000);
+
+    // Escuta evento customizado para refresh imediato após ação na Agenda
+    const handleRenewalUpdated = () => loadRenewalCount();
+    window.addEventListener('renewal-updated', handleRenewalUpdated);
+
     return () => {
       clearTimeout(startupDelay);
       clearInterval(interval);
+      window.removeEventListener('renewal-updated', handleRenewalUpdated);
     };
   }, []);
 
@@ -156,10 +162,13 @@ export const Sidebar = ({ currentPath, onNavigate }: SidebarProps) => {
                 )} />
                 {item.label}
                 {isAgenda && renewalCount > 0 && (
-                  <span className={cn(
-                    "ml-auto flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[10px] font-bold",
-                    isActive ? "bg-priori-navy text-white" : "bg-red-500 text-white"
-                  )}>
+                  <span
+                    title={`${renewalCount} agendamento${renewalCount > 1 ? 's' : ''} precisam de renovação nos próximos 7 dias`}
+                    className={cn(
+                      "ml-auto flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[10px] font-bold cursor-help",
+                      isActive ? "bg-priori-navy text-white" : "bg-red-500 text-white"
+                    )}
+                  >
                     {renewalCount > 9 ? '9+' : renewalCount}
                   </span>
                 )}
