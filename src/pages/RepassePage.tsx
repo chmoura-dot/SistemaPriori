@@ -25,8 +25,61 @@ import { Button } from '../components/Button';
 import { cn } from '../lib/utils';
 import { calcRepass } from '../lib/repassRules';
 import { getAppPrice, PricingContext } from '../lib/pricing';
+import { matchPlanByHealthPlan } from '../services/supabase/helpers';
 
 const fmt = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
+
+// ─── Repasse Value ───────────────────────────────────────────────────────────
+
+/**
+ * Calcula o valor de repasse para um atendimento respeitando a hierarquia:
+ *  1. Override manual no atendimento (customRepassAmount)
+ *  2. Override manual no paciente (customRepassAmount)
+ *  3. Psicólogo com regra própria (repassFixedAmount ou repassRate) → calcRepass
+ *  4. Valor cadastrado no plano (procedure.repassAmount) — REGRA PADRÃO
+ *  5. Fallback → 0
+ */
+function getRepassValue(
+  app: Appointment,
+  customers: Customer[],
+  plans: Plan[],
+  psy: Psychologist | undefined,
+  pricingCtx: PricingContext,
+): number {
+  // 1. Override manual no atendimento
+  if (app.customRepassAmount != null && app.customRepassAmount > 0) {
+    return app.customRepassAmount;
+  }
+
+  // 2. Override manual no paciente
+  const customer = customers.find(c => c.id === app.customerId);
+  if (customer?.customRepassAmount != null && customer.customRepassAmount > 0) {
+    return customer.customRepassAmount;
+  }
+
+  // 3. Psicólogo com regra própria (repassFixedAmount ou repassRate definidos)
+  const hasCustomPsyRule =
+    (psy?.repassFixedAmount != null && psy.repassFixedAmount > 0) ||
+    (psy?.repassRate != null && psy.repassRate > 0);
+
+  if (hasCustomPsyRule) {
+    const gross = getAppPrice(app, pricingCtx);
+    return calcRepass(gross, psy);
+  }
+
+  // 4. Valor cadastrado no plano (procedure.repassAmount)
+  const plan = matchPlanByHealthPlan(plans, customer?.healthPlan);
+  const procedure = app.procedureCode
+    ? plan?.procedures?.find(p => p.code === app.procedureCode)
+    : plan?.procedures?.find(p => p.type === app.type);
+
+  if (procedure?.repassAmount != null && procedure.repassAmount > 0) {
+    return procedure.repassAmount;
+  }
+
+  // 5. Fallback
+  return 0;
+}
 
 // ─── PDF Generation ──────────────────────────────────────────────────────────
 
@@ -45,10 +98,11 @@ function generateRepassePDF(
       // Filtro de segurança: excluir atendimentos glosados do PDF
       if (!app || app.billingStatus === 'denied') return null;
       const customer = customers.find(c => c.id === app.customerId);
-      const plan = plans.find(p => p.name.toUpperCase() === (customer?.healthPlan ?? '').toUpperCase());
-      const procedure = plan?.procedures?.find(proc => proc.type === app.type);
-      const gross = getAppPrice(app, pricingCtx);
-      const repassVal = calcRepass(gross, psy);
+      const plan = matchPlanByHealthPlan(plans, customer?.healthPlan);
+      const procedure = app.procedureCode
+        ? plan?.procedures?.find(proc => proc.code === app.procedureCode)
+        : plan?.procedures?.find(proc => proc.type === app.type);
+      const repassVal = getRepassValue(app, customers, plans, psy, pricingCtx);
       return { app, customer, procedure, repassVal };
     })
     .filter((r): r is NonNullable<typeof r> => r !== null);
@@ -241,15 +295,14 @@ export const RepassePage = () => {
         // Se todos os atendimentos foram glosados, não gera repasse
         if (paidAppIds.length === 0) return;
 
-        // Calcular total usando a mesma função de pricing do Faturamento
+        // Calcular total usando procedure.repassAmount do plano (ou regra do psicólogo)
         const pricingCtx: PricingContext = { customers, plans, appointments };
+        const psy = psychologists.find(p => p.id === psyId);
         let total = 0;
         paidAppIds.forEach(appId => {
           const app = appointments.find(a => a.id === appId);
           if (!app) return;
-          const gross = getAppPrice(app, pricingCtx);
-          const psy = psychologists.find(p => p.id === psyId);
-          total += calcRepass(gross, psy);
+          total += getRepassValue(app, customers, plans, psy, pricingCtx);
         });
 
         groups.push({ psyId, batch, appIds: paidAppIds, total });
