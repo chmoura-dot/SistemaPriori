@@ -65,15 +65,15 @@ function getRepassValue(
     return customer.customRepassAmount;
   }
 
-  // 3. Regra do psicólogo (repassRate ou repassFixedAmount) — prioridade sobre o plano
+  // 3. Contrato pessoal do psicólogo (repassOverridesPlan = true)
   //    Exemplo: Michelly = 92% do valor bruto faturado, independente do plano.
-  //    Só aplica se o psicólogo TEM uma regra explicitamente configurada.
-  if (psy && (psy.repassRate != null || (psy.repassFixedAmount != null && psy.repassFixedAmount > 0))) {
+  //    Só aplica quando a flag repassOverridesPlan estiver ativada no cadastro.
+  if (psy?.repassOverridesPlan && (psy.repassRate != null || (psy.repassFixedAmount != null && psy.repassFixedAmount > 0))) {
     return calcRepass(gross, psy);
   }
 
-  // 4. Fallback: valor cadastrado no plano (procedure.repassAmount)
-  //    Usado quando o psicólogo não tem regra própria.
+  // 4. Valor cadastrado no plano (procedure.repassAmount) — regra padrão
+  //    Usado para psicólogos sem contrato pessoal (repassOverridesPlan = false).
   //    Para AMS Petrobras neuropsico 2ª/3ª sessão, usa procedimento 95090010.
   const plan = matchPlanByHealthPlan(plans, customer?.healthPlan);
 

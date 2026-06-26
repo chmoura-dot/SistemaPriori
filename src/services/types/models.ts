@@ -30,6 +30,7 @@ export interface Psychologist {
   availability: PsychologistAvailability[];
   repassRate?: number;
   repassFixedAmount?: number;
+  repassOverridesPlan?: boolean;
   pixKeyType?: 'telefone' | 'email' | 'cpf' | 'aleatoria';
   pixKey?: string;
 }
