@@ -108,35 +108,73 @@ function generateRepassePDF(
   const sentAt = batch?.sentAt ? format(new Date(batch.sentAt), 'dd/MM/yyyy') : '—';
   const paidAt = batch?.paidAt ? format(new Date(batch.paidAt), 'dd/MM/yyyy') : '—';
 
-  // Agrupar por paciente + procedimento
-  const grouped: Record<string, { name: string; code: string; description: string; qty: number; total: number }> = {};
-  rows.forEach(({ customer, procedure, repassVal }) => {
-    const key = `${customer?.id ?? 'unknown'}-${procedure?.code ?? 'no-code'}`;
-    if (!grouped[key]) {
-      grouped[key] = {
+  // Agrupar atendimentos individuais por paciente (mantendo cada sessão visível)
+  const byPatient: Record<string, {
+    name: string;
+    sessions: { date: string; code: string; description: string; repassVal: number }[];
+    subtotal: number;
+  }> = {};
+
+  rows.forEach(({ app, customer, procedure, repassVal }) => {
+    const patientId = customer?.id ?? 'unknown';
+    if (!byPatient[patientId]) {
+      byPatient[patientId] = {
         name: customer?.name ?? '—',
-        code: procedure?.code ?? '—',
-        description: procedure?.description ?? '—',
-        qty: 0,
-        total: 0,
+        sessions: [],
+        subtotal: 0,
       };
     }
-    grouped[key].qty += 1;
-    grouped[key].total += repassVal;
+    byPatient[patientId].sessions.push({
+      date: app.date ? format(new Date(app.date + 'T12:00:00'), 'dd/MM/yyyy') : '—',
+      code: procedure?.code ?? '—',
+      description: procedure?.description ?? app.type ?? '—',
+      repassVal,
+    });
+    byPatient[patientId].subtotal += repassVal;
   });
 
-  const tableRows = Object.values(grouped)
-    .map(g => `
-        <tr>
-          <td class="cell">${g.name}</td>
-          <td class="cell">${g.qty}</td>
-          <td class="cell">${g.code}</td>
-          <td class="cell">${g.description}</td>
-          <td class="cell right">${fmt.format(g.total)}</td>
-        </tr>`)
-    .join('');
+  // Ordenar sessões por data dentro de cada paciente
+  Object.values(byPatient).forEach(p => {
+    p.sessions.sort((a, b) => a.date.localeCompare(b.date));
+  });
 
-  const total = rows.reduce((s, r) => s + r.repassVal, 0);
+  // Ordenar pacientes por nome
+  const sortedPatients = Object.values(byPatient).sort((a, b) =>
+    a.name.localeCompare(b.name, 'pt-BR'),
+  );
+
+  // Gerar linhas da tabela
+  let tableRows = '';
+  sortedPatients.forEach(patient => {
+    // Cabeçalho do paciente
+    tableRows += `
+        <tr class="patient-header">
+          <td colspan="4">${patient.name}</td>
+          <td class="right">${patient.sessions.length} sessão(ões)</td>
+        </tr>`;
+    // Sessões individuais
+    patient.sessions.forEach(s => {
+      tableRows += `
+        <tr>
+          <td class="cell indent">${s.date}</td>
+          <td class="cell">${s.code}</td>
+          <td class="cell" colspan="2">${s.description}</td>
+          <td class="cell right">${fmt.format(s.repassVal)}</td>
+        </tr>`;
+    });
+    // Subtotal do paciente
+    tableRows += `
+        <tr class="subtotal-row">
+          <td colspan="4" class="right">Subtotal — ${patient.name}</td>
+          <td class="right">${fmt.format(patient.subtotal)}</td>
+        </tr>`;
+  });
+
+  // Total: usar o valor salvo no repasse (confiável) como principal,
+  // com fallback para soma calculada
+  const calculatedTotal = rows.reduce((s, r) => s + r.repassVal, 0);
+  const total = repasse.totalAmount > 0 ? repasse.totalAmount : calculatedTotal;
+  const totalSessions = rows.length;
 
   const html = `<!DOCTYPE html>
 <html lang="pt-BR">
@@ -145,23 +183,30 @@ function generateRepassePDF(
   <title>Repasse — ${psy?.name}</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: Arial, sans-serif; color: #1a202c; padding: 40px; font-size: 13px; }
-    .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 32px; border-bottom: 2px solid #1B365D; padding-bottom: 16px; }
+    @page { size: A4; margin: 20mm 15mm; }
+    body { font-family: Arial, sans-serif; color: #1a202c; padding: 40px; font-size: 12px; }
+    .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 28px; border-bottom: 2px solid #1B365D; padding-bottom: 14px; }
     .brand { font-size: 20px; font-weight: 700; color: #1B365D; }
     .brand-sub { font-size: 11px; color: #718096; margin-top: 2px; }
     .meta { text-align: right; font-size: 11px; color: #718096; }
-    h2 { font-size: 16px; color: #1B365D; margin-bottom: 16px; }
-    .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 32px; margin-bottom: 28px; padding: 16px; background: #f7f8fa; border-radius: 8px; }
-    .info-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: #718096; }
-    .info-value { font-weight: 600; color: #1B365D; margin-top: 2px; }
+    h2 { font-size: 14px; color: #1B365D; margin-bottom: 12px; }
+    .info-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px 24px; margin-bottom: 24px; padding: 14px 16px; background: #f7f8fa; border-radius: 8px; }
+    .info-label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; color: #718096; }
+    .info-value { font-weight: 600; color: #1B365D; margin-top: 2px; font-size: 12px; }
+    .summary-bar { display: flex; justify-content: flex-end; gap: 24px; margin-bottom: 12px; padding: 10px 16px; background: #edf2f7; border-radius: 6px; }
+    .summary-item { text-align: center; }
+    .summary-number { font-size: 18px; font-weight: 700; color: #1B365D; }
+    .summary-label { font-size: 9px; text-transform: uppercase; color: #718096; letter-spacing: 0.5px; }
     table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
-    th { background: #1B365D; color: white; padding: 10px 12px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
-    .cell { padding: 9px 12px; border-bottom: 1px solid #edf2f7; color: #2d3748; }
+    th { background: #1B365D; color: white; padding: 8px 10px; text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .cell { padding: 6px 10px; border-bottom: 1px solid #edf2f7; color: #2d3748; font-size: 11px; }
+    .indent { padding-left: 20px; }
     .right { text-align: right; }
-    tr:nth-child(even) td { background: #f7f8fa; }
-    .total-row { background: #1B365D !important; color: white !important; font-weight: 700; }
-    .total-row td { color: white !important; padding: 10px 12px; }
-    .footer { margin-top: 40px; border-top: 1px solid #e2e8f0; padding-top: 12px; font-size: 10px; color: #a0aec0; text-align: center; }
+    .patient-header td { background: #edf2f7; font-weight: 700; color: #1B365D; padding: 8px 10px; font-size: 11px; border-bottom: 1px solid #cbd5e0; }
+    .subtotal-row td { background: #f7f8fa; font-weight: 600; color: #4a5568; padding: 6px 10px; font-size: 11px; border-bottom: 2px solid #cbd5e0; }
+    .total-row { background: #1B365D !important; }
+    .total-row td { color: white !important; padding: 10px; font-weight: 700; font-size: 13px; }
+    .footer { margin-top: 32px; border-top: 1px solid #e2e8f0; padding-top: 10px; font-size: 9px; color: #a0aec0; text-align: center; }
   </style>
 </head>
 <body>
@@ -204,21 +249,35 @@ function generateRepassePDF(
     </div>
   </div>
 
+  <div class="summary-bar">
+    <div class="summary-item">
+      <div class="summary-number">${totalSessions}</div>
+      <div class="summary-label">Sessões</div>
+    </div>
+    <div class="summary-item">
+      <div class="summary-number">${sortedPatients.length}</div>
+      <div class="summary-label">Pacientes</div>
+    </div>
+    <div class="summary-item">
+      <div class="summary-number">${fmt.format(total)}</div>
+      <div class="summary-label">Total do Repasse</div>
+    </div>
+  </div>
+
   <h2>Atendimentos</h2>
   <table>
     <thead>
       <tr>
-        <th>Paciente</th>
-        <th>Quantidade</th>
+        <th>Data</th>
         <th>COD TUSS</th>
-        <th>Procedimento</th>
-        <th style="text-align:right">Valor do Repasse</th>
+        <th colspan="2">Procedimento</th>
+        <th style="text-align:right">Valor Repasse</th>
       </tr>
     </thead>
     <tbody>
       ${tableRows}
       <tr class="total-row">
-        <td colspan="4">TOTAL DO REPASSE</td>
+        <td colspan="4">TOTAL DO REPASSE (${totalSessions} sessões)</td>
         <td style="text-align:right">${fmt.format(total)}</td>
       </tr>
     </tbody>
