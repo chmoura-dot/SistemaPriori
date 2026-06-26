@@ -45,6 +45,12 @@ function getRepassValue(
   psy: Psychologist | undefined,
   pricingCtx: PricingContext,
 ): number {
+  // Guard primário: se o faturamento é R$0, o repasse também é R$0.
+  // Garante que regras de negócio do Faturamento (180 dias neuropsico,
+  // AMS 4ª+ sessão, cancelado sem cobrança, etc.) sejam respeitadas.
+  const gross = getAppPrice(app, pricingCtx);
+  if (gross <= 0) return 0;
+
   // 1. Override manual no atendimento
   if (app.customRepassAmount != null && app.customRepassAmount > 0) {
     return app.customRepassAmount;
@@ -67,7 +73,6 @@ function getRepassValue(
   }
 
   // 4. Fallback: regra do psicólogo (para planos sem repassAmount, ex: Michelly = gross * 0.92)
-  const gross = getAppPrice(app, pricingCtx);
   return calcRepass(gross, psy);
 }
 
