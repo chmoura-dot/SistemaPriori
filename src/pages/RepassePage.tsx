@@ -37,8 +37,9 @@ const fmt = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' 
  * Calcula o valor de repasse para um atendimento respeitando a hierarquia:
  *  1. Override manual no atendimento (customRepassAmount)
  *  2. Override manual no paciente (customRepassAmount)
- *  3. Valor cadastrado no plano (procedure.repassAmount) — REGRA PADRÃO
- *  4. Fallback: regra do psicólogo (repassRate/repassFixedAmount) — ex: Michelly = 92%
+ *  3. Regra do psicólogo (repassRate/repassFixedAmount) — ex: Michelly = 92%
+ *  4. Valor cadastrado no plano (procedure.repassAmount) — para psicólogos sem regra
+ *  5. Fallback: 50% padrão (nenhuma regra configurada)
  */
 function getRepassValue(
   app: Appointment,
@@ -64,10 +65,16 @@ function getRepassValue(
     return customer.customRepassAmount;
   }
 
-  // 3. Valor cadastrado no plano (procedure.repassAmount) — prioridade máxima
-  //    Para AMS Petrobras neuropsico 2ª/3ª sessão, o pricing usa o procedimento
-  //    95090010 (preço menor), então o repasse deve usar o repassAmount desse mesmo
-  //    procedimento — não o do procedimento neuropsicológico principal.
+  // 3. Regra do psicólogo (repassRate ou repassFixedAmount) — prioridade sobre o plano
+  //    Exemplo: Michelly = 92% do valor bruto faturado, independente do plano.
+  //    Só aplica se o psicólogo TEM uma regra explicitamente configurada.
+  if (psy && (psy.repassRate != null || (psy.repassFixedAmount != null && psy.repassFixedAmount > 0))) {
+    return calcRepass(gross, psy);
+  }
+
+  // 4. Fallback: valor cadastrado no plano (procedure.repassAmount)
+  //    Usado quando o psicólogo não tem regra própria.
+  //    Para AMS Petrobras neuropsico 2ª/3ª sessão, usa procedimento 95090010.
   const plan = matchPlanByHealthPlan(plans, customer?.healthPlan);
 
   let resolvedProcCode = app.procedureCode;
@@ -90,7 +97,7 @@ function getRepassValue(
     return procedure.repassAmount;
   }
 
-  // 4. Fallback: regra do psicólogo (para planos sem repassAmount, ex: Michelly = gross * 0.92)
+  // 5. Último fallback: 50% padrão (psicólogo sem regra + plano sem repassAmount)
   return calcRepass(gross, psy);
 }
 
