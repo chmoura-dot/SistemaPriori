@@ -13,9 +13,11 @@ import { ptBR } from 'date-fns/locale';
 import { api } from '../services/api';
 import {
   Appointment,
+  AppointmentType,
   BillingBatch,
   BillingBatchStatus,
   Customer,
+  HealthPlan,
   Plan,
   Psychologist,
   Repasse,
@@ -24,7 +26,7 @@ import {
 import { Button } from '../components/Button';
 import { cn } from '../lib/utils';
 import { calcRepass } from '../lib/repassRules';
-import { getAppPrice, PricingContext } from '../lib/pricing';
+import { getAppPrice, getAmsNeuropsicoSessionIndex, PricingContext } from '../lib/pricing';
 import { matchPlanByHealthPlan } from '../services/supabase/helpers';
 
 const fmt = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -63,9 +65,25 @@ function getRepassValue(
   }
 
   // 3. Valor cadastrado no plano (procedure.repassAmount) — prioridade máxima
+  //    Para AMS Petrobras neuropsico 2ª/3ª sessão, o pricing usa o procedimento
+  //    95090010 (preço menor), então o repasse deve usar o repassAmount desse mesmo
+  //    procedimento — não o do procedimento neuropsicológico principal.
   const plan = matchPlanByHealthPlan(plans, customer?.healthPlan);
-  const procedure = app.procedureCode
-    ? plan?.procedures?.find(p => p.code === app.procedureCode)
+
+  let resolvedProcCode = app.procedureCode;
+  if (
+    !resolvedProcCode &&
+    customer?.healthPlan === HealthPlan.AMS_PETROBRAS &&
+    app.type === AppointmentType.NEUROPSICOLOGICA
+  ) {
+    const sessionIdx = getAmsNeuropsicoSessionIndex(app, pricingCtx);
+    if (sessionIdx === 1 || sessionIdx === 2) {
+      resolvedProcCode = '95090010';
+    }
+  }
+
+  const procedure = resolvedProcCode
+    ? plan?.procedures?.find(p => p.code === resolvedProcCode)
     : plan?.procedures?.find(p => p.type === app.type);
 
   if (procedure?.repassAmount != null && procedure.repassAmount > 0) {
@@ -170,10 +188,10 @@ function generateRepassePDF(
         </tr>`;
   });
 
-  // Total: usar o valor salvo no repasse (confiável) como principal,
-  // com fallback para soma calculada
-  const calculatedTotal = rows.reduce((s, r) => s + r.repassVal, 0);
-  const total = repasse.totalAmount > 0 ? repasse.totalAmount : calculatedTotal;
+  // Total: sempre recalcular a partir das linhas para garantir consistência
+  // entre soma das linhas e total exibido no PDF. Usa centavos para precisão.
+  const totalCents = rows.reduce((s, r) => s + Math.round(r.repassVal * 100), 0);
+  const total = totalCents / 100;
   const totalSessions = rows.length;
 
   const html = `<!DOCTYPE html>
@@ -354,26 +372,34 @@ export const RepassePage = () => {
         const exists = repasses.some(r => r.psychologistId === psyId && r.billingBatchId === batch.id);
         if (exists) return;
 
-        // Filtrar apenas atendimentos pagos (excluir glosas)
+        // Filtrar atendimentos elegíveis para repasse:
+        // - Excluir glosas (billingStatus === 'denied')
+        // - Excluir atendimentos ignorados no faturamento (billingIgnored)
+        // - Excluir atendimentos internos (supervisão, reunião, admin)
         const paidAppIds = appIds.filter(appId => {
           const app = appointments.find(a => a.id === appId);
-          return app?.billingStatus !== 'denied';
+          if (!app) return false;
+          if (app.billingStatus === 'denied') return false;
+          if (app.billingIgnored) return false;
+          if (app.isInternal) return false;
+          return true;
         });
 
-        // Se todos os atendimentos foram glosados, não gera repasse
+        // Se todos os atendimentos foram excluídos, não gera repasse
         if (paidAppIds.length === 0) return;
 
         // Calcular total usando procedure.repassAmount do plano (ou regra do psicólogo)
+        // Acumula em centavos para evitar erros de floating-point
         const pricingCtx: PricingContext = { customers, plans, appointments };
         const psy = psychologists.find(p => p.id === psyId);
-        let total = 0;
+        let totalCents = 0;
         paidAppIds.forEach(appId => {
           const app = appointments.find(a => a.id === appId);
           if (!app) return;
-          total += getRepassValue(app, customers, plans, psy, pricingCtx);
+          totalCents += Math.round(getRepassValue(app, customers, plans, psy, pricingCtx) * 100);
         });
 
-        groups.push({ psyId, batch, appIds: paidAppIds, total });
+        groups.push({ psyId, batch, appIds: paidAppIds, total: totalCents / 100 });
       });
     });
 

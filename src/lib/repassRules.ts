@@ -33,5 +33,6 @@ export function calcRepass(
   const rate = psychologist.repassRate ?? DEFAULT_REPASS_RATE;
   // Guard: rate deve estar entre 0 e 1 (percentual decimal)
   const safeRate = rate > 1 ? rate / 100 : rate;
-  return grossAmount * Math.max(0, Math.min(1, safeRate));
+  // Arredonda para centavos para evitar erros de floating-point (ex: 150.000001)
+  return Math.round(grossAmount * Math.max(0, Math.min(1, safeRate)) * 100) / 100;
 }
