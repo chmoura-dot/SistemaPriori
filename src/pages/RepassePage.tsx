@@ -8,7 +8,7 @@ import {
   Plus,
   Trash2,
 } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { api } from '../services/api';
 import {
@@ -205,7 +205,7 @@ function generateRepassePDF(
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <title>Repasse — ${psy?.name}</title>
+  <title>Repasse — ${planName} — ${psy?.name ?? ''} — ${repasse.paidAt ? format(parseISO(repasse.paidAt), 'dd-MM-yyyy') : 'sem data'}</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     @page { size: A4; margin: 20mm 15mm; }
