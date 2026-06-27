@@ -12,7 +12,11 @@ export const appointmentReadService = {
       const pad = (n: number) => String(n).padStart(2, '0');
       const toLocal = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
       const now = new Date();
-      const past = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      // 6 meses calendário para trás (dashboard precisa do histórico para tendências)
+      let backYear  = now.getFullYear();
+      let backMonth = now.getMonth() - 6;
+      if (backMonth < 0) { backMonth += 12; backYear -= 1; }
+      const past   = new Date(backYear, backMonth, 1);
       const future = new Date(now.getTime() + 180 * 24 * 60 * 60 * 1000);
       query = query
         .gte('date', toLocal(past))
