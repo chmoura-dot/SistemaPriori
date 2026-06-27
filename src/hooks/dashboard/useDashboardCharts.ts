@@ -125,9 +125,10 @@ export function useDashboardCharts({
     expenses.forEach(exp => {
       const d       = new Date(exp.date + 'T12:00:00');
       const key     = d.toLocaleString('pt-BR', { month: 'short', year: '2-digit' });
-      const sortKey = d.getFullYear() * 100 + d.getMonth();
-      if (!data[key]) data[key] = { month: key, sortKey, receita: 0, repasses: 0, despesas: 0, lucro: 0 };
-      data[key].despesas += exp.amount;
+      // Só adiciona despesas em meses que já possuem receita (evita meses "fantasma" com lucro negativo)
+      if (data[key]) {
+        data[key].despesas += exp.amount;
+      }
     });
 
     return Object.values(data)

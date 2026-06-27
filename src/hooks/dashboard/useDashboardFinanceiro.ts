@@ -176,14 +176,23 @@ export function useDashboardFinanceiro({
 
   // ─── TENDÊNCIA RECEITA 6 MESES ─────────────────────────────────────────
   const tendenciaReceita6m = useMemo(() => {
+    // ① Pré-gera janela fixa dos últimos 6 meses calendário
+    const now = new Date();
     const data: Record<string, { month: string; sortKey: number; bruta: number; repasses: number; liquida: number; impostos: number }> = {};
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = d.toLocaleString('pt-BR', { month: 'short', year: '2-digit' });
+      const sortKey = d.getFullYear() * 100 + d.getMonth();
+      data[key] = { month: key, sortKey, bruta: 0, repasses: 0, liquida: 0, impostos: 0 };
+    }
+
+    // ② Preenche receita e repasses apenas com meses dentro da janela
     appointments
       .filter(app => app.confirmedPsychologist || isCanceledButBilled(app))
       .forEach(app => {
         const d = new Date(app.date + 'T12:00:00');
         const key = d.toLocaleString('pt-BR', { month: 'short', year: '2-digit' });
-        const sortKey = d.getFullYear() * 100 + d.getMonth();
-        if (!data[key]) data[key] = { month: key, sortKey, bruta: 0, repasses: 0, liquida: 0, impostos: 0 };
+        if (!data[key]) return; // fora da janela de 6 meses, ignora
         const customer = customers.find(c => c.id === app.customerId);
         const psy = psychologists.find(p => p.id === app.psychologistId);
         const appPrice = getAppPrice(app, pricingCtx);
@@ -191,20 +200,22 @@ export function useDashboardFinanceiro({
         data[key].bruta += appPrice;
         data[key].repasses += repasse;
       });
-    // Adiciona despesas fiscais por mês
+
+    // ③ Adiciona despesas fiscais SOMENTE em meses que já existem na janela
     expenses.forEach(exp => {
       const d = new Date(exp.date + 'T12:00:00');
       const key = d.toLocaleString('pt-BR', { month: 'short', year: '2-digit' });
-      const sortKey = d.getFullYear() * 100 + d.getMonth();
-      if (!data[key]) data[key] = { month: key, sortKey, bruta: 0, repasses: 0, liquida: 0, impostos: 0 };
-      if (exp.category === ExpenseCategory.TAX || exp.category === ExpenseCategory.BANK_FEES) {
+      if (data[key] && (exp.category === ExpenseCategory.TAX || exp.category === ExpenseCategory.BANK_FEES)) {
         data[key].impostos += exp.amount;
       }
     });
+
     const sorted = Object.values(data).sort((a, b) => a.sortKey - b.sortKey);
-    // Calcula líquida
-    sorted.forEach(d => { d.liquida = d.bruta - d.repasses - d.impostos; });
-    return sorted.slice(-6);
+    // Calcula líquida: em meses sem receita, líquida = 0 (não fica negativo por impostos avulsos)
+    sorted.forEach(d => {
+      d.liquida = d.bruta > 0 ? d.bruta - d.repasses - d.impostos : 0;
+    });
+    return sorted;
   }, [appointments, expenses, customers, psychologists, findPlan, isCanceledButBilled, pricingCtx]);
 
   return {
