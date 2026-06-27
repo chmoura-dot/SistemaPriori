@@ -11,6 +11,47 @@ import {
 import { calcRepass } from '../../lib/repassRules';
 import { getAppPrice, PricingContext } from '../../lib/pricing';
 
+/**
+ * Calcula repasse respeitando a hierarquia completa (mesma da RepassePage):
+ *  1. Override manual no atendimento (customRepassAmount)
+ *  2. Override manual no paciente (customRepassAmount)
+ *  3. Contrato pessoal do psicólogo (repassOverridesPlan = true) — ex: Michelly
+ *  4. Valor cadastrado no plano (procedure.repassAmount)
+ *  5. Fallback: regra genérica do psicólogo ou 50% padrão
+ */
+function getRepassValueForApp(
+  app: Appointment,
+  customers: Customer[],
+  psy: Psychologist | undefined,
+  findPlan: (hp?: string) => Plan | undefined,
+  pricingCtx: PricingContext,
+): number {
+  const gross = getAppPrice(app, pricingCtx);
+  if (gross <= 0) return 0;
+
+  // 1. Override manual no atendimento
+  if (app.customRepassAmount != null && app.customRepassAmount > 0) return app.customRepassAmount;
+
+  // 2. Override manual no paciente
+  const customer = customers.find(c => c.id === app.customerId);
+  if (customer?.customRepassAmount != null && customer.customRepassAmount > 0) return customer.customRepassAmount;
+
+  // 3. Contrato pessoal do psicólogo (repassOverridesPlan = true)
+  if (psy?.repassOverridesPlan && (psy.repassRate != null || (psy.repassFixedAmount != null && psy.repassFixedAmount > 0))) {
+    return calcRepass(gross, psy);
+  }
+
+  // 4. Valor cadastrado no plano (procedure.repassAmount)
+  const plan = findPlan(customer?.healthPlan);
+  const procedure = app.procedureCode
+    ? plan?.procedures?.find(p => p.code === app.procedureCode)
+    : plan?.procedures?.find(p => p.type === app.type);
+  if (procedure?.repassAmount != null && procedure.repassAmount > 0) return procedure.repassAmount;
+
+  // 5. Fallback: regra do psicólogo ou 50% padrão
+  return calcRepass(gross, psy);
+}
+
 interface Params {
   appointments: Appointment[];
   appointmentsFiltered: Appointment[];
@@ -50,12 +91,10 @@ export function useDashboardFinanceiro({
   // ─── TOTAL DE REPASSES ─────────────────────────────────────────────────
   const totalRepasses = useMemo(() =>
     appsRealizados.reduce((total, app) => {
-      const customer = customers.find(c => c.id === app.customerId);
       const psy = psychologists.find(p => p.id === app.psychologistId);
-      const appPrice = getAppPrice(app, pricingCtx);
-      return total + (app.customRepassAmount ?? customer?.customRepassAmount ?? calcRepass(appPrice, psy));
+      return total + getRepassValueForApp(app, customers, psy, findPlan, pricingCtx);
     }, 0),
-    [appsRealizados, customers, psychologists, pricingCtx]
+    [appsRealizados, customers, psychologists, findPlan, pricingCtx]
   );
 
   // ─── IMPOSTOS + TAXAS (das despesas reais) ──────────────────────────────
@@ -90,18 +129,17 @@ export function useDashboardFinanceiro({
   const repassePorPsicologo = useMemo(() =>
     psychologists.filter(p => p.active).map(psy => {
       const psyApps = appsRealizados.filter(a => a.psychologistId === psy.id);
-      // Mesma lógica da RepassePage: bruto e repasse usam a mesma base de preço
+      // Usa mesma hierarquia da RepassePage para consistência
       const { bruto, repasse } = psyApps.reduce((acc, app) => {
-        const customer = customers.find(c => c.id === app.customerId);
-        const plan = findPlan(customer?.healthPlan);
-        const procedure = plan?.procedures?.find(proc => proc.type === app.type);
-        const gross = app.customPrice ?? customer?.customPrice ?? procedure?.price ?? 0;
-        const repasseVal = app.customRepassAmount ?? customer?.customRepassAmount ?? calcRepass(gross, psy);
+        const gross = getAppPrice(app, pricingCtx);
+        const repasseVal = getRepassValueForApp(app, customers, psy, findPlan, pricingCtx);
         return { bruto: acc.bruto + gross, repasse: acc.repasse + repasseVal };
       }, { bruto: 0, repasse: 0 });
-      const regra = psy.repassFixedAmount && psy.repassFixedAmount > 0
-        ? `R$ ${psy.repassFixedAmount.toFixed(0)} fixo`
-        : `${((psy.repassRate ?? 0.5) * 100).toFixed(0)}%`;
+      const regra = psy.repassOverridesPlan
+        ? (psy.repassFixedAmount && psy.repassFixedAmount > 0
+            ? `R$ ${psy.repassFixedAmount.toFixed(0)} fixo`
+            : `${((psy.repassRate ?? 0.5) * 100).toFixed(0)}%`)
+        : 'Por plano';
       return {
         nome: psy.name,
         sessoes: psyApps.length,
@@ -193,10 +231,9 @@ export function useDashboardFinanceiro({
         const d = new Date(app.date + 'T12:00:00');
         const key = d.toLocaleString('pt-BR', { month: 'short', year: '2-digit' });
         if (!data[key]) return; // fora da janela de 6 meses, ignora
-        const customer = customers.find(c => c.id === app.customerId);
         const psy = psychologists.find(p => p.id === app.psychologistId);
         const appPrice = getAppPrice(app, pricingCtx);
-        const repasse = app.customRepassAmount ?? customer?.customRepassAmount ?? calcRepass(appPrice, psy);
+        const repasse = getRepassValueForApp(app, customers, psy, findPlan, pricingCtx);
         data[key].bruta += appPrice;
         data[key].repasses += repasse;
       });
