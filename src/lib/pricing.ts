@@ -133,10 +133,29 @@ export function getAppPrice(app: Appointment, ctx: PricingContext): number {
     if (status.type === 'blocked') return 0;
   }
 
-  // Preço: prioriza procedureCode salvo (override), depois tipo
-  const procedure = app.procedureCode
-    ? plan?.procedures?.find(proc => proc.code === app.procedureCode)
-    : plan?.procedures?.find(proc => proc.type === app.type);
+  // Preço: prioriza procedureCode salvo (override) MAS valida que o tipo bate.
+  // Se o código existir porém pertencer a outro tipo de procedimento (ex: código
+  // de Consulta Adulto salvo num agendamento de Avaliação Neuropsicológica),
+  // faz fallback para busca por tipo — evitando retornar valor errado.
+  const procedureByCode = app.procedureCode
+    ? plan?.procedures?.find(proc => proc.code === app.procedureCode && proc.type === app.type)
+    : undefined;
+  const procedure = procedureByCode ?? plan?.procedures?.find(proc => proc.type === app.type);
+
+  // ── LOG DE DIAGNÓSTICO (Avaliação Neuropsicológica) ──────────────────────
+  // Ativa apenas para NEUROPSICOLOGICA para não poluir o console.
+  // Remover após confirmação de que o fix está funcionando corretamente.
+  if (app.type === AppointmentType.NEUROPSICOLOGICA) {
+    console.group(`[PRICING DIAG] Agendamento ${app.id} — ${app.date}`);
+    console.log('app.type:', app.type);
+    console.log('app.procedureCode (campo salvo):', app.procedureCode ?? '(vazio)');
+    console.log('plan encontrado:', plan?.name ?? '(nenhum)');
+    console.log('procedimentos do plano:', plan?.procedures?.map(p => `${p.code} [${p.type}] = R$${p.price}`));
+    console.log('procedureByCode match:', procedureByCode ? `${procedureByCode.code} → R$${procedureByCode.price}` : '(nenhum — type divergente ou código ausente)');
+    console.log('procedure final usado:', procedure ? `${procedure.code} [${procedure.type}] = R$${procedure.price}` : '(nenhum)');
+    console.groupEnd();
+  }
+
   return app.customPrice ?? customer?.customPrice ?? procedure?.price ?? 0;
 }
 
