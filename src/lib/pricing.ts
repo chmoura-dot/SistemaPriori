@@ -133,12 +133,12 @@ export function getAppPrice(app: Appointment, ctx: PricingContext): number {
     if (status.type === 'blocked') return 0;
   }
 
-  // Preço: prioriza procedureCode salvo (override) MAS valida que o tipo bate.
-  // Se o código existir porém pertencer a outro tipo de procedimento (ex: código
-  // de Consulta Adulto salvo num agendamento de Avaliação Neuropsicológica),
-  // faz fallback para busca por tipo — evitando retornar valor errado.
+  // Preço: prioriza procedureCode salvo (override manual) sem restrição de tipo.
+  // O override é intencional (usuário selecionou código no dropdown de faturamento),
+  // e pode legitimamente apontar para um tipo diferente de app.type (ex: plano que
+  // não tem código de "Avaliação Neuropsicológica" e usa código de "Psicoterapia").
   const procedureByCode = app.procedureCode
-    ? plan?.procedures?.find(proc => proc.code === app.procedureCode && proc.type === app.type)
+    ? plan?.procedures?.find(proc => proc.code === app.procedureCode)
     : undefined;
   const procedure = procedureByCode ?? plan?.procedures?.find(proc => proc.type === app.type);
 

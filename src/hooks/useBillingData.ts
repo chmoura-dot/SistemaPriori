@@ -126,13 +126,23 @@ export function useBillingData() {
     }
   };
 
-  /** Override manual do código TUSS de um atendimento (persiste no banco). */
+  /** Override manual do código TUSS de um atendimento (persiste no banco).
+   *  Usa optimistic update para que o valor exibido atualize imediatamente,
+   *  sem esperar a resposta da API do Supabase.
+   */
   const handleOverrideProcedureCode = async (id: string, newCode: string) => {
+    // Captura o valor anterior para rollback em caso de erro
+    const previousCode = appointments.find(a => a.id === id)?.procedureCode;
+
+    // Optimistic update: atualiza UI imediatamente (antes da API)
+    setAppointments(prev => prev.map(a => a.id === id ? { ...a, procedureCode: newCode || undefined } : a));
+
     try {
       await api.updateAppointment(id, { procedureCode: newCode || null } as any);
-      setAppointments(prev => prev.map(a => a.id === id ? { ...a, procedureCode: newCode || undefined } : a));
     } catch (err) {
       logger.error('Erro ao atualizar código de procedimento:', err);
+      // Rollback: restaura o código anterior se a API falhar
+      setAppointments(prev => prev.map(a => a.id === id ? { ...a, procedureCode: previousCode } : a));
     }
   };
 
