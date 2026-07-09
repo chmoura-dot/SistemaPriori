@@ -142,40 +142,43 @@ export function getAppPrice(app: Appointment, ctx: PricingContext): number {
     : undefined;
   const procedure = procedureByCode ?? plan?.procedures?.find(proc => proc.type === app.type);
 
-  // ── LOG DE DIAGNÓSTICO (Avaliação Neuropsicológica) ──────────────────────
-  // Ativa apenas para NEUROPSICOLOGICA para não poluir o console.
-  // Remover após confirmação de que o fix está funcionando corretamente.
-  if (app.type === AppointmentType.NEUROPSICOLOGICA) {
-    const isParticular = customer?.healthPlan === HealthPlan.PARTICULAR;
-    const finalPrice = isParticular
-      ? (app.customPrice ?? customer?.customPrice ?? procedure?.price ?? 0)
-      : (app.customPrice ?? procedure?.price ?? customer?.customPrice ?? 0);
+  const isParticular = customer?.healthPlan === HealthPlan.PARTICULAR;
 
-    console.group(`[PRICING DIAG] Agendamento ${app.id} — ${app.date}`);
-    console.log('app.type:', app.type);
-    console.log('app.procedureCode (campo salvo):', app.procedureCode ?? '(vazio)');
-    console.log('app.customPrice:', app.customPrice ?? '(não definido)');
-    console.log('customer.customPrice:', customer?.customPrice ?? '(não definido)');
-    console.log('customer.healthPlan:', customer?.healthPlan ?? '(não definido)');
-    console.log('isParticular:', isParticular);
-    console.log('plan encontrado:', plan?.name ?? '(nenhum)');
-    console.log('procedimentos do plano:', plan?.procedures?.map(p => `${p.code} [${p.type}] = R$${p.price}`));
-    console.log('procedureByCode match:', procedureByCode ? `${procedureByCode.code} [${procedureByCode.type}] → R$${procedureByCode.price}` : '(nenhum — código ausente no plano)');
-    console.log('procedure final (por tipo):', procedure ? `${procedure.code} [${procedure.type}] = R$${procedure.price}` : '(nenhum)');
-    console.log('→ PREÇO RETORNADO:', `R$${finalPrice}`);
+  // ── LOG DE DIAGNÓSTICO (Avaliação Neuropsicológica) ──────────────────────
+  if (app.type === AppointmentType.NEUROPSICOLOGICA) {
+    const finalPrice = !isParticular && procedureByCode
+      ? procedureByCode.price
+      : !isParticular && procedure?.price !== undefined
+        ? (app.customPrice ?? procedure.price)
+        : (app.customPrice ?? customer?.customPrice ?? procedure?.price ?? 0);
+
+    console.group(`[PRICING DIAG] ${app.id} — ${app.date}`);
+    console.log('type:', app.type, '| procedureCode:', app.procedureCode ?? '(vazio)');
+    console.log('customPrice:', app.customPrice ?? '—', '| customer.customPrice:', customer?.customPrice ?? '—');
+    console.log('healthPlan:', customer?.healthPlan, '| plan:', plan?.name ?? '(nenhum)');
+    console.log('procedureByCode:', procedureByCode ? `${procedureByCode.code}→R$${procedureByCode.price}` : '—');
+    console.log('procedure (tipo):', procedure ? `${procedure.code}→R$${procedure.price}` : '—');
+    console.log('→ PREÇO:', `R$${finalPrice}`);
     console.groupEnd();
   }
 
-  // Para pacientes com convênio: preço do procedimento do plano tem prioridade
-  // sobre customer.customPrice. customer.customPrice funciona como fallback
-  // apenas quando não há procedimento no plano (evita que um preço genérico
-  // do paciente — ex: de quando era Particular — sobrescreva o valor do convênio).
-  // Para Particular: customer.customPrice tem prioridade (preço negociado).
-  const isParticular = customer?.healthPlan === HealthPlan.PARTICULAR;
+  // ── Cadeia de prioridade ────────────────────────────────────────────────
+  // Convênio COM código explícito (override manual ou auto-atribuído):
+  //   → preço do procedimento tem prioridade ABSOLUTA sobre customPrice.
+  //   Isso garante que alterar o código no faturamento atualize o preço
+  //   imediatamente, sem que um customPrice antigo "trave" o valor.
+  if (!isParticular && procedureByCode) {
+    return procedureByCode.price;
+  }
 
+  // Convênio SEM código explícito (fallback por tipo):
+  //   → customPrice pode sobrescrever se definido (caso raro).
   if (!isParticular && procedure?.price !== undefined) {
     return app.customPrice ?? procedure.price;
   }
+
+  // Particular ou sem plano:
+  //   → customPrice tem prioridade (preço negociado individualmente).
   return app.customPrice ?? customer?.customPrice ?? procedure?.price ?? 0;
 }
 

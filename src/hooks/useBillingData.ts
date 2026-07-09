@@ -129,20 +129,35 @@ export function useBillingData() {
   /** Override manual do código TUSS de um atendimento (persiste no banco).
    *  Usa optimistic update para que o valor exibido atualize imediatamente,
    *  sem esperar a resposta da API do Supabase.
+   *  Também limpa customPrice para que o preço do procedimento selecionado
+   *  seja refletido sem que um valor antigo "trave" o preço exibido.
    */
   const handleOverrideProcedureCode = async (id: string, newCode: string) => {
-    // Captura o valor anterior para rollback em caso de erro
-    const previousCode = appointments.find(a => a.id === id)?.procedureCode;
+    // Captura valores anteriores para rollback em caso de erro
+    const prevApp = appointments.find(a => a.id === id);
+    const previousCode = prevApp?.procedureCode;
+    const previousCustomPrice = prevApp?.customPrice;
 
-    // Optimistic update: atualiza UI imediatamente (antes da API)
-    setAppointments(prev => prev.map(a => a.id === id ? { ...a, procedureCode: newCode || undefined } : a));
+    // Optimistic update: atualiza código E limpa customPrice
+    setAppointments(prev => prev.map(a => a.id === id ? {
+      ...a,
+      procedureCode: newCode || undefined,
+      customPrice: undefined,
+    } : a));
 
     try {
-      await api.updateAppointment(id, { procedureCode: newCode || null } as any);
+      await api.updateAppointment(id, {
+        procedureCode: newCode || null,
+        customPrice: null,
+      } as any);
     } catch (err) {
       logger.error('Erro ao atualizar código de procedimento:', err);
-      // Rollback: restaura o código anterior se a API falhar
-      setAppointments(prev => prev.map(a => a.id === id ? { ...a, procedureCode: previousCode } : a));
+      // Rollback: restaura código E customPrice anteriores
+      setAppointments(prev => prev.map(a => a.id === id ? {
+        ...a,
+        procedureCode: previousCode,
+        customPrice: previousCustomPrice,
+      } : a));
     }
   };
 
