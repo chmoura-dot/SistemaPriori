@@ -121,10 +121,10 @@ export function getAppPrice(app: Appointment, ctx: PricingContext): number {
     if (sessionIdx >= 3) return 0;
     if (sessionIdx === 1 || sessionIdx === 2) {
       const proc95090010 = plan?.procedures?.find(p => p.code === '95090010');
-      return app.customPrice ?? customer?.customPrice ?? proc95090010?.price ?? 0;
+      return app.customPrice ?? proc95090010?.price ?? customer?.customPrice ?? 0;
     }
     const neuroProc = plan?.procedures?.find(p => p.type === AppointmentType.NEUROPSICOLOGICA);
-    return app.customPrice ?? customer?.customPrice ?? neuroProc?.price ?? 0;
+    return app.customPrice ?? neuroProc?.price ?? customer?.customPrice ?? 0;
   }
 
   // Regra genérica neuropsico — bloqueia dentro de 180 dias
@@ -146,16 +146,36 @@ export function getAppPrice(app: Appointment, ctx: PricingContext): number {
   // Ativa apenas para NEUROPSICOLOGICA para não poluir o console.
   // Remover após confirmação de que o fix está funcionando corretamente.
   if (app.type === AppointmentType.NEUROPSICOLOGICA) {
+    const isParticular = customer?.healthPlan === HealthPlan.PARTICULAR;
+    const finalPrice = isParticular
+      ? (app.customPrice ?? customer?.customPrice ?? procedure?.price ?? 0)
+      : (app.customPrice ?? procedure?.price ?? customer?.customPrice ?? 0);
+
     console.group(`[PRICING DIAG] Agendamento ${app.id} — ${app.date}`);
     console.log('app.type:', app.type);
     console.log('app.procedureCode (campo salvo):', app.procedureCode ?? '(vazio)');
+    console.log('app.customPrice:', app.customPrice ?? '(não definido)');
+    console.log('customer.customPrice:', customer?.customPrice ?? '(não definido)');
+    console.log('customer.healthPlan:', customer?.healthPlan ?? '(não definido)');
+    console.log('isParticular:', isParticular);
     console.log('plan encontrado:', plan?.name ?? '(nenhum)');
     console.log('procedimentos do plano:', plan?.procedures?.map(p => `${p.code} [${p.type}] = R$${p.price}`));
-    console.log('procedureByCode match:', procedureByCode ? `${procedureByCode.code} → R$${procedureByCode.price}` : '(nenhum — type divergente ou código ausente)');
-    console.log('procedure final usado:', procedure ? `${procedure.code} [${procedure.type}] = R$${procedure.price}` : '(nenhum)');
+    console.log('procedureByCode match:', procedureByCode ? `${procedureByCode.code} [${procedureByCode.type}] → R$${procedureByCode.price}` : '(nenhum — código ausente no plano)');
+    console.log('procedure final (por tipo):', procedure ? `${procedure.code} [${procedure.type}] = R$${procedure.price}` : '(nenhum)');
+    console.log('→ PREÇO RETORNADO:', `R$${finalPrice}`);
     console.groupEnd();
   }
 
+  // Para pacientes com convênio: preço do procedimento do plano tem prioridade
+  // sobre customer.customPrice. customer.customPrice funciona como fallback
+  // apenas quando não há procedimento no plano (evita que um preço genérico
+  // do paciente — ex: de quando era Particular — sobrescreva o valor do convênio).
+  // Para Particular: customer.customPrice tem prioridade (preço negociado).
+  const isParticular = customer?.healthPlan === HealthPlan.PARTICULAR;
+
+  if (!isParticular && procedure?.price !== undefined) {
+    return app.customPrice ?? procedure.price;
+  }
   return app.customPrice ?? customer?.customPrice ?? procedure?.price ?? 0;
 }
 
