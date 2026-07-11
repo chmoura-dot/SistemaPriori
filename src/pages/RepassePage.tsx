@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
+  AlertTriangle,
   ArrowRightLeft,
   CheckCircle2,
   Clock,
@@ -99,6 +100,83 @@ function getRepassValue(
 
   // 5. Último fallback: 50% padrão (psicólogo sem regra + plano sem repassAmount)
   return calcRepass(gross, psy);
+}
+
+// ─── Divergence Detection ────────────────────────────────────────────────────
+
+interface RepassDivergence {
+  customerName: string;
+  date: string;
+  actual: number;
+  expected: number;
+}
+
+/**
+ * Calcula o repasse esperado SEM considerar o override do atendimento (step 1).
+ * Usado para detectar divergências entre o valor salvo no atendimento e o que
+ * seria calculado pelas regras automáticas (paciente → psicólogo → plano → 50%).
+ */
+function getExpectedRepass(
+  app: Appointment,
+  customers: Customer[],
+  plans: Plan[],
+  psy: Psychologist | undefined,
+  pricingCtx: PricingContext,
+): number {
+  const gross = getAppPrice(app, pricingCtx);
+  if (gross <= 0) return 0;
+
+  // Pula step 1 (app.customRepassAmount) — vai direto para step 2+
+  const customer = customers.find(c => c.id === app.customerId);
+  if (customer?.customRepassAmount != null && customer.customRepassAmount > 0) {
+    return customer.customRepassAmount;
+  }
+
+  if (psy?.repassOverridesPlan && (psy.repassRate != null || (psy.repassFixedAmount != null && psy.repassFixedAmount > 0))) {
+    return calcRepass(gross, psy);
+  }
+
+  const plan = matchPlanByHealthPlan(plans, customer?.healthPlan);
+  let resolvedProcCode = app.procedureCode;
+  if (
+    !resolvedProcCode &&
+    customer?.healthPlan === HealthPlan.AMS_PETROBRAS &&
+    app.type === AppointmentType.NEUROPSICOLOGICA
+  ) {
+    const sessionIdx = getAmsNeuropsicoSessionIndex(app, pricingCtx);
+    if (sessionIdx === 1 || sessionIdx === 2) resolvedProcCode = '95090010';
+  }
+  const procedure = resolvedProcCode
+    ? plan?.procedures?.find(p => p.code === resolvedProcCode)
+    : plan?.procedures?.find(p => p.type === app.type);
+  if (procedure?.repassAmount != null && procedure.repassAmount > 0) {
+    return procedure.repassAmount;
+  }
+
+  return calcRepass(gross, psy);
+}
+
+/**
+ * Verifica se o atendimento tem um customRepassAmount que diverge (≥ R$1)
+ * do valor que seria calculado automaticamente.
+ */
+function checkDivergence(
+  app: Appointment,
+  customers: Customer[],
+  plans: Plan[],
+  psy: Psychologist | undefined,
+  pricingCtx: PricingContext,
+): RepassDivergence | null {
+  if (app.customRepassAmount == null || app.customRepassAmount <= 0) return null;
+  const expected = getExpectedRepass(app, customers, plans, psy, pricingCtx);
+  if (Math.abs(app.customRepassAmount - expected) < 1) return null;
+  const customer = customers.find(c => c.id === app.customerId);
+  return {
+    customerName: customer?.name ?? '—',
+    date: app.date,
+    actual: app.customRepassAmount,
+    expected,
+  };
 }
 
 // ─── PDF Generation ──────────────────────────────────────────────────────────
@@ -362,7 +440,7 @@ export const RepassePage = () => {
   // Lotes pagos que ainda não têm repasse gerado para algum psicólogo
   const pendingGroups = useMemo(() => {
     const paidBatches = batches.filter(b => b.status === BillingBatchStatus.PAID);
-    const groups: { psyId: string; batch: BillingBatch; appIds: string[]; total: number }[] = [];
+    const groups: { psyId: string; batch: BillingBatch; appIds: string[]; total: number; divergences: RepassDivergence[] }[] = [];
 
     paidBatches.forEach(batch => {
       // Group batch appointments by psychologist
@@ -400,13 +478,17 @@ export const RepassePage = () => {
         const pricingCtx: PricingContext = { customers, plans, appointments };
         const psy = psychologists.find(p => p.id === psyId);
         let totalCents = 0;
+        const divergences: RepassDivergence[] = [];
         paidAppIds.forEach(appId => {
           const app = appointments.find(a => a.id === appId);
           if (!app) return;
           totalCents += Math.round(getRepassValue(app, customers, plans, psy, pricingCtx) * 100);
+          // Detectar divergências entre override manual e valor calculado
+          const div = checkDivergence(app, customers, plans, psy, pricingCtx);
+          if (div) divergences.push(div);
         });
 
-        groups.push({ psyId, batch, appIds: paidAppIds, total: totalCents / 100 });
+        groups.push({ psyId, batch, appIds: paidAppIds, total: totalCents / 100, divergences });
       });
     });
 
@@ -414,6 +496,17 @@ export const RepassePage = () => {
   }, [batches, repasses, appointments, customers, plans, psychologists]);
 
   const handleGenerateRepasse = async (group: typeof pendingGroups[0]) => {
+    // Verificar divergências antes de gerar — protege contra erros de dados
+    if (group.divergences.length > 0) {
+      const lines = group.divergences.map(d =>
+        `• ${d.customerName} (${format(new Date(d.date + 'T12:00:00'), 'dd/MM/yyyy')}): salvo R$ ${d.actual.toFixed(2)}, esperado R$ ${d.expected.toFixed(2)}`
+      ).join('\n');
+      const msg = `⚠️ ${group.divergences.length} atendimento(s) com valor de repasse manual diferente do calculado automaticamente:\n\n${lines}\n\nDeseja gerar o repasse mesmo assim?`;
+      if (!confirm(msg)) {
+        return;
+      }
+    }
+
     setIsGenerating(`${group.psyId}-${group.batch.id}`);
     try {
       const created = await api.createRepasse({
@@ -506,7 +599,26 @@ export const RepassePage = () => {
                         {group.batch.paidAt ? format(new Date(group.batch.paidAt), 'dd/MM/yyyy') : '—'}
                       </td>
                       <td className="px-6 py-4 text-zinc-600">{group.appIds.length}</td>
-                      <td className="px-6 py-4 font-semibold text-priori-navy">{fmt.format(group.total)}</td>
+                      <td className="px-6 py-4 font-semibold text-priori-navy">
+                        <div className="flex items-center gap-1.5">
+                          {fmt.format(group.total)}
+                          {group.divergences.length > 0 && (
+                            <span
+                              className="text-amber-500 cursor-help"
+                              title={group.divergences.map(d =>
+                                `${d.customerName}: salvo R$ ${d.actual.toFixed(2)}, esperado R$ ${d.expected.toFixed(2)}`
+                              ).join('\n')}
+                            >
+                              <AlertTriangle size={14} />
+                            </span>
+                          )}
+                        </div>
+                        {group.divergences.length > 0 && (
+                          <div className="text-[10px] text-amber-600 font-normal mt-0.5">
+                            {group.divergences.length} valor(es) divergente(s)
+                          </div>
+                        )}
+                      </td>
                       <td className="px-6 py-4 text-right">
                         <Button
                           size="sm"
