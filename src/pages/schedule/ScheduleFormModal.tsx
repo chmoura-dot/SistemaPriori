@@ -8,7 +8,6 @@ import { Modal } from '../../components/Modal';
 import { Button } from '../../components/Button';
 import { cn } from '../../lib/utils';
 import { matchPlanByHealthPlan } from '../../services/supabase/helpers';
-import { calcRepass } from '../../lib/repassRules';
 import { ScheduleFormData } from './scheduleUtils';
 import { CustomerSearchDropdown } from './CustomerSearchDropdown';
 import { DateTimePicker } from './DateTimePicker';
@@ -49,17 +48,19 @@ export const ScheduleFormModal: React.FC<ScheduleFormModalProps> = ({
     prevCustomerIdRef.current = formData.customerId;
     prevStartTimeRef.current = formData.startTime;
 
-    const customer = customers.find(c => c.id === formData.customerId);
-    const plan = matchPlanByHealthPlan(plans, customer?.healthPlan);
-    const procedure = plan?.procedures.find(proc => proc.type === formData.type || proc.code === formData.procedureCode);
-
-    if (customerChanged && customer) {
-      const price = customer.customPrice ?? procedure?.price;
-      const repass = customer.customRepassAmount
-        ?? (customer.customPrice !== undefined && customer.customPrice > 0
-          ? calcRepass(customer.customPrice, psychologists.find(p => p.id === formData.psychologistId))
-          : procedure?.repassAmount);
-      if (price !== undefined) setFormData(prev => ({ ...prev, customPrice: price, customRepassAmount: repass }));
+    if (customerChanged) {
+      // Só auto-preenche customPrice/customRepassAmount quando o PACIENTE tem
+      // override explícito no cadastro. Valores do plano/procedimento NÃO devem
+      // ser copiados para o atendimento — eles são resolvidos dinamicamente por
+      // getAppPrice/getRepassValue no faturamento e repasse. Isso garante que:
+      //  • Alterações de tipo (ex: Psicoterapia → Neuropsico) reflitam o preço correto
+      //  • Atualizações no plano se apliquem a atendimentos futuros automaticamente
+      const customer = customers.find(c => c.id === formData.customerId);
+      setFormData(prev => ({
+        ...prev,
+        customPrice: customer?.customPrice ?? undefined,
+        customRepassAmount: customer?.customRepassAmount ?? undefined,
+      }));
     }
 
     if (startChanged && formData.startTime) {
