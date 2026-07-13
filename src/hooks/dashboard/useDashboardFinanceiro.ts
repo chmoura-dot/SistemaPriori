@@ -42,10 +42,13 @@ function getRepassValueForApp(
   }
 
   // 4. Valor cadastrado no plano (procedure.repassAmount)
+  //    Valida se o código TUSS pertence ao plano do paciente.
+  //    Se o código armazenado for de outro plano, faz fallback pelo tipo.
   const plan = findPlan(customer?.healthPlan);
-  const procedure = app.procedureCode
+  const procedureByCode = app.procedureCode
     ? plan?.procedures?.find(p => p.code === app.procedureCode)
-    : plan?.procedures?.find(p => p.type === app.type);
+    : undefined;
+  const procedure = procedureByCode ?? plan?.procedures?.find(p => p.type === app.type);
   if (procedure?.repassAmount != null && procedure.repassAmount > 0) return procedure.repassAmount;
 
   // 5. Fallback: regra do psicólogo ou 50% padrão

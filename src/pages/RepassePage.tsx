@@ -90,9 +90,13 @@ function getRepassValue(
     }
   }
 
-  const procedure = resolvedProcCode
+  // Valida se o código TUSS pertence ao plano do paciente.
+  // Se o código armazenado for de outro plano (ex: AMS 95110011 em atendimento Porto Seguro),
+  // faz fallback para o procedimento correto do plano pelo tipo de atendimento.
+  const procedureByCode = resolvedProcCode
     ? plan?.procedures?.find(p => p.code === resolvedProcCode)
-    : plan?.procedures?.find(p => p.type === app.type);
+    : undefined;
+  const procedure = procedureByCode ?? plan?.procedures?.find(p => p.type === app.type);
 
   if (procedure?.repassAmount != null && procedure.repassAmount > 0) {
     return procedure.repassAmount;
@@ -146,9 +150,11 @@ function getExpectedRepass(
     const sessionIdx = getAmsNeuropsicoSessionIndex(app, pricingCtx);
     if (sessionIdx === 1 || sessionIdx === 2) resolvedProcCode = '95090010';
   }
-  const procedure = resolvedProcCode
+  // Valida se o código TUSS pertence ao plano do paciente (mesma lógica do getRepassValue).
+  const procedureByCode = resolvedProcCode
     ? plan?.procedures?.find(p => p.code === resolvedProcCode)
-    : plan?.procedures?.find(p => p.type === app.type);
+    : undefined;
+  const procedure = procedureByCode ?? plan?.procedures?.find(p => p.type === app.type);
   if (procedure?.repassAmount != null && procedure.repassAmount > 0) {
     return procedure.repassAmount;
   }
@@ -197,9 +203,11 @@ function generateRepassePDF(
       if (!app || app.billingStatus === 'denied') return null;
       const customer = customers.find(c => c.id === app.customerId);
       const plan = matchPlanByHealthPlan(plans, customer?.healthPlan);
-      const procedure = app.procedureCode
+      // Valida se o código TUSS pertence ao plano (consistente com getRepassValue).
+      const procedureByCode = app.procedureCode
         ? plan?.procedures?.find(proc => proc.code === app.procedureCode)
-        : plan?.procedures?.find(proc => proc.type === app.type);
+        : undefined;
+      const procedure = procedureByCode ?? plan?.procedures?.find(proc => proc.type === app.type);
       const repassVal = getRepassValue(app, customers, plans, psy, pricingCtx);
       return { app, customer, procedure, repassVal };
     })
