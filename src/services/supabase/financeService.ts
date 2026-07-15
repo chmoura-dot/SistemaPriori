@@ -86,7 +86,8 @@ export const financeService = {
   deleteBillingBatch: async (id: string): Promise<void> => {
     const { error: appError } = await supabase
       .from('appointments')
-      .update({ billing_batch_id: null, billing_status: null, denial_reason: null, denial_resolution: null })
+      .update({ billing_batch_id: null, billing_status: null, denial_reason: null, denial_resolution: null, paid_at: null })
+
       .eq('billing_batch_id', id);
     if (appError) throw new Error(appError.message);
 

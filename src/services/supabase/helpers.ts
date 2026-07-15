@@ -22,8 +22,9 @@ export const APPOINTMENT_COLUMNS = [
   'is_recurring', 'recurrence_frequency', 'recurrence_group_id',
   'needs_renewal', 'renewed_at', 'renewed_by',
   'custom_price', 'custom_repass_amount',
-  'billing_batch_id', 'billing_status', 'billing_ignored',
+  'billing_batch_id', 'billing_status', 'billing_ignored', 'paid_at',
   'health_plan_at_time',
+
   'denial_reason', 'denial_resolution',
   'cancellation_billing',
   'is_internal', 'internal_type', 'internal_title', 'internal_notes',
@@ -144,7 +145,9 @@ export function toAppointment(row: any): Appointment {
     billingBatchId: row.billing_batch_id ?? undefined,
     billingStatus: row.billing_status ?? undefined,
     billingIgnored: row.billing_ignored ?? undefined,
+    paidAt: row.paid_at ?? undefined,
     healthPlanAtTime: row.health_plan_at_time ?? undefined,
+
     denialReason: row.denial_reason ?? undefined,
     denialResolution: row.denial_resolution ?? undefined,
     createdAt: row.created_at,

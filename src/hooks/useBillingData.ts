@@ -140,10 +140,14 @@ export function useBillingData() {
 
   // ─── Valores derivados ────────────────────────────────────────────────────
   const draftBatches = batches.filter(b => b.status === BillingBatchStatus.DRAFT);
-  const pendingBatches = batches.filter(b => b.status === BillingBatchStatus.SENT);
+  // Lotes ainda não quitados totalmente (enviados ou parcialmente pagos)
+  const pendingBatches = batches.filter(
+    b => b.status === BillingBatchStatus.SENT || b.status === BillingBatchStatus.PARTIALLY_PAID
+  );
   const totalPendingAmount = pendingBatches.reduce((acc, b) => acc + b.totalAmount, 0);
   const paidBatches = batches.filter(b => b.status === BillingBatchStatus.PAID);
   const totalPaidAmount = paidBatches.reduce((acc, b) => acc + b.totalAmount, 0);
+
   const totalDenied = appointments.filter(a => a.billingStatus === 'denied').length;
   const totalDraftAmount = draftBatches.reduce((acc, b) => acc + b.totalAmount, 0);
 

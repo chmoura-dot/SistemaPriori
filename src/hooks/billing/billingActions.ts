@@ -240,6 +240,76 @@ export function createBillingActions({
     setIsPaymentModalOpen(true);
   };
 
+  /**
+   * Recalcula o status de um lote com base no estado de pagamento dos seus
+   * atendimentos e persiste a mudança:
+   *   - Nenhum atendimento resolvido (paid/denied)  → SENT
+   *   - Alguns resolvidos, mas não todos            → PARTIALLY_PAID
+   *   - Todos resolvidos                            → PAID (fecha o lote)
+   * `appsOverride` permite passar o estado já atualizado dos atendimentos
+   * (antes do fetch), garantindo cálculo correto no mesmo ciclo.
+   */
+  const recalcBatchStatus = async (batchId: string, appsOverride?: Appointment[]) => {
+    const batch = batches.find(b => b.id === batchId);
+    if (!batch || batch.status === BillingBatchStatus.DRAFT) return;
+    const source = appsOverride ?? appointments;
+    const batchApps = batch.appointmentIds
+      .map(id => source.find(a => a.id === id))
+      .filter((a): a is Appointment => !!a);
+    if (batchApps.length === 0) return;
+
+    const resolvedCount = batchApps.filter(a => a.billingStatus === 'paid' || a.billingStatus === 'denied').length;
+
+    let newStatus: BillingBatchStatus;
+    if (resolvedCount === 0) newStatus = BillingBatchStatus.SENT;
+    else if (resolvedCount < batchApps.length) newStatus = BillingBatchStatus.PARTIALLY_PAID;
+    else newStatus = BillingBatchStatus.PAID;
+
+    if (newStatus === batch.status && newStatus !== BillingBatchStatus.PAID) return;
+
+    const updates: Partial<BillingBatch> = { status: newStatus };
+    updates.paidAt = newStatus === BillingBatchStatus.PAID ? new Date().toISOString() : undefined;
+    await api.updateBillingBatch(batchId, updates);
+  };
+
+  const handleMarkAppointmentPaid = async (appId: string) => {
+    const app = appointments.find(a => a.id === appId);
+    if (!app || !app.billingBatchId) return;
+    const now = new Date().toISOString();
+    try {
+      await api.updateAppointment(appId, { billingStatus: 'paid', paidAt: now });
+      const updatedApps = appointments.map(a =>
+        a.id === appId ? { ...a, billingStatus: 'paid' as const, paidAt: now } : a
+      );
+      setAppointments(updatedApps);
+      await recalcBatchStatus(app.billingBatchId, updatedApps);
+      toastSuccess('Atendimento marcado como pago!');
+      fetchData();
+    } catch (error) {
+      logger.critical('billing.handleMarkAppointmentPaid', error, { appointmentId: appId });
+      toastError('Erro ao marcar atendimento como pago.');
+    }
+  };
+
+  const handleUnmarkAppointmentPaid = async (appId: string) => {
+    const app = appointments.find(a => a.id === appId);
+    if (!app || !app.billingBatchId) return;
+    try {
+      await api.updateAppointment(appId, { billingStatus: null as any, paidAt: null as any, denialReason: null as any, denialResolution: null as any });
+      const updatedApps = appointments.map(a =>
+        a.id === appId ? { ...a, billingStatus: undefined, paidAt: undefined, denialReason: undefined, denialResolution: undefined } : a
+      );
+      setAppointments(updatedApps);
+      await recalcBatchStatus(app.billingBatchId, updatedApps);
+      toastSuccess('Pagamento do atendimento desfeito.');
+      fetchData();
+    } catch (error) {
+      logger.critical('billing.handleUnmarkAppointmentPaid', error, { appointmentId: appId });
+      toastError('Erro ao desfazer pagamento.');
+    }
+  };
+
+
   const submitPayment = async () => {
     if (!batchToPay) return;
     try {
@@ -326,5 +396,7 @@ export function createBillingActions({
     handleCreateBatch, handleSaveAsDraft, handleQuickAddToDraft, handleFinalizeBatch,
     handleMarkAsPaid, submitPayment, handleDeleteBatch, handleExportBatch,
     handleConfirmAppointment, handleIgnoreAppointment, handleUnignoreAppointment,
+    handleMarkAppointmentPaid, handleUnmarkAppointmentPaid,
   };
+
 }

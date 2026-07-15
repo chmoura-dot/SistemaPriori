@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Download, Pencil, Check, X } from 'lucide-react';
+import { Download, Pencil, Check, X, CircleDollarSign, RotateCcw } from 'lucide-react';
 import { format } from 'date-fns';
 import { BillingBatch, BillingBatchStatus, Appointment, Customer, Psychologist, HealthPlan } from '../../services/types';
 import { Modal } from '../Modal';
@@ -13,6 +13,8 @@ interface Props {
   psychologists: Psychologist[];
   getAppPrice: (app: Appointment) => number;
   onUpdatePrice?: (appointmentId: string, newPrice: number) => Promise<void>;
+  onMarkPaid?: (appointmentId: string) => Promise<void>;
+  onUnmarkPaid?: (appointmentId: string) => Promise<void>;
   onClose: () => void;
   onExport: (batch: BillingBatch) => void;
 }
@@ -24,9 +26,12 @@ export const BatchDetailsModal: React.FC<Props> = ({
   psychologists,
   getAppPrice,
   onUpdatePrice,
+  onMarkPaid,
+  onUnmarkPaid,
   onClose,
   onExport,
 }) => {
+
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
 
@@ -71,9 +76,14 @@ export const BatchDetailsModal: React.FC<Props> = ({
             <div>
               <span className="text-zinc-500 block">Status</span>
               <span className="font-medium text-priori-navy">
-                {batch.status === BillingBatchStatus.PAID ? 'Pago' : 'Enviado'}
+                {batch.status === BillingBatchStatus.PAID
+                  ? 'Pago'
+                  : batch.status === BillingBatchStatus.PARTIALLY_PAID
+                    ? 'Parcialmente Pago'
+                    : 'Enviado'}
               </span>
             </div>
+
             <div>
               <span className="text-zinc-500 block">Valor Total</span>
               <span className="font-medium text-priori-navy">
@@ -87,8 +97,32 @@ export const BatchDetailsModal: React.FC<Props> = ({
             </div>
           </div>
 
+          {batch.status !== BillingBatchStatus.DRAFT && (() => {
+            const batchApps = batch.appointmentIds
+              .map(id => appointments.find(a => a.id === id))
+              .filter((a): a is Appointment => !!a);
+            const total = batchApps.length;
+            const resolved = batchApps.filter(a => a.billingStatus === 'paid' || a.billingStatus === 'denied').length;
+            const pct = total > 0 ? Math.round((resolved / total) * 100) : 0;
+            return (
+              <div className="border-t border-zinc-100 pt-4">
+                <div className="flex items-center justify-between text-sm mb-1.5">
+                  <span className="text-zinc-500">Progresso de pagamento</span>
+                  <span className="font-medium text-priori-navy">{resolved}/{total} atendimentos</span>
+                </div>
+                <div className="w-full h-2 bg-zinc-100 rounded-full overflow-hidden">
+                  <div
+                    className={cn('h-full rounded-full transition-all', pct === 100 ? 'bg-emerald-500' : 'bg-priori-gold')}
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+              </div>
+            );
+          })()}
+
           <div className="border-t border-zinc-100 pt-4">
             <h4 className="font-semibold text-priori-navy mb-3">Atendimentos no Lote</h4>
+
             <div className="space-y-2 max-h-64 overflow-y-auto pr-2">
               {batch.appointmentIds.map(id => {
                 const app = appointments.find(a => a.id === id);
@@ -156,14 +190,39 @@ export const BatchDetailsModal: React.FC<Props> = ({
                         )}
                       </div>
                     </div>
-                    {!isEditing && app?.billingStatus && (
-                      <span className={cn(
-                        'text-[10px] font-bold uppercase tracking-wider text-right',
-                        app.billingStatus === 'paid' ? 'text-emerald-600' : 'text-red-500'
-                      )}>
-                        {app.billingStatus === 'paid' ? 'Pago' : 'Glosa'}
-                      </span>
+                    {!isEditing && app && batch.status !== BillingBatchStatus.DRAFT && (
+                      <div className="flex items-center justify-end gap-2">
+                        {app.billingStatus && (
+                          <span className={cn(
+                            'text-[10px] font-bold uppercase tracking-wider',
+                            app.billingStatus === 'paid' ? 'text-emerald-600' : 'text-red-500'
+                          )}>
+                            {app.billingStatus === 'paid' ? 'Pago' : 'Glosa'}
+                          </span>
+                        )}
+                        {app.billingStatus === 'paid' && onUnmarkPaid && (
+                          <button
+                            onClick={() => onUnmarkPaid(id)}
+                            className="flex items-center gap-1 text-[11px] font-medium text-zinc-400 hover:text-red-500 hover:bg-red-50 px-2 py-1 rounded-lg transition-colors"
+                            title="Desfazer pagamento deste atendimento"
+                          >
+                            <RotateCcw size={12} />
+                            Desfazer
+                          </button>
+                        )}
+                        {!app.billingStatus && onMarkPaid && (
+                          <button
+                            onClick={() => onMarkPaid(id)}
+                            className="flex items-center gap-1 text-[11px] font-semibold text-emerald-600 hover:bg-emerald-50 px-2 py-1 rounded-lg transition-colors border border-emerald-200"
+                            title="Marcar este atendimento como pago"
+                          >
+                            <CircleDollarSign size={13} />
+                            Marcar como pago
+                          </button>
+                        )}
+                      </div>
                     )}
+
                     {app?.billingStatus === 'denied' && (
                       <div className="mt-1 p-2 bg-red-50 rounded-lg border border-red-100 text-xs">
                         <div className="font-semibold text-red-700">Motivo: {app.denialReason}</div>

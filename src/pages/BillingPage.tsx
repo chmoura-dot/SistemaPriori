@@ -121,9 +121,12 @@ export const BillingPage = () => {
         psychologists={billing.psychologists}
         getAppPrice={billing.getAppPrice}
         onUpdatePrice={billing.handleUpdateAppointmentPrice}
+        onMarkPaid={billing.handleMarkAppointmentPaid}
+        onUnmarkPaid={billing.handleUnmarkAppointmentPaid}
         onClose={() => billing.setSelectedBatch(null)}
         onExport={billing.handleExportBatch}
       />
+
 
       {/* Modal: Registrar Pagamento */}
       <RegisterPaymentModal

@@ -494,12 +494,17 @@ export const RepassePage = () => {
 
   useEffect(() => { loadData(); }, []);
 
-  // Lotes pagos que ainda não têm repasse gerado para algum psicólogo
+  // Lotes pagos (total ou parcialmente) com atendimentos ainda não repassados.
+  // Com pagamento individual, um mesmo lote pode gerar vários repasses ao longo
+  // do tempo — por isso rastreamos os atendimentos JÁ repassados (por atendimento),
+  // e não mais bloqueamos o par psicólogo+lote inteiro.
   const pendingGroups = useMemo(() => {
-    const paidBatches = batches.filter(b => b.status === BillingBatchStatus.PAID);
+    const eligibleBatches = batches.filter(
+      b => b.status === BillingBatchStatus.PAID || b.status === BillingBatchStatus.PARTIALLY_PAID
+    );
     const groups: { psyId: string; batch: BillingBatch; appIds: string[]; total: number; divergences: RepassDivergence[] }[] = [];
 
-    paidBatches.forEach(batch => {
+    eligibleBatches.forEach(batch => {
       // Group batch appointments by psychologist
       const byPsy: Record<string, string[]> = {};
       batch.appointmentIds.forEach(appId => {
@@ -510,22 +515,27 @@ export const RepassePage = () => {
       });
 
       Object.entries(byPsy).forEach(([psyId, appIds]) => {
-        // Check if repasse already exists for this psy + batch
-        const exists = repasses.some(r => r.psychologistId === psyId && r.billingBatchId === batch.id);
-        if (exists) return;
+        // Atendimentos já incluídos em repasses anteriores deste psicólogo + lote.
+        const alreadyRepassed = new Set(
+          repasses
+            .filter(r => r.psychologistId === psyId && r.billingBatchId === batch.id)
+            .flatMap(r => r.appointmentIds)
+        );
 
         // Filtrar atendimentos elegíveis para repasse:
-        // - Excluir glosas (billingStatus === 'denied')
-        // - Excluir atendimentos ignorados no faturamento (billingIgnored)
-        // - Excluir atendimentos internos (supervisão, reunião, admin)
+        // - Incluir SOMENTE os efetivamente pagos (billingStatus === 'paid')
+        // - Excluir glosas, ignorados e internos
+        // - Excluir os que já foram repassados
         const paidAppIds = appIds.filter(appId => {
           const app = appointments.find(a => a.id === appId);
           if (!app) return false;
-          if (app.billingStatus === 'denied') return false;
+          if (app.billingStatus !== 'paid') return false;
           if (app.billingIgnored) return false;
           if (app.isInternal) return false;
+          if (alreadyRepassed.has(appId)) return false;
           return true;
         });
+
 
         // Se todos os atendimentos foram excluídos, não gera repasse
         if (paidAppIds.length === 0) return;

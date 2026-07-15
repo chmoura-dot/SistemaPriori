@@ -32,7 +32,16 @@ const StatusBadge: React.FC<{ status: BillingBatchStatus }> = ({ status }) => {
       </span>
     );
   }
+  if (status === BillingBatchStatus.PARTIALLY_PAID) {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
+        <Clock size={10} />
+        Parcialmente Pago
+      </span>
+    );
+  }
   return (
+
     <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
       <CheckCircle2 size={10} />
       Pago
