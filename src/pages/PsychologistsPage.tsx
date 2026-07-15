@@ -24,7 +24,7 @@ export const PsychologistsPage = () => {
   const loadPsychologists = async () => {
     setIsLoading(true);
     const data = await api.getPsychologists();
-    setPsychologists(data);
+    setPsychologists(data.filter(p => p.active));
     setIsLoading(false);
   };
 
@@ -59,9 +59,13 @@ export const PsychologistsPage = () => {
   };
 
   const handleDelete = async (id: string) => {
-    if (confirm('Tem certeza que deseja excluir este psicólogo?')) {
-      await api.deletePsychologist(id);
-      await loadPsychologists();
+    if (confirm('Tem certeza que deseja desativar este psicólogo? O histórico será preservado.')) {
+      try {
+        await api.updatePsychologist(id, { active: false });
+        await loadPsychologists();
+      } catch (error: any) {
+        alert(`Erro ao desativar psicólogo: ${error?.message || 'Tente novamente.'}`);
+      }
     }
   };
 
