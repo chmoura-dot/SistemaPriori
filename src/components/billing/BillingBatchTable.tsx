@@ -54,22 +54,40 @@ export const BillingBatchTable: React.FC<Props> = ({
   const others = batches.filter(b => b.status !== BillingBatchStatus.DRAFT);
   const sortedBatches = [...drafts, ...others];
 
-  // Formata a competência para exibição (YYYY-MM → Mês/Ano)
+  const MONTH_NAMES = [
+    'Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun',
+    'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez',
+  ];
+
+  const formatMonthLabel = (yyyyMm: string): string | null => {
+    if (!/^\d{4}-\d{2}$/.test(yyyyMm)) return null;
+    const [y, m] = yyyyMm.split('-').map(Number);
+    return `${MONTH_NAMES[m - 1]}/${y}`;
+  };
+
+  // Competência = mês/ano dos ATENDIMENTOS do lote (não a data de geração do faturamento).
   const formatCompetencia = (batch: BillingBatch): string => {
-    if (batch.status === BillingBatchStatus.DRAFT) {
-      // Para rascunhos, sentAt guarda a competência: YYYY-MM-01T...
-      const month = batch.sentAt.substring(0, 7); // YYYY-MM
+    // Agrupa as datas dos atendimentos por mês (YYYY-MM) e usa o mês predominante.
+    const batchApps = appointments.filter(a => batch.appointmentIds.includes(a.id));
+    const monthCounts: Record<string, number> = {};
+    for (const app of batchApps) {
+      const month = (app.date || '').substring(0, 7); // YYYY-MM
       if (/^\d{4}-\d{2}$/.test(month)) {
-        const [y, m] = month.split('-').map(Number);
-        const MONTH_NAMES = [
-          'Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun',
-          'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez',
-        ];
-        return `${MONTH_NAMES[m - 1]}/${y}`;
+        monthCounts[month] = (monthCounts[month] || 0) + 1;
       }
     }
+    const predominant = Object.entries(monthCounts).sort((a, b) => b[1] - a[1])[0]?.[0];
+    if (predominant) {
+      const label = formatMonthLabel(predominant);
+      if (label) return label;
+    }
+
+    // Fallback: usa sentAt (para rascunhos sem atendimentos, guarda a competência).
+    const fallbackMonth = formatMonthLabel(batch.sentAt.substring(0, 7));
+    if (fallbackMonth) return fallbackMonth;
     return format(new Date(batch.sentAt), 'dd/MM/yyyy');
   };
+
 
   if (sortedBatches.length === 0) {
     return (
