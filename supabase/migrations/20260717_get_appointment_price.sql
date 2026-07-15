@@ -176,6 +176,10 @@ GRANT EXECUTE ON FUNCTION get_appointment_price(uuid, uuid, uuid, date, text) TO
 -- ============================================================
 -- validate_price_parity — compara frontend vs. servidor e loga divergência
 -- ============================================================
+-- ⚠️ Necessário: uma versão anterior pode existir com nome de parâmetro diferente
+-- (o Postgres não permite renomear parâmetros de entrada via CREATE OR REPLACE).
+DROP FUNCTION IF EXISTS validate_price_parity(uuid, uuid, uuid, date, text, numeric);
+
 CREATE OR REPLACE FUNCTION validate_price_parity(
   p_appointment_id      uuid,
   p_psychologist_id     uuid,
