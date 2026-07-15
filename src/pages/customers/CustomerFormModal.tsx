@@ -1,5 +1,5 @@
 import React from 'react';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, AlertTriangle } from 'lucide-react';
 import { Button } from '../../components/Button';
 import { Modal } from '../../components/Modal';
 import { Customer, HealthPlan, Psychologist } from '../../services/types';
@@ -54,6 +54,10 @@ export const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
   const isAms = String(formData.healthPlan).toUpperCase().includes('AMS') ||
                 String(formData.healthPlan).toUpperCase().includes('PETROBRAS');
   const isParticular = formData.healthPlan === HealthPlan.PARTICULAR;
+
+  // Detecta mudança de plano ao editar um paciente existente
+  const originalCustomer = editingId ? existingCustomers.find(c => c.id === editingId) : undefined;
+  const healthPlanChanged = editingId && originalCustomer && originalCustomer.healthPlan !== formData.healthPlan;
 
   const input = 'w-full rounded-xl bg-white border border-zinc-200 px-4 py-3 text-base text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/10 transition-all';
   const label = 'text-sm font-bold text-zinc-500 uppercase tracking-widest';
@@ -160,6 +164,18 @@ export const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
             </select>
           </div>
         </div>
+
+        {/* Alerta de mudança de plano */}
+        {healthPlanChanged && (
+          <div className="flex gap-2 p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm animate-in fade-in duration-300">
+            <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+            <span>
+              <strong>Atenção:</strong> Plano alterado de <em>{originalCustomer?.healthPlan}</em> para <em>{formData.healthPlan}</em>.
+              Sessões passadas preservarão o plano original no faturamento.
+              Apenas atendimentos criados <strong>a partir de agora</strong> usarão o novo plano.
+            </span>
+          </div>
+        )}
 
         {/* Particular price fields */}
         {isParticular && (

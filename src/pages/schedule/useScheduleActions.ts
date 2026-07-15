@@ -54,12 +54,15 @@ export const useScheduleActions = (s: ScheduleData) => {
         }
       }
 
-      const payload: Partial<ScheduleFormData> = {
+      // Snapshot do plano vigente do paciente no momento da criação/edição
+      const selectedCustomer = s.customers.find(c => c.id === formData.customerId);
+      const payload: Partial<ScheduleFormData> & { healthPlanAtTime?: string } = {
         ...formData,
         roomId: formData.mode === AttendanceMode.ONLINE ? undefined : formData.roomId,
         isInternal: formData.isInternal,
         internalType: formData.isInternal ? (formData.internalType as any) : undefined,
         internalTitle: formData.isInternal ? formData.internalTitle : undefined,
+        healthPlanAtTime: selectedCustomer?.healthPlan ?? undefined,
       };
 
       if (editingId) {

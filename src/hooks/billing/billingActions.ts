@@ -83,7 +83,8 @@ export function createBillingActions({
       // Só congela se o atendimento ainda não tem preço fixo definido
       if (app.customPrice != null) continue;
       const customer = customers.find(c => c.id === app.customerId);
-      if (customer?.healthPlan !== HealthPlan.PARTICULAR) continue;
+      const effectivePlan = app.healthPlanAtTime ?? customer?.healthPlan;
+      if (effectivePlan !== HealthPlan.PARTICULAR) continue;
       const price = getAppPrice(app);
       if (price <= 0) continue;
       updates.push(

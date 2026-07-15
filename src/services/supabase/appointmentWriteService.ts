@@ -51,6 +51,7 @@ function buildRecurringRows(a: AppointmentInput, groupId: string): any[] {
       denial_resolution: a.denialResolution ?? null,
       confirmation_status: 'pending',
       cancellation_billing: a.cancellationBilling ?? null,
+      health_plan_at_time: a.healthPlanAtTime ?? null,
       is_internal: a.isInternal ?? false,
       internal_type: a.isInternal ? (a.internalType ?? null) : null,
       internal_title: a.isInternal ? (a.internalTitle ?? null) : null,
@@ -151,6 +152,7 @@ export const appointmentWriteService = {
         denial_resolution: a.denialResolution ?? null,
         confirmation_status: 'pending',
         cancellation_billing: a.cancellationBilling ?? null,
+        health_plan_at_time: a.healthPlanAtTime ?? null,
         is_internal: a.isInternal ?? false,
         internal_type: a.isInternal ? (a.internalType ?? null) : null,
         internal_title: a.isInternal ? (a.internalTitle ?? null) : null,
@@ -202,6 +204,7 @@ export const appointmentWriteService = {
     if (a.billingBatchId !== undefined) updates.billing_batch_id = a.billingBatchId;
     if (a.billingStatus !== undefined) updates.billing_status = a.billingStatus;
     if (a.billingIgnored !== undefined) updates.billing_ignored = a.billingIgnored;
+    if (a.healthPlanAtTime !== undefined) updates.health_plan_at_time = a.healthPlanAtTime;
     if (a.denialReason !== undefined) updates.denial_reason = a.denialReason;
     if (a.denialResolution !== undefined) updates.denial_resolution = a.denialResolution;
     if (a.cancellationBilling !== undefined) updates.cancellation_billing = a.cancellationBilling;

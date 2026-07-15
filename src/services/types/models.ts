@@ -94,6 +94,7 @@ export interface Appointment {
   billingBatchId?: string;
   billingStatus?: 'paid' | 'denied';
   billingIgnored?: boolean;
+  healthPlanAtTime?: string;
   denialReason?: string;
   denialResolution?: 'accepted' | 'appealed';
   createdAt: string;

@@ -113,10 +113,12 @@ export function getAppPrice(app: Appointment, ctx: PricingContext): number {
   if (app.status === AppointmentStatus.CANCELED && app.cancellationBilling === 'none') return 0;
 
   const customer = ctx.customers.find(c => c.id === app.customerId);
-  const plan     = matchPlanByHealthPlan(ctx.plans, customer?.healthPlan);
+  // Usa o plano histórico gravado no agendamento; fallback para o plano atual do paciente
+  const effectiveHealthPlan = (app.healthPlanAtTime ?? customer?.healthPlan) as HealthPlan | undefined;
+  const plan     = matchPlanByHealthPlan(ctx.plans, effectiveHealthPlan);
 
   // Regra específica AMS Petrobras para Avaliação Neuropsicológica
-  if (customer?.healthPlan === HealthPlan.AMS_PETROBRAS && app.type === AppointmentType.NEUROPSICOLOGICA) {
+  if (effectiveHealthPlan === HealthPlan.AMS_PETROBRAS && app.type === AppointmentType.NEUROPSICOLOGICA) {
     const sessionIdx = getAmsNeuropsicoSessionIndex(app, ctx);
     if (sessionIdx >= 3) return 0;
     if (sessionIdx === 1 || sessionIdx === 2) {
@@ -142,7 +144,7 @@ export function getAppPrice(app: Appointment, ctx: PricingContext): number {
     : undefined;
   const procedure = procedureByCode ?? plan?.procedures?.find(proc => proc.type === app.type);
 
-  const isParticular = customer?.healthPlan === HealthPlan.PARTICULAR;
+  const isParticular = effectiveHealthPlan === HealthPlan.PARTICULAR;
 
   // ── LOG DE DIAGNÓSTICO (Avaliação Neuropsicológica) ──────────────────────
   if (app.type === AppointmentType.NEUROPSICOLOGICA) {

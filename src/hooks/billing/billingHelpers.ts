@@ -70,12 +70,13 @@ export function createBillingHelpers({
   /** Retorna o código TUSS efetivo para o atendimento (aplica regra AMS se necessário). */
   const getTussCode = (app: Appointment): string => {
     const customer = customers.find(c => c.id === app.customerId);
-    const plan     = matchPlanByHealthPlan(plans, customer?.healthPlan);
+    const effectiveHP = app.healthPlanAtTime ?? customer?.healthPlan;
+    const plan     = matchPlanByHealthPlan(plans, effectiveHP);
 
     // Regra AMS Petrobras: tem prioridade sobre o procedureCode salvo no agendamento.
     // O procedureCode do agendamento (95110011) é preenchido automaticamente e não deve
     // substituir as regras de faturamento da operadora.
-    if (customer?.healthPlan === HealthPlan.AMS_PETROBRAS && app.type === AppointmentType.NEUROPSICOLOGICA) {
+    if (effectiveHP === HealthPlan.AMS_PETROBRAS && app.type === AppointmentType.NEUROPSICOLOGICA) {
       const sessionIdx = getAmsNeuropsicoSessionIndex(app);
       if (sessionIdx >= 3) return ''; // 4ª+ sem faturamento
       if (sessionIdx === 1 || sessionIdx === 2) return '95090010'; // 2ª e 3ª → psicoterapia
@@ -94,7 +95,7 @@ export function createBillingHelpers({
   /** Retorna os procedimentos disponíveis do plano do paciente (para override manual). */
   const getPlanProcedures = (app: Appointment): PlanProcedureInfo[] => {
     const customer = customers.find(c => c.id === app.customerId);
-    const plan     = matchPlanByHealthPlan(plans, customer?.healthPlan);
+    const plan     = matchPlanByHealthPlan(plans, app.healthPlanAtTime ?? customer?.healthPlan);
     return (plan?.procedures ?? []).map(p => ({
       code: p.code,
       type: p.type as AppointmentType,
@@ -185,6 +186,8 @@ export function createBillingHelpers({
       // Cancelados sem cobrança continuam na lista (visíveis, mas não selecionáveis)
 
       const customer         = customers.find(c => c.id === a.customerId);
+      // Usa o plano histórico gravado no agendamento; fallback para o plano atual do paciente
+      const effectivePlan    = a.healthPlanAtTime ?? customer?.healthPlan;
       const matchesMonth     = monthsToInclude.length === 0 || monthsToInclude.some(m => a.date.startsWith(m));
       const isInCurrentDraft = editingDraftId ? a.billingBatchId === editingDraftId : false;
       // Um atendimento é "disponível" se:
@@ -197,7 +200,7 @@ export function createBillingHelpers({
         || !billedAppointmentIds.has(a.id);
 
       return (
-        customer?.healthPlan === selectedPlan &&
+        effectivePlan === selectedPlan &&
         (isInCurrentDraft || isAvailable) &&
         a.date <= today &&
         matchesMonth
@@ -228,9 +231,9 @@ export function createBillingHelpers({
       const avail = !a.billingBatchId || draftIds.has(a.billingBatchId) || !billedIds.has(a.id);
       if (!avail) continue;
       const c = customers.find(cx => cx.id === a.customerId);
-      if (!c?.healthPlan) continue;
-      const plan = c.healthPlan as HealthPlan;
-      counts.set(plan, (counts.get(plan) || 0) + 1);
+      const effectivePlan = (a.healthPlanAtTime ?? c?.healthPlan) as HealthPlan | undefined;
+      if (!effectivePlan) continue;
+      counts.set(effectivePlan, (counts.get(effectivePlan) || 0) + 1);
     }
     return counts;
   };
