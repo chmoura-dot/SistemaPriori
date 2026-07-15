@@ -1,24 +1,26 @@
 /**
  * billingActions
  * Todos os handlers assíncronos de CRUD de lotes e pagamentos.
- * Recebe estado e setters via contexto — sem useState/useEffect próprios.
  */
 import React from 'react';
 import { api } from '../../services/api';
 import { exportToExcel } from '../../lib/excel';
 import { toastSuccess, toastError } from '../../lib/toast';
+import { logger } from '../../lib/logger';
 import { format } from 'date-fns';
+
 import {
   Appointment, Customer, Psychologist, BillingBatch,
-  AppointmentStatus, BillingBatchStatus, HealthPlan,
+  AppointmentStatus, BillingBatchStatus, HealthPlan, Plan,
 } from '../../services/types';
-import { AppointmentPaymentStatus, syncAppointmentsBatch } from './billingHelpers';
+import { AppointmentPaymentStatus, syncAppointmentsBatch, auditPriceParity } from './billingHelpers';
 
 interface BillingActionsContext {
   batches: BillingBatch[];
   appointments: Appointment[];
   customers: Customer[];
   psychologists: Psychologist[];
+  plans: Plan[]; // Adicionado
   selectedPlan: HealthPlan;
   monthFilter: string;
   batchNumber: string;
@@ -39,7 +41,7 @@ interface BillingActionsContext {
 }
 
 export function createBillingActions({
-  batches, appointments, customers, psychologists,
+  batches, appointments, customers, psychologists, plans, // Adicionado
   selectedPlan, monthFilter, batchNumber, selectedAppointmentIds,
   editingDraftBatch, appointmentStatuses, batchToPay,
   getAppPrice, generateBatchNumber, fetchData,
@@ -47,11 +49,6 @@ export function createBillingActions({
   setAppointments, setBatchToPay, setIsPaymentModalOpen, setAppointmentStatuses,
 }: BillingActionsContext) {
 
-  /**
-   * Remove atendimentos de lotes RASCUNHO anteriores quando esses atendimentos
-   * estão sendo "promovidos" para um novo lote (ou outro rascunho).
-   * Evita que o appointmentIds de rascunhos fique com referências obsoletas.
-   */
   const releaseFromOtherDrafts = async (idsBeingMoved: string[], targetBatchId: string) => {
     const draftBatches = batches.filter(
       b => b.status === BillingBatchStatus.DRAFT && b.id !== targetBatchId
@@ -70,17 +67,11 @@ export function createBillingActions({
     }
   };
 
-  /**
-   * Congela o preço calculado nos atendimentos particulares que ainda não têm
-   * customPrice definido. Isso evita que alterações futuras no cadastro do
-   * paciente (customer.customPrice) afetem retroativamente atendimentos já faturados.
-   */
   const snapshotParticularPrices = async (appIds: string[]) => {
     const updates: Promise<any>[] = [];
     for (const id of appIds) {
       const app = appointments.find(a => a.id === id);
       if (!app) continue;
-      // Só congela se o atendimento ainda não tem preço fixo definido
       if (app.customPrice != null) continue;
       const customer = customers.find(c => c.id === app.customerId);
       const effectivePlan = app.healthPlanAtTime ?? customer?.healthPlan;
@@ -89,7 +80,6 @@ export function createBillingActions({
       if (price <= 0) continue;
       updates.push(
         api.updateAppointment(id, { customPrice: price }).then(() => {
-          // Atualiza o estado local para refletir o snapshot
           setAppointments(prev =>
             prev.map(a => a.id === id ? { ...a, customPrice: price } : a)
           );
@@ -99,45 +89,44 @@ export function createBillingActions({
     if (updates.length > 0) await Promise.all(updates);
   };
 
-  /** Cria o lote diretamente como ENVIADO (via "Revisar e Gerar Lote"). */
   const handleCreateBatch = async () => {
     if (!batchNumber || selectedAppointmentIds.length === 0) return;
-    // Soma em centavos (inteiros) para evitar erros de floating-point
     const totalAmount = appointments
       .filter(a => selectedAppointmentIds.includes(a.id))
       .reduce((sum, a) => sum + Math.round(getAppPrice(a) * 100), 0) / 100;
     try {
-      // Congela preço dos atendimentos particulares antes de criar o lote
       await snapshotParticularPrices(selectedAppointmentIds);
       const batch = await api.createBillingBatch({
         batchNumber, sentAt: new Date().toISOString(),
         status: BillingBatchStatus.SENT, healthPlan: selectedPlan,
         totalAmount, appointmentIds: selectedAppointmentIds,
       });
-      // Remove os atendimentos de eventuais rascunhos onde estavam antes
       await releaseFromOtherDrafts(selectedAppointmentIds, batch.id);
       await syncAppointmentsBatch(batch.id, [], selectedAppointmentIds);
+      
+      // Auditoria de paridade
+      auditPriceParity(selectedAppointmentIds, appointments, customers, plans, getAppPrice);
+      
       setIsCreateModalOpen(false);
       setSelectedAppointmentIds([]);
       setEditingDraftBatch(null);
       toastSuccess('Lote criado e enviado com sucesso!');
       fetchData();
     } catch (error) {
-      console.error('Error creating batch:', error);
+      logger.critical('billing.handleCreateBatch', error, {
+        appointmentIds: selectedAppointmentIds, totalAmount, healthPlan: selectedPlan,
+      });
       toastError('Erro ao criar lote.');
     }
   };
 
-  /** Salva como Rascunho (DRAFT). Mescla com rascunho existente se houver. */
   const handleSaveAsDraft = async () => {
     if (selectedAppointmentIds.length === 0) return;
-    // Soma em centavos (inteiros) para evitar erros de floating-point
     const totalAmount = appointments
       .filter(a => selectedAppointmentIds.includes(a.id))
       .reduce((sum, a) => sum + Math.round(getAppPrice(a) * 100), 0) / 100;
     try {
       if (editingDraftBatch) {
-        // Libera atendimentos que estavam em OUTROS rascunhos (não o que está sendo editado)
         await releaseFromOtherDrafts(selectedAppointmentIds, editingDraftBatch.id);
         await syncAppointmentsBatch(editingDraftBatch.id, editingDraftBatch.appointmentIds, selectedAppointmentIds);
         await api.updateBillingBatch(editingDraftBatch.id, { appointmentIds: selectedAppointmentIds, totalAmount });
@@ -153,7 +142,6 @@ export function createBillingActions({
         if (existingDraft) {
           const mergedIds   = [...new Set([...existingDraft.appointmentIds, ...selectedAppointmentIds])];
           const mergedTotal = appointments.filter(a => mergedIds.includes(a.id)).reduce((sum, a) => sum + Math.round(getAppPrice(a) * 100), 0) / 100;
-          // Libera atendimentos de outros rascunhos antes de adicionar ao rascunho atual
           await releaseFromOtherDrafts(selectedAppointmentIds, existingDraft.id);
           await syncAppointmentsBatch(existingDraft.id, existingDraft.appointmentIds, mergedIds);
           await api.updateBillingBatch(existingDraft.id, { appointmentIds: mergedIds, totalAmount: mergedTotal });
@@ -166,10 +154,9 @@ export function createBillingActions({
             status: BillingBatchStatus.DRAFT, healthPlan: selectedPlan,
             totalAmount, appointmentIds: selectedAppointmentIds,
           });
-          // Libera atendimentos de outros rascunhos antes de criar o novo rascunho
           await releaseFromOtherDrafts(selectedAppointmentIds, batch.id);
           await syncAppointmentsBatch(batch.id, [], selectedAppointmentIds);
-          toastSuccess('Rascunho salvo! Continue adicionando atendimentos quando quiser.');
+          toastSuccess('Rascunho salvo!');
         }
         setIsCreateModalOpen(false);
         setSelectedAppointmentIds([]);
@@ -182,7 +169,6 @@ export function createBillingActions({
     }
   };
 
-  /** Adiciona UM atendimento rapidamente ao rascunho ativo. */
   const handleQuickAddToDraft = async (appId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     const app = appointments.find(a => a.id === appId);
@@ -197,7 +183,7 @@ export function createBillingActions({
         const newIds = [...existingDraft.appointmentIds, appId];
         await api.updateBillingBatch(existingDraft.id, { appointmentIds: newIds, totalAmount: existingDraft.totalAmount + appPrice });
         await api.updateAppointment(appId, { billingBatchId: existingDraft.id });
-        toastSuccess('Adicionado ao rascunho existente!');
+        toastSuccess('Adicionado ao rascunho!');
       } else {
         const draftBatchNumber = generateBatchNumber(selectedPlan, monthFilter, true);
         const batch = await api.createBillingBatch({
@@ -206,7 +192,7 @@ export function createBillingActions({
           totalAmount: appPrice, appointmentIds: [appId],
         });
         await api.updateAppointment(appId, { billingBatchId: batch.id });
-        toastSuccess('Rascunho criado! Atendimento adicionado.');
+        toastSuccess('Rascunho criado!');
       }
       setAppointments(prev =>
         prev.map(a => a.id === appId ? { ...a, billingBatchId: existingDraft?.id || 'pending-refresh' } : a)
@@ -218,27 +204,30 @@ export function createBillingActions({
     }
   };
 
-  /** Finaliza um rascunho: status DRAFT → SENT. */
   const handleFinalizeBatch = async () => {
     if (!editingDraftBatch || !batchNumber || selectedAppointmentIds.length === 0) return;
     const totalAmount      = appointments.filter(a => selectedAppointmentIds.includes(a.id)).reduce((sum, a) => sum + Math.round(getAppPrice(a) * 100), 0) / 100;
     const finalBatchNumber = batchNumber.startsWith('RASCUNHO-')
       ? generateBatchNumber(selectedPlan, monthFilter, false) : batchNumber;
     try {
-      // Congela preço dos atendimentos particulares antes de finalizar o lote
       await snapshotParticularPrices(selectedAppointmentIds);
       await syncAppointmentsBatch(editingDraftBatch.id, editingDraftBatch.appointmentIds, selectedAppointmentIds);
       await api.updateBillingBatch(editingDraftBatch.id, {
         batchNumber: finalBatchNumber, sentAt: new Date().toISOString(),
         status: BillingBatchStatus.SENT, appointmentIds: selectedAppointmentIds, totalAmount,
       });
+      
+      auditPriceParity(selectedAppointmentIds, appointments, customers, plans, getAppPrice);
+
       setIsCreateModalOpen(false);
       setSelectedAppointmentIds([]);
       setEditingDraftBatch(null);
-      toastSuccess(`Lote ${finalBatchNumber} finalizado e enviado!`);
+      toastSuccess(`Lote ${finalBatchNumber} finalizado!`);
       fetchData();
     } catch (error) {
-      console.error('Error finalizing batch:', error);
+      logger.critical('billing.handleFinalizeBatch', error, {
+        batchId: editingDraftBatch?.id, appointmentIds: selectedAppointmentIds, totalAmount,
+      });
       toastError('Erro ao finalizar lote.');
     }
   };
@@ -265,22 +254,24 @@ export function createBillingActions({
       setBatchToPay(null);
       fetchData();
     } catch (error) {
-      console.error('Error processing payment:', error);
+      logger.critical('billing.submitPayment', error, {
+        batchId: batchToPay?.id, appointmentIds: batchToPay?.appointmentIds,
+      });
+      toastError('Erro ao registrar pagamento.');
     }
   };
 
   const handleDeleteBatch = async (id: string) => {
     const batch   = batches.find(b => b.id === id);
     const isDraft = batch?.status === BillingBatchStatus.DRAFT;
-    const msg     = isDraft
-      ? 'Deseja excluir este rascunho? Os atendimentos voltarão a ficar disponíveis.'
-      : 'Deseja realmente excluir este lote? Os atendimentos voltarão a ficar disponíveis para faturamento.';
+    const msg     = isDraft ? 'Deseja excluir este rascunho?' : 'Deseja realmente excluir este lote?';
     if (!confirm(msg)) return;
     try {
       await api.deleteBillingBatch(id);
       fetchData();
     } catch (error) {
-      console.error('Error deleting batch:', error);
+      logger.failure('billing.handleDeleteBatch', error, { batchId: id });
+      toastError('Erro ao excluir lote.');
     }
   };
 
@@ -298,8 +289,6 @@ export function createBillingActions({
         'Horário': app.startTime,
         'Valor (R$)': getAppPrice(app),
         'Status de Faturamento': app.billingStatus === 'paid' ? 'Pago' : app.billingStatus === 'denied' ? 'Glosa' : 'Pendente',
-        'Motivo Glosa': app.denialReason || '',
-        'Resolução Glosa': app.denialResolution === 'appealed' ? 'Recursada' : app.denialResolution === 'accepted' ? 'Aceite' : '',
       };
     });
     exportToExcel(exportData, `Lote_${batch.batchNumber}_${batch.healthPlan}_${format(new Date(), 'yyyyMMdd')}`, 'Atendimentos');
@@ -311,21 +300,18 @@ export function createBillingActions({
       await api.updateAppointment(id, { confirmedPsychologist: true });
       setAppointments(prev => prev.map(a => a.id === id ? { ...a, confirmedPsychologist: true } : a));
     } catch (error) {
-      console.error('Error confirming appointment:', error);
-      toastError('Não foi possível confirmar o atendimento. Tente novamente.');
+      toastError('Erro ao confirmar.');
     }
   };
 
   const handleIgnoreAppointment = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!confirm('Ignorar este atendimento no faturamento? Ele ficará visível na lista mas bloqueado para seleção. Você pode desfazer depois.')) return;
+    if (!confirm('Ignorar atendimento?')) return;
     try {
       await api.updateAppointment(id, { billingIgnored: true });
       setAppointments(prev => prev.map(a => a.id === id ? { ...a, billingIgnored: true } : a));
       setSelectedAppointmentIds(prev => prev.filter(i => i !== id));
-    } catch (error) {
-      console.error('Error ignoring appointment:', error);
-    }
+    } catch (error) { console.error(error); }
   };
 
   const handleUnignoreAppointment = async (id: string, e: React.MouseEvent) => {
@@ -333,9 +319,7 @@ export function createBillingActions({
     try {
       await api.updateAppointment(id, { billingIgnored: false });
       setAppointments(prev => prev.map(a => a.id === id ? { ...a, billingIgnored: false } : a));
-    } catch (error) {
-      console.error('Error unignoring appointment:', error);
-    }
+    } catch (error) { console.error(error); }
   };
 
   return {

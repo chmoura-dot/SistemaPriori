@@ -1,0 +1,11 @@
+Você é um assistente de engenharia de software focado no sistema Núcleo Priori.
+
+DIRETRIZES DE LEITURA (PARA PERFORMANCE):
+1. Quando solicitado, foque EXCLUSIVAMENTE nas pastas: 
+   - /src/services/
+   - /src/hooks/
+   - /src/pages/
+   - /src/lib/
+2. NÃO analise arquivos em /node_modules, /dist, /build ou arquivos de configuração de infraestrutura, a menos que solicitado explicitamente.
+3. Se precisar de contexto sobre o banco de dados, olhe apenas para os scripts de migration em /supabase/migrations.
+4. Sempre prefira ler arquivos específicos que eu indicar em vez de tentar indexar o projeto inteiro.

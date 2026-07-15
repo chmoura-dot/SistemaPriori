@@ -2,7 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Plus, Search, Upload, Users, AlertCircle, Edit2 } from 'lucide-react';
 import { api } from '../services/api';
 import { supabase } from '../lib/supabase';
-import { Customer, CustomerStatus, HealthPlan, InactivationReason, Psychologist } from '../services/types';
+import { Customer, CustomerStatus, HealthPlan, Psychologist } from '../services/types';
+
 import { Button } from '../components/Button';
 import { cn } from '../lib/utils';
 import { CustomerFormData, CustomerFormModal } from './customers/CustomerFormModal';
@@ -162,48 +163,14 @@ export const CustomersPage = () => {
     if (!inactivateId) return;
     setIsSaving(true);
     try {
-      const customer = customers.find(c => c.id === inactivateId);
-      const psy = psychologists.find(p => p.id === customer?.psychologistId);
-
-      // 1. Atualizar status do paciente
-      await api.updateCustomer(inactivateId, { status: CustomerStatus.INACTIVE, inactivationReason: reason as unknown as InactivationReason } as any);
-
-      // 2. Cancelar todas as consultas futuras do paciente
-      const today = new Date().toISOString().split('T')[0];
-      const { data: futureApps, error: fetchErr } = await supabase
-        .from('appointments')
-        .select('id')
-        .eq('customer_id', inactivateId)
-        .gte('date', today)
-        .in('status', ['active', 'released']);
-
-      if (fetchErr) console.error('[Inativação] Erro ao buscar consultas futuras:', fetchErr.message);
-
-      const futureIds = (futureApps || []).map(a => a.id);
-      if (futureIds.length > 0) {
-        const { error: cancelErr } = await supabase
-          .from('appointments')
-          .update({ status: 'canceled', cancellation_billing: 'none' })
-          .in('id', futureIds);
-        if (cancelErr) console.error('[Inativação] Erro ao cancelar consultas:', cancelErr.message);
-      }
-
-      // 3. Registrar evento de alta (discharge_events) para notificação ao admin
-      await supabase.from('discharge_events').insert({
-        customer_id: inactivateId,
-        psychologist_id: customer?.psychologistId || null,
-        customer_name: customer?.name || 'Paciente',
-        psychologist_name: psy?.name || 'Psicólogo',
-        appointments_canceled: futureIds.length,
+      // Transação atômica: inativa paciente, cancela consultas futuras, registra
+      // evento de alta e pausa assinaturas em uma única chamada. Se qualquer etapa
+      // falhar, o Postgres reverte todas as anteriores (sem dados órfãos).
+      const { error } = await supabase.rpc('inactivate_customer', {
+        p_customer_id: inactivateId,
+        p_reason: reason,
       });
-
-      // 4. Pausar assinaturas ativas do paciente
-      const { error: subErr } = await supabase
-        .from('subscriptions')
-        .update({ status: 'inactive' })
-        .eq('customer_id', inactivateId)
-        .eq('status', 'active');
-      if (subErr) console.error('[Inativação] Erro ao pausar assinaturas:', subErr.message);
+      if (error) throw error;
 
       await loadData();
       setInactivateId(null);
@@ -211,6 +178,7 @@ export const CustomersPage = () => {
     } catch (err: any) { alert(err.message || 'Erro ao inativar paciente'); }
     finally { setIsSaving(false); }
   };
+
 
   const handleBulkApply = async (changes: { healthPlan?: HealthPlan; psychologistId?: string }) => {
     setIsSaving(true);

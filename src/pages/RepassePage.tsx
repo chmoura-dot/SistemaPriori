@@ -29,6 +29,9 @@ import { cn } from '../lib/utils';
 import { calcRepass } from '../lib/repassRules';
 import { getAppPrice, getAmsNeuropsicoSessionIndex, PricingContext } from '../lib/pricing';
 import { matchPlanByHealthPlan } from '../services/supabase/helpers';
+import { supabase } from '../lib/supabase';
+import { logger } from '../lib/logger';
+
 
 const fmt = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 
@@ -163,10 +166,56 @@ function getExpectedRepass(
 }
 
 /**
+ * Monta o item enviado à RPC check_repass_integrity para um atendimento.
+ * O frontend resolve o gross (getAppPrice) e o plan_repass (procedure.repassAmount)
+ * — que dependem de contexto complexo (neuropsico/AMS/TUSS) — e o SERVIDOR resolve
+ * a regra do psicólogo (repass_rate/fixed/overridesPlan), fonte das divergências.
+ */
+function buildRepassItem(
+  app: Appointment,
+  customers: Customer[],
+  plans: Plan[],
+  pricingCtx: PricingContext,
+): { gross: number; app_repass: number | null; customer_repass: number | null; plan_repass: number | null } {
+  const gross = getAppPrice(app, pricingCtx);
+  const customer = customers.find(c => c.id === app.customerId);
+
+  // Resolve plan_repass com a MESMA lógica do getRepassValue (step 4)
+  let plan_repass: number | null = null;
+  if (gross > 0) {
+    const plan = matchPlanByHealthPlan(plans, customer?.healthPlan);
+    let resolvedProcCode = app.procedureCode;
+    if (
+      !resolvedProcCode &&
+      customer?.healthPlan === HealthPlan.AMS_PETROBRAS &&
+      app.type === AppointmentType.NEUROPSICOLOGICA
+    ) {
+      const sessionIdx = getAmsNeuropsicoSessionIndex(app, pricingCtx);
+      if (sessionIdx === 1 || sessionIdx === 2) resolvedProcCode = '95090010';
+    }
+    const procedureByCode = resolvedProcCode
+      ? plan?.procedures?.find(p => p.code === resolvedProcCode)
+      : undefined;
+    const procedure = procedureByCode ?? plan?.procedures?.find(p => p.type === app.type);
+    if (procedure?.repassAmount != null && procedure.repassAmount > 0) {
+      plan_repass = procedure.repassAmount;
+    }
+  }
+
+  return {
+    gross,
+    app_repass: app.customRepassAmount ?? null,
+    customer_repass: customer?.customRepassAmount ?? null,
+    plan_repass,
+  };
+}
+
+/**
  * Verifica se o atendimento tem um customRepassAmount que diverge (≥ R$1)
  * do valor que seria calculado automaticamente.
  */
 function checkDivergence(
+
   app: Appointment,
   customers: Customer[],
   plans: Plan[],
@@ -517,7 +566,55 @@ export const RepassePage = () => {
 
     setIsGenerating(`${group.psyId}-${group.batch.id}`);
     try {
+      // ── Monitor de paridade financeira (Fase 2) ────────────────────────────
+      // Antes de gravar, o servidor recalcula o repasse esperado resolvendo a
+      // regra do psicólogo (repass_rate/fixed/overridesPlan) de forma autoritativa.
+      // Se o total do servidor divergir do calculado no front (≥ R$1), bloqueia a
+      // gravação e registra a divergência em operation_failures (logger.critical).
+      try {
+        const pricingCtx: PricingContext = { customers, plans, appointments };
+        const items = group.appIds
+          .map(id => appointments.find(a => a.id === id))
+          .filter((a): a is Appointment => !!a)
+          .map(app => buildRepassItem(app, customers, plans, pricingCtx));
+
+        const { data: parity, error: parityError } = await supabase.rpc('check_repass_integrity', {
+          p_psychologist_id: group.psyId,
+          p_items: items,
+        });
+
+        if (parityError) throw parityError;
+
+        const serverTotal = Number(parity?.expected_total ?? NaN);
+        if (!Number.isNaN(serverTotal) && Math.abs(serverTotal - group.total) >= 1) {
+          await logger.critical('repasse.parityMismatch', 'Divergência entre repasse do front e do servidor', {
+            psychologistId: group.psyId,
+            batchId: group.batch.id,
+            frontTotal: group.total,
+            serverTotal,
+            appointmentIds: group.appIds,
+          });
+          const proceed = confirm(
+            `⚠️ Divergência de repasse detectada!\n\n` +
+            `Valor calculado no sistema: R$ ${group.total.toFixed(2)}\n` +
+            `Valor esperado pelo servidor: R$ ${serverTotal.toFixed(2)}\n\n` +
+            `Esta diferença foi registrada para auditoria. Deseja gravar assim mesmo?`,
+          );
+          if (!proceed) {
+            setIsGenerating(null);
+            return;
+          }
+        }
+      } catch (parityErr) {
+        // Falha na verificação não deve travar a operação — apenas registra.
+        await logger.failure('repasse.parityCheckFailed', parityErr, {
+          psychologistId: group.psyId,
+          batchId: group.batch.id,
+        });
+      }
+
       const created = await api.createRepasse({
+
         psychologistId: group.psyId,
         billingBatchId: group.batch.id,
         appointmentIds: group.appIds,

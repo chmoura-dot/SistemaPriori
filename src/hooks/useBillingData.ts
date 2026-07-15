@@ -5,7 +5,7 @@ import {
   BillingBatch, BillingBatchStatus, Appointment, AppointmentStatus,
   Customer, Plan, Psychologist, HealthPlan,
 } from '../services/types';
-import { createBillingHelpers, syncAppointmentsBatch } from './billing/billingHelpers';
+import { createBillingHelpers, syncAppointmentsBatch, AppointmentPaymentStatus } from './billing/billingHelpers';
 import { createBillingActions } from './billing/billingActions';
 
 export type { AppointmentPaymentStatus } from './billing/billingHelpers';
@@ -37,25 +37,18 @@ export function useBillingData() {
   // ─── Estado do auto-save ──────────────────────────────────────────────────
   const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
   const autoSaveTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const skipAutoSaveRef   = useRef(false);  // impede auto-save no carregamento inicial do rascunho
+  const skipAutoSaveRef   = useRef(false);
 
   // ─── Estado do modal de pagamento ─────────────────────────────────────────
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [batchToPay, setBatchToPay]                 = useState<BillingBatch | null>(null);
-  const [appointmentStatuses, setAppointmentStatuses] = useState<Record<string, import('./billing/billingHelpers').AppointmentPaymentStatus>>({});
+  const [appointmentStatuses, setAppointmentStatuses] = useState<Record<string, AppointmentPaymentStatus>>({});
 
   useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      await fetchData();
-    };
-    load();
-    return () => { cancelled = true; };
+    fetchData();
   }, []);
 
-  // ─── Auto-save do rascunho quando selectedAppointmentIds muda ────────────
   useEffect(() => {
-    // Ignora o carregamento inicial dos IDs ao abrir o modal
     if (skipAutoSaveRef.current) { skipAutoSaveRef.current = false; return; }
     if (!editingDraftBatch) return;
 
@@ -71,17 +64,10 @@ export function useBillingData() {
         });
         const totalAmount = appointments
           .filter(a => selectedAppointmentIds.includes(a.id))
-          .reduce((sum, a) => sum + price(a), 0);
+          .reduce((sum, a) => sum + Math.round(price(a) * 100), 0) / 100;
         await syncAppointmentsBatch(editingDraftBatch.id, editingDraftBatch.appointmentIds, selectedAppointmentIds);
-        await import('../services/api').then(({ api }) =>
-          api.updateBillingBatch(editingDraftBatch.id, { appointmentIds: selectedAppointmentIds, totalAmount })
-        );
-        // Sincroniza prevIds para que o próximo auto-save use a referência correta.
-        // Sem isso, atendimentos adicionados e depois desselecionados ficam com
-        // billingBatchId "zumbi" porque o diff não consegue identificá-los para remoção.
-        setEditingDraftBatch(prev =>
-          prev ? { ...prev, appointmentIds: [...selectedAppointmentIds] } : prev
-        );
+        await api.updateBillingBatch(editingDraftBatch.id, { appointmentIds: selectedAppointmentIds, totalAmount });
+        setEditingDraftBatch(prev => prev ? { ...prev, appointmentIds: [...selectedAppointmentIds] } : prev);
         setAutoSaveStatus('saved');
         setTimeout(() => setAutoSaveStatus('idle'), 2500);
       } catch (err) {
@@ -89,7 +75,6 @@ export function useBillingData() {
         setAutoSaveStatus('idle');
       }
     }, 1000);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedAppointmentIds]);
 
   const fetchData = async () => {
@@ -109,61 +94,14 @@ export function useBillingData() {
     }
   };
 
-  // ─── Helpers gerados a partir do estado atual ─────────────────────────────
   const helpers = createBillingHelpers({
     appointments, customers, plans, batches,
     neuropsicoDecisions, selectedPlan, monthFilter,
     includePrevMonth, includeNextMonth, selectedAppointmentIds, editingDraftBatch,
   });
 
-  /** Corrige o valor (customPrice) de um atendimento já faturado, persistindo no banco. */
-  const handleUpdateAppointmentPrice = async (id: string, newPrice: number) => {
-    try {
-      await api.updateAppointment(id, { customPrice: newPrice });
-      setAppointments(prev => prev.map(a => a.id === id ? { ...a, customPrice: newPrice } : a));
-    } catch (err) {
-      logger.error('Erro ao atualizar valor do atendimento:', err);
-    }
-  };
-
-  /** Override manual do código TUSS de um atendimento (persiste no banco).
-   *  Usa optimistic update para que o valor exibido atualize imediatamente,
-   *  sem esperar a resposta da API do Supabase.
-   *  Também limpa customPrice para que o preço do procedimento selecionado
-   *  seja refletido sem que um valor antigo "trave" o preço exibido.
-   */
-  const handleOverrideProcedureCode = async (id: string, newCode: string) => {
-    // Captura valores anteriores para rollback em caso de erro
-    const prevApp = appointments.find(a => a.id === id);
-    const previousCode = prevApp?.procedureCode;
-    const previousCustomPrice = prevApp?.customPrice;
-
-    // Optimistic update: atualiza código E limpa customPrice
-    setAppointments(prev => prev.map(a => a.id === id ? {
-      ...a,
-      procedureCode: newCode || undefined,
-      customPrice: undefined,
-    } : a));
-
-    try {
-      await api.updateAppointment(id, {
-        procedureCode: newCode || null,
-        customPrice: null,
-      } as any);
-    } catch (err) {
-      logger.error('Erro ao atualizar código de procedimento:', err);
-      // Rollback: restaura código E customPrice anteriores
-      setAppointments(prev => prev.map(a => a.id === id ? {
-        ...a,
-        procedureCode: previousCode,
-        customPrice: previousCustomPrice,
-      } : a));
-    }
-  };
-
-  // ─── Actions geradas a partir do estado atual ─────────────────────────────
   const actions = createBillingActions({
-    batches, appointments, customers, psychologists,
+    batches, appointments, customers, psychologists, plans,
     selectedPlan, monthFilter, batchNumber, selectedAppointmentIds,
     editingDraftBatch, appointmentStatuses, batchToPay,
     getAppPrice: helpers.getAppPrice,
@@ -173,124 +111,56 @@ export function useBillingData() {
     setAppointments, setBatchToPay, setIsPaymentModalOpen, setAppointmentStatuses,
   });
 
-  // ─── Handlers de UI (seleção, toggle, abertura de modal) ─────────────────
-  const toggleAppointmentSelection = (id: string) => {
-    const app = appointments.find(a => a.id === id);
-    if (app?.billingIgnored) return;
-    if (app?.status === AppointmentStatus.CANCELED && (!app?.cancellationBilling || app?.cancellationBilling === 'none')) return;
-    setSelectedAppointmentIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
-  };
-
-  const toggleNeuropsicoDecision = (id: string, value: boolean) => {
-    setNeuropsicoDecisions(prev => ({ ...prev, [id]: value }));
-  };
-
-  const updateAppointmentPaymentStatus = (id: string, update: Partial<import('./billing/billingHelpers').AppointmentPaymentStatus>) => {
-    setAppointmentStatuses(prev => ({ ...prev, [id]: { ...prev[id], ...update } }));
-  };
+  const toggleNeuropsicoDecision = (id: string, value: boolean) => setNeuropsicoDecisions(prev => ({ ...prev, [id]: value }));
+  const updateAppointmentPaymentStatus = (id: string, update: Partial<AppointmentPaymentStatus>) => setAppointmentStatuses(prev => ({ ...prev, [id]: { ...prev[id], ...update } }));
 
   const openCreateModal = (draftBatch?: BillingBatch) => {
-    const now   = new Date();
+    const now = new Date();
     const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     if (draftBatch) {
-      const draftMonth = draftBatch.sentAt.substring(0, 7);
-      skipAutoSaveRef.current = true; // impede auto-save ao carregar IDs iniciais do rascunho
-      setEditingDraftBatch(draftBatch);
-      setSelectedPlan(draftBatch.healthPlan);
-      setMonthFilter(draftMonth);
-      setBatchNumber(draftBatch.batchNumber);
+      skipAutoSaveRef.current = true;
+      setEditingDraftBatch(draftBatch); setSelectedPlan(draftBatch.healthPlan);
+      setMonthFilter(draftBatch.sentAt.substring(0, 7)); setBatchNumber(draftBatch.batchNumber);
       setSelectedAppointmentIds([...draftBatch.appointmentIds]);
     } else {
-      const blockedPlans = helpers.getPlansWithEarlierDrafts(month);
-      let planToUse = selectedPlan;
-      if (blockedPlans.has(planToUse)) {
-        const firstAvailable = Object.values(HealthPlan).find(p => !blockedPlans.has(p));
-        if (firstAvailable) planToUse = firstAvailable;
-      }
-      setSelectedPlan(planToUse);
-      setEditingDraftBatch(null);
-      setMonthFilter(month);
-      setBatchNumber(helpers.generateBatchNumber(planToUse, month));
-      setSelectedAppointmentIds([]);
+      const planToUse = selectedPlan;
+      setEditingDraftBatch(null); setMonthFilter(month);
+      setBatchNumber(helpers.generateBatchNumber(planToUse, month)); setSelectedAppointmentIds([]);
     }
-    setIncludePrevMonth(false);
-    setIncludeNextMonth(false);
-    setPatientFilter('');
-    setIsCreateModalOpen(true);
+    setIncludePrevMonth(false); setIncludeNextMonth(false); setPatientFilter(''); setIsCreateModalOpen(true);
   };
 
-  const closeCreateModal = () => {
-    setIsCreateModalOpen(false);
-    setPatientFilter('');
-    setMonthFilter('');
-    setEditingDraftBatch(null);
-    setIncludePrevMonth(false);
-    setIncludeNextMonth(false);
-    setSelectedAppointmentIds([]);
-  };
+  const closeCreateModal = () => { setIsCreateModalOpen(false); setPatientFilter(''); setMonthFilter(''); setEditingDraftBatch(null); setSelectedAppointmentIds([]); };
+  const handlePlanChange = (plan: HealthPlan) => { setSelectedPlan(plan); setSelectedAppointmentIds([]); setBatchNumber(helpers.generateBatchNumber(plan, monthFilter, editingDraftBatch !== null)); };
+  const handleMonthFilterChange = (month: string) => { setMonthFilter(month); setSelectedAppointmentIds([]); setBatchNumber(helpers.generateBatchNumber(selectedPlan, month, editingDraftBatch !== null)); };
+  const toggleAppointmentSelection = (id: string) => { const app = appointments.find(a => a.id === id); if (app?.billingIgnored || (app?.status === AppointmentStatus.CANCELED && (!app?.cancellationBilling || app?.cancellationBilling === 'none'))) return; setSelectedAppointmentIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]); };
 
-  const handlePlanChange = (plan: HealthPlan) => {
-    setSelectedPlan(plan);
-    setSelectedAppointmentIds([]);
-    setPatientFilter('');
-    setBatchNumber(helpers.generateBatchNumber(plan, monthFilter, editingDraftBatch !== null));
-  };
-
-  const handleMonthFilterChange = (month: string) => {
-    setMonthFilter(month);
-    setSelectedAppointmentIds([]);
-    setBatchNumber(helpers.generateBatchNumber(selectedPlan, month, editingDraftBatch !== null));
-  };
+  const handleUpdateAppointmentPrice = async (id: string, newPrice: number) => { await api.updateAppointment(id, { customPrice: newPrice }); setAppointments(prev => prev.map(a => a.id === id ? { ...a, customPrice: newPrice } : a)); };
+  const handleOverrideProcedureCode = async (id: string, newCode: string) => { try { await api.updateAppointment(id, { procedureCode: newCode || null, customPrice: null } as any); setAppointments(p => p.map(a => a.id === id ? { ...a, procedureCode: newCode || undefined, customPrice: undefined } : a)); } catch (err) { logger.error('Erro:', err); } };
 
   // ─── Valores derivados ────────────────────────────────────────────────────
-  const draftBatches       = batches.filter(b => b.status === BillingBatchStatus.DRAFT);
-  const pendingBatches     = batches.filter(b => b.status === BillingBatchStatus.SENT);
+  const draftBatches = batches.filter(b => b.status === BillingBatchStatus.DRAFT);
+  const pendingBatches = batches.filter(b => b.status === BillingBatchStatus.SENT);
   const totalPendingAmount = pendingBatches.reduce((acc, b) => acc + b.totalAmount, 0);
-  const paidBatches        = batches.filter(b => b.status === BillingBatchStatus.PAID);
-  const totalPaidAmount    = paidBatches.reduce((acc, b) => acc + b.totalAmount, 0);
-  const totalDenied        = appointments.filter(a => a.billingStatus === 'denied').length;
-  const totalDraftAmount   = draftBatches.reduce((acc, b) => acc + b.totalAmount, 0);
+  const paidBatches = batches.filter(b => b.status === BillingBatchStatus.PAID);
+  const totalPaidAmount = paidBatches.reduce((acc, b) => acc + b.totalAmount, 0);
+  const totalDenied = appointments.filter(a => a.billingStatus === 'denied').length;
+  const totalDraftAmount = draftBatches.reduce((acc, b) => acc + b.totalAmount, 0);
 
   return {
-    // Data
-    batches, appointments, customers, psychologists, plans, isLoading,
-    autoSaveStatus,
-    // Derived
+    batches, appointments, customers, psychologists, plans, isLoading, autoSaveStatus,
     draftBatches, pendingBatches, totalPendingAmount, totalPaidAmount, totalDenied, totalDraftAmount,
-    // Create/Edit Modal
-    isCreateModalOpen, openCreateModal, closeCreateModal,
-    editingDraftBatch,
-    selectedPlan, setSelectedPlan,
-    batchNumber, setBatchNumber,
-    selectedAppointmentIds, setSelectedAppointmentIds,
-    neuropsicoDecisions,
-    toggleNeuropsicoDecision,
-    patientFilter, setPatientFilter,
-    monthFilter, setMonthFilter,
-    includePrevMonth, setIncludePrevMonth,
-    includeNextMonth, setIncludeNextMonth,
-    // Details Modal
-    selectedBatch, setSelectedBatch,
-    // Payment Modal
-    isPaymentModalOpen, setIsPaymentModalOpen,
-    batchToPay, appointmentStatuses,
+    isCreateModalOpen, openCreateModal, closeCreateModal, editingDraftBatch,
+    selectedPlan, setSelectedPlan, batchNumber, setBatchNumber,
+    selectedAppointmentIds, setSelectedAppointmentIds, neuropsicoDecisions,
+    toggleNeuropsicoDecision, patientFilter, setPatientFilter,
+    monthFilter, setMonthFilter, includePrevMonth, setIncludePrevMonth,
+    includeNextMonth, setIncludeNextMonth, selectedBatch, setSelectedBatch,
+    isPaymentModalOpen, setIsPaymentModalOpen, batchToPay, appointmentStatuses,
     updateAppointmentPaymentStatus,
-    // Helpers
-    getNeuropsicoStatus:              helpers.getNeuropsicoStatus,
-    getAppPrice:                      helpers.getAppPrice,
-    getTussCode:                      helpers.getTussCode,
-    getAmsNeuropsicoSessionIndex:     helpers.getAmsNeuropsicoSessionIndex,
-    getPlanProcedures:                helpers.getPlanProcedures,
-    getEligibleAppointments:          helpers.getEligibleAppointments,
-    getPlansWithEarlierDrafts:        helpers.getPlansWithEarlierDrafts,
-    calculateTotalSelectedAmount:     helpers.calculateTotalSelectedAmount,
-    getPendingCountByPlan:            helpers.getPendingCountByPlan,
-    toggleAppointmentSelection,
-    handleOverrideProcedureCode,
-    handleUpdateAppointmentPrice,
-    // Handlers
+    ...helpers,
     ...actions,
-    handlePlanChange,
-    handleMonthFilterChange,
+    handlePlanChange, handleMonthFilterChange, toggleAppointmentSelection,
+    handleOverrideProcedureCode, handleUpdateAppointmentPrice
   };
 }
