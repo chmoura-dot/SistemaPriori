@@ -9,12 +9,18 @@ const MONTH_NAMES = [
   'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro',
 ];
 
+interface ForecastDate {
+  date: string;
+  /** Sessão originada de cancelamento faturável (falta do paciente, cobrança mantida) */
+  isCanceledBillable: boolean;
+}
+
 interface ForecastRow {
   customerName: string;
   procedureCode: string;
   procedureDescription: string;
   count: number;
-  dates: string[];
+  dates: ForecastDate[];
 }
 
 interface PlanGroup {
@@ -75,11 +81,24 @@ export const ForecastPage = () => {
     // Mês/ano selecionado no formato YYYY-MM
     const prefix = `${year}-${String(month + 1).padStart(2, '0')}`;
 
-    // Filtrar agendamentos do mês, não-cancelados, não-internos
+    // Determina se um cancelamento é ISENTO de cobrança.
+    // Mesma regra de negócio usada no Faturamento (AppointmentRow.tsx / pricing.ts):
+    //   cancellationBilling 'none' ou vazio → isento (falta do psicólogo / encerramento sem cobrança)
+    //   cancellationBilling 'plan' | 'particular' → cobrança mantida (falta do paciente, horário reservado)
+    const isCanceledExempt = (a: Appointment) =>
+      a.status === AppointmentStatus.CANCELED &&
+      (!a.cancellationBilling || a.cancellationBilling === 'none');
+
+    // Uma sessão faturável originada de cancelamento (falta do paciente) permanece na relação.
+    const isCanceledBillable = (a: Appointment) =>
+      a.status === AppointmentStatus.CANCELED && !isCanceledExempt(a);
+
+    // Filtrar agendamentos do mês, não-internos, excluindo apenas cancelamentos isentos.
+    // Faltas do paciente com cobrança mantida seguem na relação (passíveis de faturamento).
     const monthApps = appointments.filter(a =>
       a.date.startsWith(prefix) &&
-      a.status !== AppointmentStatus.CANCELED &&
-      !a.isInternal
+      !a.isInternal &&
+      !isCanceledExempt(a)
     );
 
     // Mapas rápidos
@@ -87,7 +106,7 @@ export const ForecastPage = () => {
     const planMap = new Map(plans.map(p => [p.name.toUpperCase(), p]));
 
     // Agrupar por plano → paciente+tipo
-    const grouped = new Map<string, Map<string, { app: Appointment; dates: string[]; customer: Customer }>>();
+    const grouped = new Map<string, Map<string, { app: Appointment; dates: ForecastDate[]; customer: Customer }>>();
 
     for (const app of monthApps) {
       const cust = customerMap.get(app.customerId);
@@ -98,13 +117,19 @@ export const ForecastPage = () => {
       if (!grouped.has(hp)) grouped.set(hp, new Map());
       const planBucket = grouped.get(hp)!;
 
+      const forecastDate: ForecastDate = {
+        date: app.date,
+        isCanceledBillable: isCanceledBillable(app),
+      };
+
       const key = `${cust.id}::${app.type}`;
       if (!planBucket.has(key)) {
-        planBucket.set(key, { app, dates: [app.date], customer: cust });
+        planBucket.set(key, { app, dates: [forecastDate], customer: cust });
       } else {
-        planBucket.get(key)!.dates.push(app.date);
+        planBucket.get(key)!.dates.push(forecastDate);
       }
     }
+
 
     // Converter para array de PlanGroup
     const result: PlanGroup[] = [];
@@ -114,8 +139,9 @@ export const ForecastPage = () => {
 
       const rows: ForecastRow[] = [];
       for (const [, data] of patientMap) {
-        const sortedDates = data.dates.sort();
+        const sortedDates = [...data.dates].sort((a, b) => a.date.localeCompare(b.date));
         const proc = plan?.procedures?.find(p => p.type === data.app.type);
+
 
         rows.push({
           customerName: data.customer.name,
@@ -181,8 +207,12 @@ export const ForecastPage = () => {
         <div>
           <h1 className="text-3xl font-bold text-priori-navy tracking-tight">Previsão de Atendimentos</h1>
           <p className="text-zinc-500 mt-1">Relação por plano para solicitação de autorização</p>
+          <p className="text-xs text-zinc-400 mt-1">
+            <span className="font-semibold text-amber-600">*</span> Falta do paciente com cobrança mantida (passível de faturamento)
+          </p>
         </div>
       </div>
+
 
       {/* Controles */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 print:hidden">
@@ -270,8 +300,23 @@ export const ForecastPage = () => {
                         <td className="px-4 py-3 font-mono text-xs text-zinc-600">{row.procedureCode}</td>
                         <td className="px-4 py-3 text-zinc-600">{row.procedureDescription}</td>
                         <td className="px-4 py-3 text-center text-zinc-500 text-xs">
-                          {row.dates.map(d => fmtDate(d)).join(', ')}
+                          {row.dates.map((d, i) => (
+                            <React.Fragment key={d.date + i}>
+                              {i > 0 && ', '}
+                              {d.isCanceledBillable ? (
+                                <span
+                                  title="Falta do paciente — cobrança mantida (passível de faturamento)"
+                                  className="font-semibold text-amber-600"
+                                >
+                                  {fmtDate(d.date)}*
+                                </span>
+                              ) : (
+                                <span>{fmtDate(d.date)}</span>
+                              )}
+                            </React.Fragment>
+                          ))}
                         </td>
+
                         <td className="px-4 py-3 text-center">
                           <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-priori-navy/10 text-priori-navy font-bold text-xs">
                             {row.count}
