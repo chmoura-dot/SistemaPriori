@@ -26,7 +26,7 @@ export const APPOINTMENT_COLUMNS = [
   'health_plan_at_time',
 
   'denial_reason', 'denial_resolution',
-  'cancellation_billing',
+  'cancellation_billing', 'cancellation_fault',
   'is_internal', 'internal_type', 'internal_title', 'internal_notes',
   'created_at',
 ].join(', ');
@@ -152,6 +152,7 @@ export function toAppointment(row: any): Appointment {
     denialResolution: row.denial_resolution ?? undefined,
     createdAt: row.created_at,
     cancellationBilling: row.cancellation_billing ?? undefined,
+    cancellationFault: row.cancellation_fault ?? undefined,
     isInternal: row.is_internal ?? false,
     internalType: row.internal_type ?? undefined,
     internalTitle: row.internal_title ?? undefined,

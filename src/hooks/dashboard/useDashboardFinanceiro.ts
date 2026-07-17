@@ -9,7 +9,7 @@ import {
   AppointmentStatus, HealthPlan, ExpenseCategory,
 } from '../../services/types';
 import { calcRepass } from '../../lib/repassRules';
-import { getAppPrice, PricingContext } from '../../lib/pricing';
+import { getAppPrice, isRepassBlocked, PricingContext } from '../../lib/pricing';
 
 /**
  * Calcula repasse respeitando a hierarquia completa (mesma da RepassePage):
@@ -26,6 +26,9 @@ function getRepassValueForApp(
   findPlan: (hp?: string) => Plan | undefined,
   pricingCtx: PricingContext,
 ): number {
+  // Falta do psicólogo: não há repasse.
+  if (isRepassBlocked(app)) return 0;
+
   const gross = getAppPrice(app, pricingCtx);
   if (gross <= 0) return 0;
 

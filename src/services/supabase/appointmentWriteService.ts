@@ -210,6 +210,7 @@ export const appointmentWriteService = {
     if (a.denialReason !== undefined) updates.denial_reason = a.denialReason;
     if (a.denialResolution !== undefined) updates.denial_resolution = a.denialResolution;
     if (a.cancellationBilling !== undefined) updates.cancellation_billing = a.cancellationBilling;
+    if (a.cancellationFault !== undefined) updates.cancellation_fault = a.cancellationFault;
     if (a.isInternal !== undefined) {
       updates.is_internal = a.isInternal;
       if (a.isInternal) updates.customer_id = null;

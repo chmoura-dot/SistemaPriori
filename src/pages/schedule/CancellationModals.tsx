@@ -16,7 +16,7 @@ interface CancellationModalsProps {
   setCancellationScope: (s: 'single' | 'stop_treatment') => void;
   isRecurring: boolean;
   isSaving: boolean;
-  handleCancelBillingChoice: (mode: 'none' | 'plan' | 'particular') => void;
+  handleCancelBillingChoice: (mode: 'none' | 'plan' | 'particular' | 'psychologist_absence') => void;
   // ── Delete modal ──
   deleteModalAppId: string | null;
   setDeleteModalAppId: (id: string | null) => void;
@@ -173,6 +173,18 @@ export const CancellationModals: React.FC<CancellationModalsProps> = ({
                     <span className="block font-bold text-emerald-700 text-sm">Cobrar Particular</span>
                     <span className="block text-xs text-emerald-600/70 mt-1">
                       Sessão será faturada do particular
+                    </span>
+                  </div>
+                </button>
+                <button
+                  onClick={() => handleCancelBillingChoice('psychologist_absence')}
+                  disabled={isSaving}
+                  className="flex items-center justify-center p-3 border border-red-200 bg-red-50 rounded-xl hover:bg-red-100 transition-colors disabled:opacity-50"
+                >
+                  <div className="text-center">
+                    <span className="block font-bold text-red-700 text-sm">Falta do Psicólogo</span>
+                    <span className="block text-xs text-red-600/70 mt-1">
+                      Não cobra e não repassa (ausência do profissional)
                     </span>
                   </div>
                 </button>

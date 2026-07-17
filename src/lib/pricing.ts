@@ -185,6 +185,21 @@ export function getAppPrice(app: Appointment, ctx: PricingContext): number {
 }
 
 /**
+ * Determina se um atendimento está BLOQUEADO para repasse ao psicólogo.
+ *
+ * Regra de negócio: quando a falta é do PSICÓLOGO, a clínica não fatura nem
+ * paga repasse. Já a falta do PACIENTE (ou sessão realizada) mantém o repasse
+ * normalmente, pois o profissional compareceu / reservou o horário.
+ *
+ * O faturamento (getAppPrice) NÃO usa esta função — uma falta do psicólogo
+ * deve ser marcada como cancellationBilling='none', o que já zera o preço.
+ * Esta guarda protege especificamente o cálculo de repasse.
+ */
+export function isRepassBlocked(app: Appointment): boolean {
+  return app.status === AppointmentStatus.CANCELED && app.cancellationFault === 'psychologist';
+}
+
+/**
  * Calcula a receita total de uma lista de agendamentos,
  * somando getAppPrice para cada um individualmente.
  */

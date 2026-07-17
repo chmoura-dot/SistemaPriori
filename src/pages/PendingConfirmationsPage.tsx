@@ -71,56 +71,40 @@ export const PendingConfirmationsPage = () => {
     } catch { alert('Erro ao reativar agendamento.'); }
   };
 
-  const handleCancelBillingChoice = async (billingMode: 'none' | 'plan' | 'particular' | 'discharge') => {
+  const handleCancelBillingChoice = async (
+    billingMode: 'none' | 'plan' | 'particular' | 'discharge' | 'psychologist_absence'
+  ) => {
     if (!cancellationModalAppId) return;
     try {
       if (billingMode === 'discharge') {
-        // 1. Buscar dados do agendamento atual
+        // Alta / encerramento de tratamento — delegado à RPC atômica
+        // discharge_customer (cancela sessão atual + futuras e registra evento).
         const currentApp = appointments.find(a => a.id === cancellationModalAppId);
         if (!currentApp) throw new Error('Agendamento não encontrado.');
 
-        // 2. Cancelar o agendamento atual (sem cobrança)
+        const { error } = await supabase.rpc('discharge_customer', {
+          p_customer_id: currentApp.customerId,
+          p_psychologist_id: currentApp.psychologistId,
+          p_current_appointment_id: cancellationModalAppId,
+        });
+        if (error) throw new Error(error.message);
+
+        await loadData();
+      } else if (billingMode === 'psychologist_absence') {
+        // Falta do psicólogo → não cobra (billing 'none') e não repassa (fault).
         await api.updateAppointment(cancellationModalAppId, {
           status: AppointmentStatus.CANCELED,
           cancellationBilling: 'none',
+          cancellationFault: 'psychologist',
         });
-
-        // 3. Buscar e cancelar todos os agendamentos futuros do mesmo paciente+psicólogo
-        const today = new Date().toISOString().split('T')[0];
-        const { data: futureApps, error: fetchErr } = await supabase
-          .from('appointments')
-          .select('id')
-          .eq('customer_id', currentApp.customerId)
-          .eq('psychologist_id', currentApp.psychologistId)
-          .gte('date', today)
-          .neq('id', cancellationModalAppId)
-          .in('status', ['active', 'released']);
-
-        if (fetchErr) throw new Error(fetchErr.message);
-
-        const futureIds = (futureApps || []).map(a => a.id);
-        if (futureIds.length > 0) {
-          const { error: cancelErr } = await supabase
-            .from('appointments')
-            .update({ status: 'canceled', cancellation_billing: 'none' })
-            .in('id', futureIds);
-          if (cancelErr) throw new Error(cancelErr.message);
-        }
-
-        // 4. Registrar evento de alta na tabela discharge_events
-        const customer = customers.find(c => c.id === currentApp.customerId);
-        const psy = psychologists.find(p => p.id === currentApp.psychologistId);
-        await supabase.from('discharge_events').insert({
-          customer_id: currentApp.customerId,
-          psychologist_id: currentApp.psychologistId,
-          customer_name: customer?.name || 'Paciente',
-          psychologist_name: psy?.name || 'Psicólogo',
-          appointments_canceled: futureIds.length,
-        });
-
         await loadData();
       } else {
-        await api.updateAppointment(cancellationModalAppId, { status: AppointmentStatus.CANCELED, cancellationBilling: billingMode });
+        // Falta do paciente → cobra conforme escolha e mantém repasse.
+        await api.updateAppointment(cancellationModalAppId, {
+          status: AppointmentStatus.CANCELED,
+          cancellationBilling: billingMode,
+          cancellationFault: 'patient',
+        });
         await loadData();
       }
     } catch (err: any) { alert(`Erro ao registrar falta: ${err.message || err}`); }

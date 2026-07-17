@@ -101,6 +101,7 @@ export interface Appointment {
   denialResolution?: 'accepted' | 'appealed';
   createdAt: string;
   cancellationBilling?: 'none' | 'plan' | 'particular' | null;
+  cancellationFault?: 'patient' | 'psychologist' | null;
   // Campos para horário interno
   isInternal?: boolean;
   internalType?: 'SUPERVISAO' | 'RESPONSAVEIS' | 'REUNIAO' | 'ADMIN' | 'OUTRO';

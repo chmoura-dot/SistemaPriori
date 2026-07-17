@@ -166,7 +166,7 @@ export const useScheduleActions = (s: ScheduleData) => {
     } catch { alert('Erro ao confirmar'); }
   };
 
-  const handleCancelBillingChoice = async (billingMode: 'none' | 'plan' | 'particular') => {
+  const handleCancelBillingChoice = async (billingMode: 'none' | 'plan' | 'particular' | 'psychologist_absence') => {
     if (!s.cancellationModalAppId) return;
     s.setIsSaving(true);
     try {
@@ -176,22 +176,30 @@ export const useScheduleActions = (s: ScheduleData) => {
           body: { appointmentId: s.cancellationModalAppId, reason: s.cancellationReason },
         });
       } catch { logger.error('Erro ao notificar'); }
-      // Cancela o agendamento atual
-      await api.updateAppointment(s.cancellationModalAppId, { status: AppointmentStatus.CANCELED, cancellationBilling: billingMode });
 
-      // Se "encerrar tratamento", cancela todos os futuros do mesmo grupo
-      if (s.cancellationScope === 'stop_treatment' && appointment?.recurrenceGroupId) {
-        const today = s.date;
-        const { data: futureApps } = await supabase
-          .from('appointments')
-          .select('id')
-          .eq('recurrence_group_id', appointment.recurrenceGroupId)
-          .gt('date', today)
-          .neq('status', 'canceled');
-        if (futureApps && futureApps.length > 0) {
-          const ids = futureApps.map((a: any) => a.id);
-          await supabase.from('appointments').update({ status: 'canceled' }).in('id', ids);
-        }
+      if (s.cancellationScope === 'stop_treatment' && appointment) {
+        // Encerramento de tratamento — RPC atômica cancela a sessão atual + todas
+        // as futuras do paciente+psicólogo e registra o evento de alta.
+        const { error } = await supabase.rpc('discharge_customer', {
+          p_customer_id: appointment.customerId,
+          p_psychologist_id: appointment.psychologistId,
+          p_current_appointment_id: s.cancellationModalAppId,
+        });
+        if (error) throw new Error(error.message);
+      } else if (billingMode === 'psychologist_absence') {
+        // Falta do psicólogo → não cobra e não repassa.
+        await api.updateAppointment(s.cancellationModalAppId, {
+          status: AppointmentStatus.CANCELED,
+          cancellationBilling: 'none',
+          cancellationFault: 'psychologist',
+        });
+      } else {
+        // Falta/cancelamento do paciente → cobra conforme escolha e mantém repasse.
+        await api.updateAppointment(s.cancellationModalAppId, {
+          status: AppointmentStatus.CANCELED,
+          cancellationBilling: billingMode,
+          cancellationFault: 'patient',
+        });
       }
       await s.loadData(s.date, true);
     } catch { alert('Erro ao cancelar agendamento'); }

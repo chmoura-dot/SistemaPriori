@@ -153,6 +153,16 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({
               {PLAN_LABELS[customer.healthPlan] ?? customer.healthPlan}
             </span>
           )}
+          {!appointment.isInternal && appointment.status === AppointmentStatus.CANCELED && appointment.cancellationFault && (
+            <span className={cn(
+              'text-[7px] font-black uppercase tracking-tight px-1 py-0.5 rounded-sm mt-0.5 self-start leading-none',
+              appointment.cancellationFault === 'psychologist'
+                ? 'bg-red-100 text-red-600'
+                : 'bg-amber-100 text-amber-700'
+            )}>
+              {appointment.cancellationFault === 'psychologist' ? 'Falta Psicólogo' : 'Falta Paciente'}
+            </span>
+          )}
           {!appointment.isInternal && <StatusIcons appointment={appointment} />}
         </div>
         <div className="flex flex-col gap-1">

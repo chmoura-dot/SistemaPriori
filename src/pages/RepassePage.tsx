@@ -27,7 +27,7 @@ import {
 import { Button } from '../components/Button';
 import { cn } from '../lib/utils';
 import { calcRepass } from '../lib/repassRules';
-import { getAppPrice, getAmsNeuropsicoSessionIndex, PricingContext } from '../lib/pricing';
+import { getAppPrice, getAmsNeuropsicoSessionIndex, isRepassBlocked, PricingContext } from '../lib/pricing';
 import { matchPlanByHealthPlan } from '../services/supabase/helpers';
 import { supabase } from '../lib/supabase';
 import { logger } from '../lib/logger';
@@ -55,6 +55,9 @@ function getRepassValue(
   // Guard primário: se o faturamento é R$0, o repasse também é R$0.
   // Garante que regras de negócio do Faturamento (180 dias neuropsico,
   // AMS 4ª+ sessão, cancelado sem cobrança, etc.) sejam respeitadas.
+  // Falta do psicólogo: não há repasse (a clínica não pagou nem faturou).
+  if (isRepassBlocked(app)) return 0;
+
   const gross = getAppPrice(app, pricingCtx);
   if (gross <= 0) return 0;
 
@@ -130,6 +133,9 @@ function getExpectedRepass(
   psy: Psychologist | undefined,
   pricingCtx: PricingContext,
 ): number {
+  // Falta do psicólogo: não há repasse.
+  if (isRepassBlocked(app)) return 0;
+
   const gross = getAppPrice(app, pricingCtx);
   if (gross <= 0) return 0;
 
