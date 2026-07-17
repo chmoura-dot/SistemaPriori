@@ -229,7 +229,17 @@ function checkDivergence(
   pricingCtx: PricingContext,
 ): RepassDivergence | null {
   if (app.customRepassAmount == null || app.customRepassAmount <= 0) return null;
+  // Aplica os MESMOS guards de getRepassValue antes de comparar. Sem isso, o
+  // customRepassAmount cru do banco (ex: herdado do cadastro do paciente ou de
+  // um reajuste) era comparado contra um "esperado" que respeita as regras de
+  // bloqueio, gerando falsos positivos em sessões que corretamente valem R$0:
+  //  • Falta do psicólogo (isRepassBlocked)
+  //  • Neuropsico bloqueado: 2ª/3ª/4ª+ sessão AMS ou <180 dias (gross <= 0)
+  if (isRepassBlocked(app)) return null;
+  const gross = getAppPrice(app, pricingCtx);
+  if (gross <= 0) return null;
   const expected = getExpectedRepass(app, customers, plans, psy, pricingCtx);
+
   if (Math.abs(app.customRepassAmount - expected) < 1) return null;
   const customer = customers.find(c => c.id === app.customerId);
   return {

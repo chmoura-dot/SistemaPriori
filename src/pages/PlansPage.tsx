@@ -68,6 +68,7 @@ export const PlansPage = () => {
       }));
       const allApps = await api.getAppointments();
       const customers = await api.getCustomers();
+      const psychologists = await api.getPsychologists();
       const appsToUpdate = allApps.filter(app => {
         if (app.billingBatchId) return false;
         if (app.date < bulkData.effectiveDate) return false;
@@ -82,9 +83,19 @@ export const PlansPage = () => {
         if (!proc) return Promise.resolve();
         const updates: any = {};
         if (bulkData.adjustPrice) updates.customPrice = (app.customPrice ?? proc.price) + bulkData.amount;
-        if (bulkData.adjustRepass) updates.customRepassAmount = (app.customRepassAmount ?? proc.repassAmount) + bulkData.amount;
+        // Não sobrescrever o repasse de atendimentos cujo psicólogo tem contrato
+        // pessoal (repassOverridesPlan). Nesse caso o repasse é calculado
+        // dinamicamente pela regra do psicólogo (ex: Michelly = 92%) e gravar um
+        // customRepassAmount fixo baseado no plano "vazaria" por cima do contrato,
+        // sobrescrevendo silenciosamente o valor correto.
+        const psy = psychologists.find(p => p.id === app.psychologistId);
+        if (bulkData.adjustRepass && !psy?.repassOverridesPlan) {
+          updates.customRepassAmount = (app.customRepassAmount ?? proc.repassAmount) + bulkData.amount;
+        }
+        if (Object.keys(updates).length === 0) return Promise.resolve();
         return api.updateAppointment(app.id, updates);
       }));
+
       await loadPlans();
       setIsBulkModalOpen(false);
       alert(`${plansToUpdate.length} planos e ${appsToUpdate.length} agendamentos reajustados com sucesso!`);

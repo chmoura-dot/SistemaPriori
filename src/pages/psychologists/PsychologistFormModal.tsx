@@ -75,9 +75,10 @@ export const PsychologistFormModal: React.FC<Props> = ({
         </div>
         <div className="p-4 bg-zinc-50 rounded-2xl border border-zinc-100 space-y-4">
           <div className="flex items-center gap-2">
-            <p className="text-[10px] font-bold text-priori-navy uppercase tracking-widest">Repasse (Atendimentos Particulares)</p>
-            <span className="px-1.5 py-0.5 rounded bg-priori-navy/5 text-[8px] font-bold text-priori-navy uppercase tracking-tighter">Exclusivo Particular</span>
+            <p className="text-[10px] font-bold text-priori-navy uppercase tracking-widest">Regra de Repasse do Psicólogo</p>
+            <span className="px-1.5 py-0.5 rounded bg-priori-navy/5 text-[8px] font-bold text-priori-navy uppercase tracking-tighter">% ou Valor Fixo</span>
           </div>
+
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Percentual (%)</label>
