@@ -346,8 +346,13 @@ export function createBillingActions({
   };
 
   const handleExportBatch = (batch: BillingBatch) => {
-    const batchAppointments = appointments.filter(a => batch.appointmentIds.includes(a.id));
+    const batchAppointments = appointments
+      .filter(a => batch.appointmentIds.includes(a.id))
+      // Oculta atendimentos com valor R$0,00 (ex: sessão AMS sem cobrança,
+      // cancelamento isento) para não poluir o arquivo exportado.
+      .filter(a => getAppPrice(a) > 0);
     const exportData = batchAppointments.map(app => {
+
       const customer    = customers.find(c => c.id === app.customerId);
       const psychologist = psychologists.find(p => p.id === app.psychologistId);
       return {

@@ -333,7 +333,10 @@ function generateRepassePDF(
       }
       return { app, customer, procedure, repassVal, parcelaLabel };
     })
-    .filter((r): r is NonNullable<typeof r> => r !== null);
+    .filter((r): r is NonNullable<typeof r> => r !== null)
+    // Oculta linhas com repasse R$0,00 para não poluir o comprovante.
+    .filter(r => r.repassVal > 0);
+
 
 
   const today = format(new Date(), 'dd/MM/yyyy');

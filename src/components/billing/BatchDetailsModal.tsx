@@ -124,9 +124,25 @@ export const BatchDetailsModal: React.FC<Props> = ({
             <h4 className="font-semibold text-priori-navy mb-3">Atendimentos no Lote</h4>
 
             <div className="space-y-2 max-h-64 overflow-y-auto pr-2">
-              {batch.appointmentIds.map(id => {
+              {batch.appointmentIds
+                // Oculta atendimentos com valor R$0,00 (ex: sessão AMS sem cobrança,
+                // cancelamento isento) para não poluir a listagem.
+                .filter(id => {
+                  const a = appointments.find(app => app.id === id);
+                  return a ? getAppPrice(a) > 0 : false;
+                })
+                // Ordena: pendentes de pagamento primeiro; pagos/glosados no final
+                // (ordenação estável, mantendo a ordem original dentro de cada grupo).
+                .sort((idA, idB) => {
+                  const a = appointments.find(app => app.id === idA);
+                  const b = appointments.find(app => app.id === idB);
+                  const rank = (ap?: Appointment) => (ap?.billingStatus ? 1 : 0);
+                  return rank(a) - rank(b);
+                })
+                .map(id => {
                 const app = appointments.find(a => a.id === id);
                 const customer = customers.find(c => c.id === app?.customerId);
+
                 const psychologist = psychologists.find(p => p.id === app?.psychologistId);
                 const price = app ? getAppPrice(app) : 0;
                 const isParticular = customer?.healthPlan === HealthPlan.PARTICULAR;
