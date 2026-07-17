@@ -114,8 +114,12 @@ export function createBillingHelpers({
       const matchesMonth = monthsToInclude.length === 0 || monthsToInclude.some(m => a.date.startsWith(m));
       const isInCurrentDraft = editingDraftId ? a.billingBatchId === editingDraftId : false;
       const isAvailable = !a.billingBatchId || draftBatchIds.has(a.billingBatchId) || !billedAppointmentIds.has(a.id);
+      // Oculta atendimentos com valor R$0,00 (ex: cancelamento isento, AMS 4ª+
+      // sessão sem cobrança) para não poluir a lista de criação de lote.
+      if (getAppPrice(a) <= 0) return false;
       return effectivePlan === selectedPlan && (isInCurrentDraft || isAvailable) && a.date <= today && matchesMonth;
     }).sort((a, b) => a.date.localeCompare(b.date));
+
   };
 
   const calculateTotalSelectedAmount = () => appointments.filter(a => selectedAppointmentIds.includes(a.id)).reduce((sum, a) => sum + Math.round(getAppPrice(a) * 100), 0) / 100;
