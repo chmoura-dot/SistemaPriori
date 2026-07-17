@@ -23,9 +23,12 @@ export const APPOINTMENT_COLUMNS = [
   'needs_renewal', 'renewed_at', 'renewed_by',
   'custom_price', 'custom_repass_amount',
   'billing_batch_id', 'billing_status', 'billing_ignored', 'paid_at',
+  'report_delivered_at', 'report_delivered_by',
+  'repass_phase1_repasse_id', 'repass_phase2_repasse_id',
   'health_plan_at_time',
 
   'denial_reason', 'denial_resolution',
+
   'cancellation_billing', 'cancellation_fault',
   'is_internal', 'internal_type', 'internal_title', 'internal_notes',
   'created_at',
@@ -146,9 +149,14 @@ export function toAppointment(row: any): Appointment {
     billingStatus: row.billing_status ?? undefined,
     billingIgnored: row.billing_ignored ?? undefined,
     paidAt: row.paid_at ?? undefined,
+    reportDeliveredAt: row.report_delivered_at ?? undefined,
+    reportDeliveredBy: row.report_delivered_by ?? undefined,
+    repassPhase1RepasseId: row.repass_phase1_repasse_id ?? undefined,
+    repassPhase2RepasseId: row.repass_phase2_repasse_id ?? undefined,
     healthPlanAtTime: row.health_plan_at_time ?? undefined,
 
     denialReason: row.denial_reason ?? undefined,
+
     denialResolution: row.denial_resolution ?? undefined,
     createdAt: row.created_at,
     cancellationBilling: row.cancellation_billing ?? undefined,

@@ -5,12 +5,14 @@ import {
   CheckCircle2,
   Clock,
   FileText,
+  Hourglass,
   Loader2,
   Plus,
   Trash2,
 } from 'lucide-react';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, differenceInDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+
 import { api } from '../services/api';
 import {
   Appointment,
@@ -27,7 +29,15 @@ import {
 import { Button } from '../components/Button';
 import { cn } from '../lib/utils';
 import { calcRepass } from '../lib/repassRules';
-import { getAppPrice, getAmsNeuropsicoSessionIndex, isRepassBlocked, PricingContext } from '../lib/pricing';
+import {
+  getAppPrice,
+  getAmsNeuropsicoSessionIndex,
+  isRepassBlocked,
+  isNeuropsicoReportSplit,
+  NEUROPSICO_REPORT_SPLIT_RATE,
+  PricingContext,
+} from '../lib/pricing';
+
 import { matchPlanByHealthPlan } from '../services/supabase/helpers';
 import { supabase } from '../lib/supabase';
 import { logger } from '../lib/logger';
@@ -112,7 +122,43 @@ function getRepassValue(
   return calcRepass(gross, psy);
 }
 
+/**
+ * Valor de repasse de um atendimento para uma FASE específica.
+ *
+ * - Atendimentos comuns: 100% na fase 1 (fase 2 = R$0, nunca gerada).
+ * - Avaliação Neuropsicológica elegível ao split: 50% na fase 1 (sessão paga)
+ *   e 50% na fase 2 (entrega do laudo). Arredondado em centavos; a fase 2
+ *   recebe o RESÍDUO para garantir que fase1 + fase2 === valor cheio.
+ */
+function getPhaseRepassValue(
+  app: Appointment,
+  customers: Customer[],
+  plans: Plan[],
+  psy: Psychologist | undefined,
+  pricingCtx: PricingContext,
+  phase: 1 | 2,
+): number {
+  const full = getRepassValue(app, customers, plans, psy, pricingCtx);
+  if (!isNeuropsicoReportSplit(app, pricingCtx)) {
+    return phase === 1 ? full : 0;
+  }
+  const fullCents = Math.round(full * 100);
+  const phase1Cents = Math.round(fullCents * NEUROPSICO_REPORT_SPLIT_RATE);
+  const phase2Cents = fullCents - phase1Cents; // resíduo evita perda de 1 centavo
+  return (phase === 1 ? phase1Cents : phase2Cents) / 100;
+}
+
+/**
+ * Indica se a 1ª parcela (50%) do split neuropsicológico já foi repassada.
+ * Fonte dupla p/ robustez: coluna de fase (fluxo novo + backfill) OU presença
+ * em repasse legado (fluxo antigo de convênios comuns).
+ */
+function isPhase1Done(app: Appointment, legacyRepassed: Set<string>): boolean {
+  return app.repassPhase1RepasseId != null || legacyRepassed.has(app.id);
+}
+
 // ─── Divergence Detection ────────────────────────────────────────────────────
+
 
 interface RepassDivergence {
   customerName: string;
@@ -273,10 +319,22 @@ function generateRepassePDF(
         ? plan?.procedures?.find(proc => proc.code === app.procedureCode)
         : undefined;
       const procedure = procedureByCode ?? plan?.procedures?.find(proc => proc.type === app.type);
-      const repassVal = getRepassValue(app, customers, plans, psy, pricingCtx);
-      return { app, customer, procedure, repassVal };
+
+      // Valor phase-aware: se este atendimento entra no split neuropsicológico,
+      // o comprovante mostra apenas a parcela correspondente a ESTE repasse
+      // (1/2 na sessão, 2/2 na entrega do laudo), não o valor cheio.
+      let repassVal = getRepassValue(app, customers, plans, psy, pricingCtx);
+      let parcelaLabel = '';
+      if (isNeuropsicoReportSplit(app, pricingCtx)) {
+        const isPhase2 = app.repassPhase2RepasseId === repasse.id;
+        const phase: 1 | 2 = isPhase2 ? 2 : 1;
+        repassVal = getPhaseRepassValue(app, customers, plans, psy, pricingCtx, phase);
+        parcelaLabel = isPhase2 ? ' (Parcela 2/2 — Laudo)' : ' (Parcela 1/2 — Sessão)';
+      }
+      return { app, customer, procedure, repassVal, parcelaLabel };
     })
     .filter((r): r is NonNullable<typeof r> => r !== null);
+
 
   const today = format(new Date(), 'dd/MM/yyyy');
   const planName = batch?.healthPlan ?? '—';
@@ -291,7 +349,7 @@ function generateRepassePDF(
     subtotal: number;
   }> = {};
 
-  rows.forEach(({ app, customer, procedure, repassVal }) => {
+  rows.forEach(({ app, customer, procedure, repassVal, parcelaLabel }) => {
     const patientId = customer?.id ?? 'unknown';
     if (!byPatient[patientId]) {
       byPatient[patientId] = {
@@ -303,9 +361,10 @@ function generateRepassePDF(
     byPatient[patientId].sessions.push({
       date: app.date ? format(new Date(app.date + 'T12:00:00'), 'dd/MM/yyyy') : '—',
       code: procedure?.code ?? '—',
-      description: procedure?.description ?? app.type ?? '—',
+      description: (procedure?.description ?? app.type ?? '—') + parcelaLabel,
       repassVal,
     });
+
     byPatient[patientId].subtotal += repassVal;
   });
 
@@ -565,20 +624,84 @@ export const RepassePage = () => {
         paidAppIds.forEach(appId => {
           const app = appointments.find(a => a.id === appId);
           if (!app) return;
-          totalCents += Math.round(getRepassValue(app, customers, plans, psy, pricingCtx) * 100);
+          // FASE 1: sessão paga. Neuropsico elegível ao split libera só 50% aqui;
+          // os demais atendimentos liberam 100%.
+          totalCents += Math.round(getPhaseRepassValue(app, customers, plans, psy, pricingCtx, 1) * 100);
           // Detectar divergências entre override manual e valor calculado
           const div = checkDivergence(app, customers, plans, psy, pricingCtx);
           if (div) divergences.push(div);
         });
 
         groups.push({ psyId, batch, appIds: paidAppIds, total: totalCents / 100, divergences });
+
       });
     });
 
     return groups;
   }, [batches, repasses, appointments, customers, plans, psychologists]);
 
+  // ── Fila de 2ª Parcela (Avaliação Neuropsicológica) ──────────────────────
+  // Sessões neuropsicológicas cuja FASE 1 (50%) já foi repassada e a FASE 2
+  // ainda não. Enquanto o laudo não é entregue, a linha exibe o botão de
+  // registro de entrega; após entregue, libera a geração da 2ª parcela.
+  // Sessões antigas (grandfathering) têm phase2 já preenchida e não aparecem.
+  const reportQueue = useMemo(() => {
+    const pricingCtx: PricingContext = { customers, plans, appointments };
+    // Fallback legado: atendimentos presentes em qualquer repasse (fluxo antigo).
+    const legacyRepassed = new Set(repasses.flatMap(r => r.appointmentIds));
+
+    return appointments
+      .filter(a => isNeuropsicoReportSplit(a, pricingCtx))
+      .filter(a => isPhase1Done(a, legacyRepassed))
+      .filter(a => a.repassPhase2RepasseId == null)
+      .map(a => {
+        const psy = psychologists.find(p => p.id === a.psychologistId);
+        const customer = customers.find(c => c.id === a.customerId);
+        const phase2 = getPhaseRepassValue(a, customers, plans, psy, pricingCtx, 2);
+        const daysElapsed = differenceInDays(new Date(), new Date(a.date + 'T12:00:00'));
+        return { app: a, psy, customer, phase2, daysElapsed, delivered: a.reportDeliveredAt != null };
+      })
+      .filter(i => i.phase2 > 0)
+      .sort((a, b) => b.daysElapsed - a.daysElapsed);
+  }, [appointments, repasses, customers, plans, psychologists]);
+
+  // Registra a entrega do laudo (habilita a 2ª parcela).
+  const handleMarkReportDelivered = async (app: Appointment) => {
+    if (!confirm('Confirmar que o laudo desta avaliação foi ENTREGUE? Isso liberará a 2ª parcela (50%) do repasse.')) return;
+    let deliveredBy: string | undefined;
+    try {
+      const stored = localStorage.getItem('nucleo_user_v2');
+      if (stored) deliveredBy = JSON.parse(stored)?.email ?? undefined;
+    } catch { /* ignore */ }
+    await api.updateAppointment(app.id, {
+      reportDeliveredAt: new Date().toISOString(),
+      reportDeliveredBy: deliveredBy,
+    });
+    await loadData();
+  };
+
+  // Gera o repasse da 2ª parcela (50%) para uma sessão com laudo entregue.
+  const handleGeneratePhase2 = async (item: typeof reportQueue[0]) => {
+    setIsGenerating(`p2-${item.app.id}`);
+    try {
+      const created = await api.createRepasse({
+        psychologistId: item.app.psychologistId,
+        billingBatchId: item.app.billingBatchId ?? '',
+        appointmentIds: [item.app.id],
+        totalAmount: item.phase2,
+        status: RepasseStatus.PENDING,
+      });
+      await api.updateAppointment(item.app.id, { repassPhase2RepasseId: created.id });
+      await loadData();
+      const batch = batches.find(b => b.id === item.app.billingBatchId);
+      generateRepassePDF(created, item.psy, batch, appointments, customers, plans);
+    } finally {
+      setIsGenerating(null);
+    }
+  };
+
   const handleGenerateRepasse = async (group: typeof pendingGroups[0]) => {
+
     // Verificar divergências antes de gerar — protege contra erros de dados
     if (group.divergences.length > 0) {
       const lines = group.divergences.map(d =>
@@ -647,7 +770,24 @@ export const RepassePage = () => {
         totalAmount: group.total,
         status: RepasseStatus.PENDING,
       });
+
+      // Vincula a FASE 1 nas Avaliações Neuropsicológicas elegíveis ao split.
+      // Isso as move para a fila "Aguardando Entrega de Laudo" (2ª parcela)
+      // e evita que a 1ª parcela seja recalculada/reofertada futuramente.
+      {
+        const pricingCtx: PricingContext = { customers, plans, appointments };
+        const splitApps = group.appIds
+          .map(id => appointments.find(a => a.id === id))
+          .filter((a): a is Appointment => !!a && isNeuropsicoReportSplit(a, pricingCtx));
+        await Promise.all(
+          splitApps.map(a =>
+            api.updateAppointment(a.id, { repassPhase1RepasseId: created.id }),
+          ),
+        );
+      }
+
       await loadData();
+
       // Auto-generate PDF
       const psy = psychologists.find(p => p.id === group.psyId);
       generateRepassePDF(created, psy, group.batch, appointments, customers, plans);
@@ -774,12 +914,106 @@ export const RepassePage = () => {
         )}
       </section>
 
+      {/* Aguardando Entrega de Laudo (2ª parcela — Avaliação Neuropsicológica) */}
+      <section>
+        <h2 className="text-base font-semibold text-priori-navy mb-3 flex items-center gap-2">
+          <Hourglass size={16} className="text-indigo-500" />
+          Aguardando Entrega de Laudo
+          <span className="text-xs font-normal text-zinc-400">(2ª parcela — 50% — Avaliação Neuropsicológica)</span>
+        </h2>
+
+        {reportQueue.length === 0 ? (
+          <div className="bg-white rounded-2xl border border-zinc-100 shadow-sm p-10 text-center text-zinc-400 text-sm">
+            Nenhuma avaliação neuropsicológica aguardando entrega de laudo.
+          </div>
+        ) : (
+          <div className="bg-white rounded-2xl border border-zinc-100 shadow-sm overflow-hidden">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-zinc-50/50 border-b border-zinc-100">
+                  <th className="px-6 py-4 text-xs font-semibold text-priori-navy uppercase tracking-wider">Psicólogo(a)</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-priori-navy uppercase tracking-wider">Paciente</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-priori-navy uppercase tracking-wider">Data da Sessão</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-priori-navy uppercase tracking-wider">Prazo</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-priori-navy uppercase tracking-wider">2ª Parcela</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-priori-navy uppercase tracking-wider text-right">Ação</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100">
+                {reportQueue.map(item => {
+                  const overdue = !item.delivered && item.daysElapsed >= 75;
+                  return (
+                    <tr key={item.app.id} className="hover:bg-zinc-50/50 transition-colors">
+                      <td className="px-6 py-4 font-medium text-priori-navy">{item.psy?.name ?? '—'}</td>
+                      <td className="px-6 py-4 text-zinc-600">{item.customer?.name ?? '—'}</td>
+                      <td className="px-6 py-4 text-zinc-600">
+                        {format(new Date(item.app.date + 'T12:00:00'), 'dd/MM/yyyy')}
+                      </td>
+                      <td className="px-6 py-4">
+                        {item.delivered ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-600 border border-emerald-100">
+                            <CheckCircle2 size={11} />
+                            Laudo entregue
+                          </span>
+                        ) : (
+                          <span
+                            className={cn(
+                              'inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium border',
+                              overdue
+                                ? 'bg-red-50 text-red-600 border-red-100'
+                                : 'bg-zinc-50 text-zinc-500 border-zinc-100',
+                            )}
+                            title={`${item.daysElapsed} dia(s) desde a sessão`}
+                          >
+                            {overdue && <AlertTriangle size={11} />}
+                            {item.daysElapsed} dias
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 font-semibold text-priori-navy">{fmt.format(item.phase2)}</td>
+                      <td className="px-6 py-4 text-right">
+                        {item.delivered ? (
+                          <Button
+                            size="sm"
+                            className="bg-priori-navy hover:bg-priori-navy/90 text-white"
+                            onClick={() => handleGeneratePhase2(item)}
+                            disabled={isGenerating === `p2-${item.app.id}`}
+                          >
+                            {isGenerating === `p2-${item.app.id}` ? (
+                              <Loader2 size={14} className="animate-spin mr-1" />
+                            ) : (
+                              <Plus size={14} className="mr-1" />
+                            )}
+                            Gerar 2ª Parcela
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-indigo-600 border-indigo-200 hover:bg-indigo-50"
+                            onClick={() => handleMarkReportDelivered(item.app)}
+                          >
+                            <FileText size={14} className="mr-1" />
+                            Marcar Laudo Entregue
+                          </Button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
       {/* Histórico */}
       <section>
         <h2 className="text-base font-semibold text-priori-navy mb-3 flex items-center gap-2">
           <ArrowRightLeft size={16} className="text-priori-navy" />
           Histórico de Repasses
         </h2>
+
 
         {repasses.length === 0 ? (
           <div className="bg-white rounded-2xl border border-zinc-100 shadow-sm p-10 text-center text-zinc-400 text-sm">

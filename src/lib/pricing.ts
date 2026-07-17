@@ -199,6 +199,39 @@ export function isRepassBlocked(app: Appointment): boolean {
   return app.status === AppointmentStatus.CANCELED && app.cancellationFault === 'psychologist';
 }
 
+/** Percentual do repasse liberado em cada fase do split neuropsicológico (50%). */
+export const NEUROPSICO_REPORT_SPLIT_RATE = 0.5;
+
+/**
+ * Determina se um atendimento de Avaliação Neuropsicológica está sujeito ao
+ * split de repasse em 2 fases (50% na sessão + 50% na entrega do laudo).
+ *
+ * Só se aplica à sessão faturada INTEGRALMENTE:
+ *  • Convênios comuns: 1ª sessão ou após 180 dias de carência (status 'billable').
+ *  • AMS Petrobras: apenas a 1ª sessão do ciclo (índice 0). A 2ª/3ª (código
+ *    95090010) e a 4ª+ (R$0) NÃO entram no split — repasse pago de uma vez.
+ *  • Demais tipos de atendimento: nunca.
+ *
+ * Sessões que valem R$0 (bloqueadas / canceladas) também retornam false, pois
+ * não há valor a repartir.
+ */
+export function isNeuropsicoReportSplit(app: Appointment, ctx: PricingContext): boolean {
+  if (app.type !== AppointmentType.NEUROPSICOLOGICA) return false;
+  if (getAppPrice(app, ctx) <= 0) return false;
+
+  const customer = ctx.customers.find(c => c.id === app.customerId);
+  const effectiveHealthPlan = (app.healthPlanAtTime ?? customer?.healthPlan) as HealthPlan | undefined;
+
+  if (effectiveHealthPlan === HealthPlan.AMS_PETROBRAS) {
+    // Apenas a 1ª sessão do ciclo (integral) é elegível ao split.
+    return getAmsNeuropsicoSessionIndex(app, ctx) === 0;
+  }
+
+  // Convênios comuns / particular: só a sessão faturável (1ª ou após 180 dias).
+  return getNeuropsicoStatus(app, ctx).type === 'billable';
+}
+
+
 /**
  * Calcula a receita total de uma lista de agendamentos,
  * somando getAppPrice para cada um individualmente.

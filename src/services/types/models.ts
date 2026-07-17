@@ -96,7 +96,14 @@ export interface Appointment {
   billingIgnored?: boolean;
   paidAt?: string;
 
+  // Split de repasse da Avaliação Neuropsicológica (2 fases de 50%)
+  reportDeliveredAt?: string;      // laudo entregue (ISO)
+  reportDeliveredBy?: string;      // quem registrou a entrega
+  repassPhase1RepasseId?: string;  // repasse que pagou a 1ª parcela (sessão)
+  repassPhase2RepasseId?: string;  // repasse que pagou a 2ª parcela (laudo)
+
   healthPlanAtTime?: string;
+
   denialReason?: string;
   denialResolution?: 'accepted' | 'appealed';
   createdAt: string;
