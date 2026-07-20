@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Download, Pencil, Check, X, CircleDollarSign, RotateCcw } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Download, Pencil, Check, X, CircleDollarSign, RotateCcw, Search } from 'lucide-react';
 import { format } from 'date-fns';
 import { BillingBatch, BillingBatchStatus, Appointment, Customer, Psychologist, HealthPlan } from '../../services/types';
 import { Modal } from '../Modal';
@@ -34,8 +34,30 @@ export const BatchDetailsModal: React.FC<Props> = ({
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
+  const [search, setSearch] = useState('');
+
+  // Normaliza texto para busca tolerante a acentos/caixa (ex.: "joao" casa com "João").
+  const normalize = (value: string) =>
+    value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+
+  // Reseta a busca (e cancela edições) sempre que o modal abre com outro lote,
+  // evitando que o texto pesquisado "vaze" de um lote para outro.
+  useEffect(() => {
+    setSearch('');
+    setEditingId(null);
+    setEditValue('');
+  }, [batch?.id]);
+
+  // Cancela qualquer edição de valor em andamento ao digitar na busca,
+  // evitando um input de edição "fantasma" caso o item saia da lista filtrada.
+  useEffect(() => {
+    setEditingId(null);
+    setEditValue('');
+  }, [search]);
+
 
   const startEdit = (id: string, currentPrice: number) => {
+
     setEditingId(id);
     setEditValue(String(currentPrice));
   };
@@ -123,13 +145,33 @@ export const BatchDetailsModal: React.FC<Props> = ({
           <div className="border-t border-zinc-100 pt-4">
             <h4 className="font-semibold text-priori-navy mb-3">Atendimentos no Lote</h4>
 
-            <div className="space-y-2 max-h-64 overflow-y-auto pr-2">
-              {batch.appointmentIds
+            {/* Campo de busca por nome do paciente para localizar e confirmar pagamentos rapidamente. */}
+            <div className="relative mb-3">
+              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" />
+              <input
+                type="text"
+                placeholder="Buscar por nome do paciente..."
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                className="w-full rounded-xl border border-zinc-200 bg-zinc-50 text-sm pl-9 pr-3 py-2 focus:outline-none focus:ring-2 focus:ring-priori-navy/30 focus:border-priori-navy"
+              />
+            </div>
+
+            {(() => {
+              const searchTerm = normalize(search);
+              const visibleIds = batch.appointmentIds
                 // Oculta atendimentos com valor R$0,00 (ex: sessão AMS sem cobrança,
                 // cancelamento isento) para não poluir a listagem.
                 .filter(id => {
                   const a = appointments.find(app => app.id === id);
                   return a ? getAppPrice(a) > 0 : false;
+                })
+                // Filtra pelo nome do paciente (tolerante a acentos/caixa).
+                .filter(id => {
+                  if (!searchTerm) return true;
+                  const a = appointments.find(app => app.id === id);
+                  const customer = customers.find(c => c.id === a?.customerId);
+                  return customer ? normalize(customer.name).includes(searchTerm) : false;
                 })
                 // Ordena: pendentes de pagamento primeiro; pagos/glosados no final
                 // (ordenação estável, mantendo a ordem original dentro de cada grupo).
@@ -138,8 +180,24 @@ export const BatchDetailsModal: React.FC<Props> = ({
                   const b = appointments.find(app => app.id === idB);
                   const rank = (ap?: Appointment) => (ap?.billingStatus ? 1 : 0);
                   return rank(a) - rank(b);
-                })
+                });
+
+              if (visibleIds.length === 0) {
+
+                return (
+                  <div className="p-8 text-center text-zinc-500 text-sm">
+                    {search.trim()
+                      ? `Nenhum atendimento encontrado para "${search.trim()}".`
+                      : 'Nenhum atendimento com valor a exibir neste lote.'}
+                  </div>
+                );
+              }
+
+              return (
+            <div className="space-y-2 max-h-64 overflow-y-auto pr-2">
+              {visibleIds
                 .map(id => {
+
                 const app = appointments.find(a => a.id === id);
                 const customer = customers.find(c => c.id === app?.customerId);
 
@@ -251,9 +309,12 @@ export const BatchDetailsModal: React.FC<Props> = ({
                 );
               })}
             </div>
+              );
+            })()}
           </div>
 
           <div className="flex justify-between items-center pt-4 border-t border-zinc-100">
+
             <Button
               variant="outline"
               onClick={() => onExport(batch)}
