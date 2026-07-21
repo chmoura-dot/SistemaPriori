@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Download, Pencil, Check, X, CircleDollarSign, RotateCcw, Search } from 'lucide-react';
+import { Download, Pencil, Check, X, CircleDollarSign, RotateCcw, Search, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { BillingBatch, BillingBatchStatus, Appointment, Customer, Psychologist, HealthPlan } from '../../services/types';
 import { Modal } from '../Modal';
@@ -15,6 +15,7 @@ interface Props {
   onUpdatePrice?: (appointmentId: string, newPrice: number) => Promise<void>;
   onMarkPaid?: (appointmentId: string) => Promise<void>;
   onUnmarkPaid?: (appointmentId: string) => Promise<void>;
+  onRemoveFromBatch?: (batch: BillingBatch, appointmentId: string) => Promise<void>;
   onClose: () => void;
   onExport: (batch: BillingBatch) => void;
 }
@@ -28,6 +29,7 @@ export const BatchDetailsModal: React.FC<Props> = ({
   onUpdatePrice,
   onMarkPaid,
   onUnmarkPaid,
+  onRemoveFromBatch,
   onClose,
   onExport,
 }) => {
@@ -292,6 +294,19 @@ export const BatchDetailsModal: React.FC<Props> = ({
                           >
                             <CircleDollarSign size={13} />
                             Marcar como pago
+                          </button>
+                        )}
+                        {/* Remover do lote: só para atendimentos AINDA NÃO resolvidos
+                            (pendentes). Se já pago/glosado, o usuário deve desfazer o
+                            pagamento antes — proteção financeira. */}
+                        {!app.billingStatus && onRemoveFromBatch && (
+                          <button
+                            onClick={() => onRemoveFromBatch(batch, id)}
+                            className="flex items-center gap-1 text-[11px] font-medium text-zinc-400 hover:text-red-600 hover:bg-red-50 px-2 py-1 rounded-lg transition-colors"
+                            title="Remover este atendimento do lote (caso tenha entrado por engano)"
+                          >
+                            <Trash2 size={12} />
+                            Remover do lote
                           </button>
                         )}
                       </div>

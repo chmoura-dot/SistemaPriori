@@ -123,6 +123,7 @@ export const BillingPage = () => {
         onUpdatePrice={billing.handleUpdateAppointmentPrice}
         onMarkPaid={billing.handleMarkAppointmentPaid}
         onUnmarkPaid={billing.handleUnmarkAppointmentPaid}
+        onRemoveFromBatch={billing.handleRemoveAppointmentFromBatch}
         onClose={() => billing.setSelectedBatch(null)}
         onExport={billing.handleExportBatch}
       />

@@ -38,6 +38,7 @@ interface BillingActionsContext {
   setBatchToPay: React.Dispatch<React.SetStateAction<BillingBatch | null>>;
   setIsPaymentModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setAppointmentStatuses: React.Dispatch<React.SetStateAction<Record<string, AppointmentPaymentStatus>>>;
+  setSelectedBatch: React.Dispatch<React.SetStateAction<BillingBatch | null>>;
 }
 
 export function createBillingActions({
@@ -47,6 +48,7 @@ export function createBillingActions({
   getAppPrice, generateBatchNumber, fetchData,
   setIsCreateModalOpen, setSelectedAppointmentIds, setEditingDraftBatch,
   setAppointments, setBatchToPay, setIsPaymentModalOpen, setAppointmentStatuses,
+  setSelectedBatch,
 }: BillingActionsContext) {
 
   const releaseFromOtherDrafts = async (idsBeingMoved: string[], targetBatchId: string) => {
@@ -243,9 +245,9 @@ export function createBillingActions({
   /**
    * Recalcula o status de um lote com base no estado de pagamento dos seus
    * atendimentos e persiste a mudança:
-   *   - Nenhum atendimento resolvido (paid/denied)  → SENT
-   *   - Alguns resolvidos, mas não todos            → PARTIALLY_PAID
-   *   - Todos resolvidos                            → PAID (fecha o lote)
+   *   - Nenhum atendimento resolvido (paid/denied)  -> SENT
+   *   - Alguns resolvidos, mas não todos            -> PARTIALLY_PAID
+   *   - Todos resolvidos                            -> PAID (fecha o lote)
    * `appsOverride` permite passar o estado já atualizado dos atendimentos
    * (antes do fetch), garantindo cálculo correto no mesmo ciclo.
    */
@@ -306,6 +308,105 @@ export function createBillingActions({
     } catch (error) {
       logger.critical('billing.handleUnmarkAppointmentPaid', error, { appointmentId: appId });
       toastError('Erro ao desfazer pagamento.');
+    }
+  };
+
+  /**
+   * Remove um único atendimento de um lote JÁ ENVIADO (não-DRAFT).
+   * Uso: atendimento entrou no lote por engano (estava "previsto" no sistema).
+   *
+   * Salvaguardas financeiras (a operação é abortada se qualquer uma falhar):
+   *   1. Nunca opera em lote DRAFT (a edição de rascunho é feita na seleção).
+   *   2. Só remove atendimento AINDA NÃO RESOLVIDO (billingStatus vazio). Se já
+   *      está pago/glosado, o usuário deve "Desfazer pagamento" antes - evita
+   *      remover algo que já pode ter gerado repasse ao psicólogo.
+   *   3. Bloqueia se o atendimento constar em algum repasse já gerado (checagem
+   *      redundante contra dessincronização de billingStatus).
+   *   4. Nunca esvazia o lote: se for o último atendimento, orienta a excluir o
+   *      lote inteiro.
+   * Efeitos: recalcula totalAmount e status do lote, e libera billingBatchId
+   * do atendimento (volta a ficar elegível para novo lote).
+   */
+  const handleRemoveAppointmentFromBatch = async (batch: BillingBatch, appId: string) => {
+    if (batch.status === BillingBatchStatus.DRAFT) return;
+
+    const app = appointments.find(a => a.id === appId);
+    if (!app) return;
+
+    // Salvaguarda 2: atendimento já resolvido não pode ser removido diretamente.
+    if (app.billingStatus === 'paid' || app.billingStatus === 'denied') {
+      toastError('Este atendimento já foi resolvido (pago/glosado). Desfaça o pagamento antes de removê-lo do lote.');
+      return;
+    }
+
+    // Salvaguarda 4: não deixar o lote vazio.
+    const remainingIds = batch.appointmentIds.filter(id => id !== appId);
+    if (remainingIds.length === 0) {
+      toastError('Este é o único atendimento do lote. Para removê-lo, exclua o lote inteiro.');
+      return;
+    }
+
+    const customer = customers.find(c => c.id === app.customerId);
+    const price = getAppPrice(app);
+    const confirmMsg =
+      `Remover este atendimento do lote #${batch.batchNumber}?\n\n` +
+      `Paciente: ${customer?.name ?? '-'}\n` +
+      `Valor: ${price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}\n\n` +
+      `O total do lote será recalculado e o atendimento voltará a ficar disponível para faturamento.`;
+    if (!confirm(confirmMsg)) return;
+
+    try {
+      // Salvaguarda 3: confirma que o atendimento não está em nenhum repasse.
+      const repasses = await api.getRepasses();
+      const inRepasse = repasses.some(r => r.appointmentIds.includes(appId));
+      if (inRepasse) {
+        toastError('Este atendimento já consta em um repasse gerado e não pode ser removido do lote.');
+        return;
+      }
+
+      // Recalcula o total do lote (em centavos) a partir dos atendimentos restantes.
+      const newTotal = appointments
+        .filter(a => remainingIds.includes(a.id))
+        .reduce((sum, a) => sum + Math.round(getAppPrice(a) * 100), 0) / 100;
+
+      // Recalcula o status do lote com base nos atendimentos restantes.
+      // O atendimento removido nunca era "resolvido" (billingStatus vazio), então
+      // ele só sai do denominador da contagem.
+      const remainingApps = remainingIds
+        .map(id => appointments.find(a => a.id === id))
+        .filter((a): a is Appointment => !!a);
+      const resolvedCount = remainingApps.filter(a => a.billingStatus === 'paid' || a.billingStatus === 'denied').length;
+      let newStatus: BillingBatchStatus;
+      if (resolvedCount === 0) newStatus = BillingBatchStatus.SENT;
+      else if (resolvedCount < remainingApps.length) newStatus = BillingBatchStatus.PARTIALLY_PAID;
+      else newStatus = BillingBatchStatus.PAID;
+
+      const batchUpdates: Partial<BillingBatch> = {
+        appointmentIds: remainingIds,
+        totalAmount: newTotal,
+        status: newStatus,
+        paidAt: newStatus === BillingBatchStatus.PAID ? new Date().toISOString() : undefined,
+      };
+
+      // 1. Solta o atendimento do lote (volta a ser elegível para faturamento).
+      await api.updateAppointment(appId, { billingBatchId: null as any });
+      // 2. Atualiza o lote (nova lista, total e status).
+      await api.updateBillingBatch(batch.id, batchUpdates);
+
+      setAppointments(prev => prev.map(a => a.id === appId ? { ...a, billingBatchId: undefined } : a));
+      // Atualiza o modal de detalhes imediatamente (sem esperar o refetch).
+      setSelectedBatch(prev =>
+        prev && prev.id === batch.id
+          ? { ...prev, appointmentIds: remainingIds, totalAmount: newTotal, status: newStatus, paidAt: batchUpdates.paidAt }
+          : prev
+      );
+      toastSuccess('Atendimento removido do lote.');
+      fetchData();
+    } catch (error) {
+      logger.critical('billing.handleRemoveAppointmentFromBatch', error, {
+        batchId: batch.id, appointmentId: appId,
+      });
+      toastError('Erro ao remover atendimento do lote.');
     }
   };
 
@@ -402,6 +503,7 @@ export function createBillingActions({
     handleMarkAsPaid, submitPayment, handleDeleteBatch, handleExportBatch,
     handleConfirmAppointment, handleIgnoreAppointment, handleUnignoreAppointment,
     handleMarkAppointmentPaid, handleUnmarkAppointmentPaid,
+    handleRemoveAppointmentFromBatch,
   };
 
 }

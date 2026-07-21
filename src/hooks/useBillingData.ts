@@ -109,6 +109,7 @@ export function useBillingData() {
     fetchData,
     setIsCreateModalOpen, setSelectedAppointmentIds, setEditingDraftBatch,
     setAppointments, setBatchToPay, setIsPaymentModalOpen, setAppointmentStatuses,
+    setSelectedBatch,
   });
 
   const toggleNeuropsicoDecision = (id: string, value: boolean) => setNeuropsicoDecisions(prev => ({ ...prev, [id]: value }));
