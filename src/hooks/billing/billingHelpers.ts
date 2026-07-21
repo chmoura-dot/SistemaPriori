@@ -85,25 +85,32 @@ export function createBillingHelpers({
     return blocked;
   };
 
-  const getMonthsToInclude = (): string[] => {
-    if (!monthFilter) return [];
-    const months = [monthFilter];
-    if (includePrevMonth) {
-      const [y, m] = monthFilter.split('-').map(Number);
-      const d = new Date(y, m - 2, 1);
-      months.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
-    }
-    if (includeNextMonth) {
-      const [y, m] = monthFilter.split('-').map(Number);
-      const d = new Date(y, m, 1);
-      months.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
-    }
-    return months;
+  // Mês seguinte à competência (YYYY-MM). Usado quando "incluir próximo mês"
+  // está marcado, para antecipar atendimentos do mês posterior neste lote.
+  const getNextMonth = (): string | null => {
+    if (!monthFilter) return null;
+    const [y, m] = monthFilter.split('-').map(Number);
+    const d = new Date(y, m, 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  };
+
+  // Determina se o mês (YYYY-MM) de um atendimento está dentro da janela
+  // selecionada de competência.
+  //
+  // Regras (comparação lexicográfica em YYYY-MM é equivalente à cronológica):
+  //   • includePrevMonth = true  → competência E TODOS os meses anteriores
+  //     (garante que nenhum atendimento antigo fique sem faturamento).
+  //   • includePrevMonth = false → apenas a competência exata.
+  //   • includeNextMonth = true  → também inclui o mês imediatamente seguinte.
+  const isMonthInWindow = (appMonth: string): boolean => {
+    if (!monthFilter) return true;
+    if (includePrevMonth ? appMonth <= monthFilter : appMonth === monthFilter) return true;
+    if (includeNextMonth && appMonth === getNextMonth()) return true;
+    return false;
   };
 
   const getEligibleAppointments = (): Appointment[] => {
     const today = new Date().toISOString().split('T')[0];
-    const monthsToInclude = getMonthsToInclude();
     const editingDraftId = editingDraftBatch?.id;
     const draftBatchIds = new Set(batches.filter(b => b.status === BillingBatchStatus.DRAFT).map(b => b.id));
     const billedAppointmentIds = new Set(batches.filter(b => b.status !== BillingBatchStatus.DRAFT).flatMap(b => b.appointmentIds));
@@ -111,7 +118,7 @@ export function createBillingHelpers({
       if (a.isInternal) return false;
       const customer = customers.find(c => c.id === a.customerId);
       const effectivePlan = a.healthPlanAtTime ?? customer?.healthPlan;
-      const matchesMonth = monthsToInclude.length === 0 || monthsToInclude.some(m => a.date.startsWith(m));
+      const matchesMonth = isMonthInWindow(a.date.substring(0, 7));
       const isInCurrentDraft = editingDraftId ? a.billingBatchId === editingDraftId : false;
       const isAvailable = !a.billingBatchId || draftBatchIds.has(a.billingBatchId) || !billedAppointmentIds.has(a.id);
       // Oculta atendimentos com valor R$0,00 (ex: cancelamento isento, AMS 4ª+
@@ -121,6 +128,7 @@ export function createBillingHelpers({
     }).sort((a, b) => a.date.localeCompare(b.date));
 
   };
+
 
   const calculateTotalSelectedAmount = () => appointments.filter(a => selectedAppointmentIds.includes(a.id)).reduce((sum, a) => sum + Math.round(getAppPrice(a) * 100), 0) / 100;
 

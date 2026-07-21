@@ -107,9 +107,10 @@ export const BatchFilters: React.FC<Props> = ({
         <div className="flex items-center justify-between mt-1.5 ml-1">
           <p className="text-xs text-zinc-400">
             Exibindo: <span className="font-medium text-priori-navy capitalize">{monthLabel}</span>
-            {includePrevMonth && prevMonthLabel && (
-              <span className="ml-1 text-amber-600">+ {prevMonthLabel}</span>
+            {includePrevMonth && (
+              <span className="ml-1 text-amber-600">+ meses anteriores</span>
             )}
+
             {includeNextMonth && nextMonthLabel && (
               <span className="ml-1 text-blue-600">+ {nextMonthLabel}</span>
             )}
@@ -123,8 +124,9 @@ export const BatchFilters: React.FC<Props> = ({
                 className="rounded border-zinc-300 text-amber-600 focus:ring-amber-500"
               />
               <span className="text-xs text-zinc-500 group-hover:text-amber-700 font-medium">
-                Incluir mês anterior
+                Incluir meses anteriores
               </span>
+
             </label>
             <label className="flex items-center gap-1.5 cursor-pointer group">
               <input
@@ -140,14 +142,15 @@ export const BatchFilters: React.FC<Props> = ({
           </div>
         </div>
 
-        {includePrevMonth && prevMonthLabel && (
+        {includePrevMonth && (
           <div className="mt-1.5 ml-1 flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-2 py-1">
             <Info size={11} className="flex-shrink-0" />
-            Mostrando atendimentos de <strong className="ml-1">{prevMonthLabel}</strong>
-            <span className="mx-1">e</span>
-            <strong>{monthLabel}</strong> — use para incluir atendimentos esquecidos no lote anterior.
+            Mostrando <strong className="ml-1">todos os atendimentos</strong>
+            <span className="mx-1">até</span>
+            <strong>{monthLabel}</strong> — garante que nenhum atendimento antigo fique sem faturamento.
           </div>
         )}
+
         {includeNextMonth && nextMonthLabel && (
           <div className="mt-1.5 ml-1 flex items-center gap-1.5 text-xs text-blue-700 bg-blue-50 border border-blue-100 rounded-lg px-2 py-1">
             <Info size={11} className="flex-shrink-0" />

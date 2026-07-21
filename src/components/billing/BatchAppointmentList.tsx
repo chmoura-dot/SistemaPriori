@@ -94,7 +94,8 @@ export const BatchAppointmentList: React.FC<Props> = ({
         <div className="p-8 text-center text-zinc-500 text-sm">
           {patientFilter.trim()
             ? 'Nenhum atendimento encontrado para este paciente.'
-            : `Nenhum atendimento disponível em ${monthLabel}${includePrevMonth && prevMonthLabel ? ` / ${prevMonthLabel}` : ''}.`}
+            : `Nenhum atendimento disponível em ${monthLabel}${includePrevMonth ? ' ou meses anteriores' : ''}.`}
+
         </div>
       ) : (
         grouped.map(({ customer, appointments: apps }) => {
