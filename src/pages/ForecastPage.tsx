@@ -118,14 +118,18 @@ export const ForecastPage = () => {
     //   • Mês navegado (== prefix): mostra TODOS os atendimentos previstos (comportamento
     //     original preservado — visão de previsão do mês corrente).
     //   • Meses anteriores (< prefix, dentro da janela de lookback): mostra APENAS os
-    //     ainda não faturados (billingBatchId vazio) — pendências a incluir no convênio.
+    //     ainda não faturados (billingBatchId vazio) e NÃO marcados para ignorar
+    //     faturamento (billingIgnored) — pendências a incluir no convênio. Atendimentos
+    //     marcados como "Ignorar" no Faturamento são exclusões intencionais e não devem
+    //     reaparecer como pendência atrasada.
     const monthApps = appointments.filter(a => {
       if (a.isInternal || isCanceledExempt(a)) return false;
       const appMonth = a.date.substring(0, 7);
-      if (appMonth === prefix) return true;              // mês navegado: tudo
-      if (appMonth < prefix) return !a.billingBatchId;    // meses anteriores: só não faturados
-      return false;                                       // meses futuros: ignora
+      if (appMonth === prefix) return true;                          // mês navegado: tudo
+      if (appMonth < prefix) return !a.billingBatchId && !a.billingIgnored; // anteriores: só não faturados e não ignorados
+      return false;                                                  // meses futuros: ignora
     });
+
 
     // Mapas rápidos
     const customerMap = new Map(customers.map(c => [c.id, c]));
