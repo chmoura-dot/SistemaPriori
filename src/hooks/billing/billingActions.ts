@@ -29,6 +29,7 @@ interface BillingActionsContext {
   appointmentStatuses: Record<string, AppointmentPaymentStatus>;
   batchToPay: BillingBatch | null;
   getAppPrice: (app: Appointment) => number;
+  getTussCode: (app: Appointment) => string;
   generateBatchNumber: (plan: HealthPlan, month: string, isDraft?: boolean) => string;
   fetchData: () => Promise<void>;
   setIsCreateModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
@@ -45,7 +46,7 @@ export function createBillingActions({
   batches, appointments, customers, psychologists, plans, // Adicionado
   selectedPlan, monthFilter, batchNumber, selectedAppointmentIds,
   editingDraftBatch, appointmentStatuses, batchToPay,
-  getAppPrice, generateBatchNumber, fetchData,
+  getAppPrice, getTussCode, generateBatchNumber, fetchData,
   setIsCreateModalOpen, setSelectedAppointmentIds, setEditingDraftBatch,
   setAppointments, setBatchToPay, setIsPaymentModalOpen, setAppointmentStatuses,
   setSelectedBatch,
@@ -461,6 +462,7 @@ export function createBillingActions({
         'Operadora': batch.healthPlan,
         'Paciente': customer?.name || '---',
         'Profissional': psychologist?.name || '---',
+        'Cód. TUSS': getTussCode(app) || '---',
         'Data da Sessão': format(new Date(app.date + 'T12:00:00'), 'dd/MM/yyyy'),
         'Horário': app.startTime,
         'Valor (R$)': getAppPrice(app),

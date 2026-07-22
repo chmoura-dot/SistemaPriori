@@ -105,6 +105,7 @@ export function useBillingData() {
     selectedPlan, monthFilter, batchNumber, selectedAppointmentIds,
     editingDraftBatch, appointmentStatuses, batchToPay,
     getAppPrice: helpers.getAppPrice,
+    getTussCode: helpers.getTussCode,
     generateBatchNumber: helpers.generateBatchNumber,
     fetchData,
     setIsCreateModalOpen, setSelectedAppointmentIds, setEditingDraftBatch,
