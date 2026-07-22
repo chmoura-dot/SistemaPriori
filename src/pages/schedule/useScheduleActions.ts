@@ -16,7 +16,36 @@ export const useScheduleActions = (s: ScheduleData) => {
   const handleCloseModal = () => {
     s.setIsModalOpen(false);
     s.setEditingId(null);
+    s.setRescheduleFromId(null);
     resetForm();
+  };
+
+  // Abre o formulário em modo "Remanejar": pré-preenche o mesmo horário/sala
+  // do atendimento cancelado, mas zera o paciente para escolha do substituto.
+  const handleReschedule = (appointment: Appointment) => {
+    s.setFormData({
+      customerId: '',
+      psychologistId: appointment.psychologistId,
+      roomId: appointment.roomId || '',
+      mode: appointment.mode,
+      type: appointment.type,
+      date: appointment.date,
+      startTime: appointment.startTime,
+      endTime: appointment.endTime,
+      procedureCode: '',
+      customPrice: undefined,
+      customRepassAmount: undefined,
+      isRecurring: false,
+      recurrenceFrequency: RecurrenceFrequency.SEMANAL,
+      isInternal: false,
+      internalType: 'SUPERVISAO',
+      internalTitle: '',
+      internalNotes: '',
+    });
+    s.setEditingId(null);
+    s.setUpdateFuture(false);
+    s.setRescheduleFromId(appointment.id);
+    s.setIsModalOpen(true);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -65,7 +94,18 @@ export const useScheduleActions = (s: ScheduleData) => {
         healthPlanAtTime: selectedCustomer?.healthPlan ?? undefined,
       };
 
-      if (editingId) {
+      if (s.rescheduleFromId) {
+        // Remanejamento atômico: cancela o original como 'reschedule' e cria o
+        // novo já vinculado, numa única transação (evita vaga órfã/duplicada).
+        await api.rescheduleAppointmentSwap({
+          originalAppointmentId: s.rescheduleFromId,
+          newAppointment: {
+            ...(payload as any),
+            date: formData.date,
+            dayOfWeek: new Date(formData.date + 'T12:00:00').getDay(),
+          },
+        });
+      } else if (editingId) {
         const appt = appointments.find(a => a.id === editingId);
         if (appt?.isRecurring && appt.recurrenceGroupId && s.updateFuture) {
           await api.deleteFutureAppointments(appt.recurrenceGroupId, appt.date);
@@ -81,6 +121,7 @@ export const useScheduleActions = (s: ScheduleData) => {
       s.setIsModalOpen(false);
       s.setEditingId(null);
       s.setUpdateFuture(false);
+      s.setRescheduleFromId(null);
     } catch (error: any) {
       const msg = error?.message || '';
       if (msg.includes('conflitante') || msg.includes('já possui') || msg.includes('overlap') || msg.includes('duplicate')) {
@@ -236,7 +277,7 @@ export const useScheduleActions = (s: ScheduleData) => {
 
   return {
     resetForm, handleCloseModal, handleSubmit, handleEdit,
-    handleDelete, confirmDelete, handleConfirm,
+    handleDelete, confirmDelete, handleConfirm, handleReschedule,
     handleCancelBillingChoice,
     sendWhatsApp, handleReminder,
   };

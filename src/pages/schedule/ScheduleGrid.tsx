@@ -1,6 +1,6 @@
 import React from 'react';
 import { Plus } from 'lucide-react';
-import { Appointment, Room, Psychologist, Customer, AttendanceMode } from '../../services/types';
+import { Appointment, Room, Psychologist, Customer, AttendanceMode, AppointmentStatus } from '../../services/types';
 import { cn } from '../../lib/utils';
 import { addMinutes, hasMinSpace } from './scheduleUtils';
 import { AppointmentCard } from './AppointmentCard';
@@ -22,6 +22,7 @@ interface ScheduleGridProps {
   onDelete: (app: Appointment) => void;
   onReminder: (app: Appointment) => void;
   onCancelBilling: (id: string) => void;
+  onReschedule: (app: Appointment) => void;
 }
 
 export const ScheduleGrid: React.FC<ScheduleGridProps> = ({
@@ -40,8 +41,18 @@ export const ScheduleGrid: React.FC<ScheduleGridProps> = ({
   onDelete,
   onReminder,
   onCancelBilling,
+  onReschedule,
 }) => {
-  const cardHandlers = { onEdit, onDelete, onReminder, onCancelBilling };
+  const cardHandlers = { onEdit, onDelete, onReminder, onCancelBilling, onReschedule };
+
+  // Quando um horário foi cancelado E remanejado, dois registros (cancelado +
+  // ativo) ocupam o mesmo slot. O agendamento ATIVO deve sempre ter prioridade
+  // de exibição — caso contrário o .find() poderia retornar o cancelado de forma
+  // não-determinística (a ordenação por date+start_time é idêntica p/ ambos).
+  const pickSlotAppointment = (matches: Appointment[]): Appointment | undefined => {
+    if (matches.length <= 1) return matches[0];
+    return matches.find(a => a.status !== AppointmentStatus.CANCELED) ?? matches[0];
+  };
 
   return (
     <div className="bg-white border border-zinc-100 rounded-2xl overflow-hidden shadow-sm">
@@ -97,13 +108,15 @@ export const ScheduleGrid: React.FC<ScheduleGridProps> = ({
 
                 {viewMode === 'daily'
                   ? rooms.map(room => {
-                      const appointment = appointments.find(
-                        a =>
-                          a.date === date &&
-                          a.roomId === room.id &&
-                          a.mode === AttendanceMode.PRESENCIAL &&
-                          a.startTime < addMinutes(slot, 30) &&
-                          a.endTime > slot
+                      const appointment = pickSlotAppointment(
+                        appointments.filter(
+                          a =>
+                            a.date === date &&
+                            a.roomId === room.id &&
+                            a.mode === AttendanceMode.PRESENCIAL &&
+                            a.startTime < addMinutes(slot, 30) &&
+                            a.endTime > slot
+                        )
                       );
                       const isFirstSlot =
                         !!appointment &&
@@ -148,15 +161,17 @@ export const ScheduleGrid: React.FC<ScheduleGridProps> = ({
                       );
                     })
                   : weekDays.map(day => {
-                      const appointment = appointments.find(
-                        a =>
-                          a.date === day &&
-                          (viewMode === 'psychologist'
-                            ? a.psychologistId === selectedPsychologistId
-                            : a.roomId === selectedRoom) &&
-                          (viewMode === 'psychologist' ? true : a.mode === AttendanceMode.PRESENCIAL) &&
-                          a.startTime < addMinutes(slot, 30) &&
-                          a.endTime > slot
+                      const appointment = pickSlotAppointment(
+                        appointments.filter(
+                          a =>
+                            a.date === day &&
+                            (viewMode === 'psychologist'
+                              ? a.psychologistId === selectedPsychologistId
+                              : a.roomId === selectedRoom) &&
+                            (viewMode === 'psychologist' ? true : a.mode === AttendanceMode.PRESENCIAL) &&
+                            a.startTime < addMinutes(slot, 30) &&
+                            a.endTime > slot
+                        )
                       );
                       const isFirstSlot =
                         !!appointment &&

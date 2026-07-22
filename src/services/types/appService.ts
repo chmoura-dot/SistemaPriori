@@ -67,6 +67,17 @@ export interface AppService {
   getAppointmentsNeedingRenewal: () => Promise<Appointment[]>;
   createAppointment: (appointment: Omit<Appointment, 'id' | 'createdAt' | 'confirmedPatient' | 'confirmedPsychologist'>) => Promise<Appointment>;
   updateAppointment: (id: string, appointment: Partial<Appointment>) => Promise<Appointment>;
+  /**
+   * Remanejamento atômico: cancela o atendimento original (como 'reschedule')
+   * e cria o novo atendimento vinculado, numa única transação no banco.
+   */
+  rescheduleAppointmentSwap: (params: {
+    originalAppointmentId: string;
+    newAppointment: Omit<
+      Appointment,
+      'id' | 'createdAt' | 'confirmedPatient' | 'confirmedPsychologist' | 'status'
+    >;
+  }) => Promise<{ originalAppointmentId: string; newAppointmentId: string }>;
   deleteAppointment: (id: string) => Promise<void>;
   deleteFutureAppointments: (groupId: string, fromDate: string) => Promise<void>;
 

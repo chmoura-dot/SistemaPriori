@@ -129,7 +129,8 @@ export function useDashboardOperacional({
         capacidade = avgDaily * 22; // estimativa simples
       }
       const cancelados = appointmentsFiltered.filter(
-        a => a.psychologistId === psy.id && a.status === AppointmentStatus.CANCELED && !a.isInternal
+        a => a.psychologistId === psy.id && a.status === AppointmentStatus.CANCELED &&
+        a.cancellationType !== 'reschedule' && !a.isInternal
       ).length;
       const pendente = Math.max(0, horasAgendadas - horasUsadas);
       return {

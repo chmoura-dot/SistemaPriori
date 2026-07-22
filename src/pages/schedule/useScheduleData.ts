@@ -57,6 +57,9 @@ export const useScheduleData = () => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState<ScheduleFormData>(makeDefaultForm(date));
   const [updateFuture, setUpdateFuture] = useState(false);
+  // Remanejamento: quando preenchido, o submit do formulário executa o swap
+  // atômico (cancela este ID como 'reschedule' + cria o novo vinculado).
+  const [rescheduleFromId, setRescheduleFromId] = useState<string | null>(null);
 
   // ── Cancellation / delete state ────────────────────────────────────────
   const [cancellationModalAppId, setCancellationModalAppId] = useState<string | null>(null);
@@ -129,6 +132,7 @@ export const useScheduleData = () => {
     editingId, setEditingId,
     formData, setFormData,
     updateFuture, setUpdateFuture,
+    rescheduleFromId, setRescheduleFromId,
     cancellationModalAppId, setCancellationModalAppId,
     cancellationReason, setCancellationReason,
     cancellationStep, setCancellationStep,

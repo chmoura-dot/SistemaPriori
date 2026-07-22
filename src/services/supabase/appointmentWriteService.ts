@@ -177,6 +177,48 @@ export const appointmentWriteService = {
     }
   },
 
+  rescheduleAppointmentSwap: async (
+    { originalAppointmentId, newAppointment: a }: {
+      originalAppointmentId: string;
+      newAppointment: Omit<Appointment, 'id' | 'createdAt' | 'confirmedPatient' | 'confirmedPsychologist' | 'status'>;
+    }
+  ): Promise<{ originalAppointmentId: string; newAppointmentId: string }> => {
+    const { data, error } = await supabase.rpc('reschedule_appointment_swap', {
+      p_original_appointment_id: originalAppointmentId,
+      p_customer_id: a.customerId,
+      p_psychologist_id: a.psychologistId,
+      p_room_id: a.roomId ?? null,
+      p_mode: a.mode,
+      p_type: a.type,
+      p_procedure_code: a.procedureCode ?? null,
+      p_date: a.date,
+      p_start_time: a.startTime,
+      p_end_time: a.endTime,
+      p_health_plan_at_time: a.healthPlanAtTime ?? null,
+      p_custom_price: a.customPrice ?? null,
+      p_custom_repass_amount: a.customRepassAmount ?? null,
+    });
+
+    if (error) {
+      if (error.code === 'P0001' || error.message.includes('conflitante') || error.code === '23505') {
+        throw new Error('O psicólogo selecionado já possui um agendamento neste horário.');
+      }
+      throw new Error(error.message);
+    }
+
+    const newId = (data as any)?.new_appointment_id;
+
+    // Notifica o remanejamento em UMA única mensagem combinada (evita as duas
+    // mensagens desencontradas: "cancelado" do antigo + "novo" do novo).
+    if (a.date === getTodayISO() && newId) {
+      supabase.functions.invoke('agenda-change-notify', {
+        body: { appointmentId: newId, changeType: 'rescheduled_slot' }
+      }).catch((e: any) => logger.warn('[AgendaChangeNotify]', e));
+    }
+
+    return { originalAppointmentId, newAppointmentId: newId };
+  },
+
   updateAppointment: async (id: string, a: Partial<Appointment>): Promise<Appointment> => {
     const updates: Record<string, any> = {};
     if (a.customerId !== undefined) updates.customer_id = a.customerId;

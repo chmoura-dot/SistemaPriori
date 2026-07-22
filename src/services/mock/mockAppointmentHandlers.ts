@@ -98,6 +98,44 @@ export const mockAppointmentHandlers = {
     saveToStorage(STORAGE_KEYS.APPOINTMENTS, list.filter(a => a.id !== id));
   },
 
+  rescheduleAppointmentSwap: async (
+    { originalAppointmentId, newAppointment }: {
+      originalAppointmentId: string;
+      newAppointment: Omit<Appointment, 'id' | 'createdAt' | 'confirmedPatient' | 'confirmedPsychologist' | 'status'>;
+    }
+  ): Promise<{ originalAppointmentId: string; newAppointmentId: string }> => {
+    await delay(500);
+    const list = getFromStorage<Appointment>(STORAGE_KEYS.APPOINTMENTS);
+    const newId = Math.random().toString(36).substr(2, 9);
+    const dateObj = new Date(newAppointment.date + 'T12:00:00');
+    const newApp: Appointment = {
+      ...(newAppointment as any),
+      id: newId,
+      dayOfWeek: dateObj.getDay(),
+      status: AppointmentStatus.ACTIVE,
+      confirmedPatient: false,
+      confirmedPsychologist: false,
+      confirmationStatus: 'pending',
+      replacesAppointmentId: originalAppointmentId,
+      createdAt: new Date().toISOString(),
+    };
+    const updated = list.map(a =>
+      a.id === originalAppointmentId
+        ? {
+            ...a,
+            status: AppointmentStatus.CANCELED,
+            cancellationType: 'reschedule' as const,
+            cancellationBilling: 'none' as const,
+            cancellationFault: null,
+            confirmedPsychologist: false,
+            replacedByAppointmentId: newId,
+          }
+        : a
+    );
+    saveToStorage(STORAGE_KEYS.APPOINTMENTS, [...updated, newApp]);
+    return { originalAppointmentId, newAppointmentId: newId };
+  },
+
   getAppointmentsByRange: async (startDate: string, endDate: string): Promise<Appointment[]> => {
     await delay(300);
     const list = getFromStorage<Appointment>(STORAGE_KEYS.APPOINTMENTS);

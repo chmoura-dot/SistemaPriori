@@ -109,6 +109,12 @@ export interface Appointment {
   createdAt: string;
   cancellationBilling?: 'none' | 'plan' | 'particular' | null;
   cancellationFault?: 'patient' | 'psychologist' | null;
+  // Motivo do cancelamento (separado de "quem faltou" e "como cobra").
+  // 'reschedule' = remanejamento: vaga reaproveitada, NÃO é falta/no-show real.
+  cancellationType?: 'no_show' | 'psychologist_absence' | 'discharge' | 'reschedule' | 'other' | null;
+  // Vínculo de remanejamento (bidirecional):
+  replacedByAppointmentId?: string;  // no cancelado → novo atendimento que ocupou a vaga
+  replacesAppointmentId?: string;    // no novo → atendimento original substituído
   // Campos para horário interno
   isInternal?: boolean;
   internalType?: 'SUPERVISAO' | 'RESPONSAVEIS' | 'REUNIAO' | 'ADMIN' | 'OUTRO';

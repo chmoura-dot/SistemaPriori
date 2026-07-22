@@ -18,7 +18,7 @@ export const SchedulePage = () => {
   const s = useScheduleData();
   const {
     resetForm, handleCloseModal, handleSubmit, handleEdit,
-    handleDelete, confirmDelete, handleConfirm,
+    handleDelete, confirmDelete, handleConfirm, handleReschedule,
     handleCancelBillingChoice,
     sendWhatsApp, handleReminder,
   } = useScheduleActions(s);
@@ -197,6 +197,7 @@ export const SchedulePage = () => {
         onDelete={handleDelete}
         onReminder={handleReminder}
         onCancelBilling={id => s.setCancellationModalAppId(id)}
+        onReschedule={handleReschedule}
       />
 
       {/* Form Modal */}
@@ -204,6 +205,7 @@ export const SchedulePage = () => {
         isOpen={s.isModalOpen}
         onClose={handleCloseModal}
         editingId={s.editingId}
+        isReschedule={!!s.rescheduleFromId}
         formData={s.formData}
         setFormData={s.setFormData}
         handleSubmit={handleSubmit}

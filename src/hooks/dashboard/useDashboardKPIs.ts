@@ -73,9 +73,17 @@ export function useDashboardKPIs({
   }, [filterMode, selectedMonth, selectedYear, today]);
 
   // ─── KPIs de taxas ───────────────────────────────────────────────────────
-  const totalAppsScheduled = appointmentsFiltered.length;
+  // Remanejamento gera 2 registros (cancelado 'reschedule' + novo ativo) para a
+  // MESMA vaga. O registro cancelado é um artefato: não deve inflar o total de
+  // agendamentos nem ser contado como cancelamento/falta real.
+  const totalAppsScheduled = useMemo(() =>
+    appointmentsFiltered.filter(app => app.cancellationType !== 'reschedule').length,
+    [appointmentsFiltered]
+  );
   const totalAppsCanceled = useMemo(() =>
-    appointmentsFiltered.filter(app => app.status === AppointmentStatus.CANCELED).length,
+    appointmentsFiltered.filter(app =>
+      app.status === AppointmentStatus.CANCELED && app.cancellationType !== 'reschedule'
+    ).length,
     [appointmentsFiltered]
   );
   // Apenas confirmados de verdade (sem cancelados cobráveis) para taxa de comparecimento
@@ -89,9 +97,11 @@ export function useDashboardKPIs({
   );
   const cancelationRate    = totalAppsScheduled > 0 ? (totalAppsCanceled / totalAppsScheduled) * 100 : 0;
   const attendanceRate     = totalAppsScheduled > 0 ? (appsConfirmados.length / totalAppsScheduled) * 100 : 0;
-  const cancelationRatePrev = useMemo(() =>
-    appointmentsPrevMonth.length === 0 ? 0
-      : (appointmentsPrevMonth.filter(a => a.status === AppointmentStatus.CANCELED).length / appointmentsPrevMonth.length) * 100,
+  const cancelationRatePrev = useMemo(() => {
+    const prevScheduled = appointmentsPrevMonth.filter(a => a.cancellationType !== 'reschedule');
+    return prevScheduled.length === 0 ? 0
+      : (prevScheduled.filter(a => a.status === AppointmentStatus.CANCELED).length / prevScheduled.length) * 100;
+  },
     [appointmentsPrevMonth]
   );
   const attendanceRatePrev = useMemo(() =>

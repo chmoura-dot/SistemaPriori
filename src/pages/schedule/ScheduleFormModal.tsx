@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useMemo } from 'react';
-import { Trash2, Wifi, Building2, Lock, User, AlertTriangle } from 'lucide-react';
+import { Trash2, Wifi, Building2, Lock, User, AlertTriangle, ArrowLeftRight } from 'lucide-react';
 import {
   Appointment, Psychologist, Customer, Plan, Room,
   AttendanceMode, AppointmentStatus, RecurrenceFrequency,
@@ -19,6 +19,8 @@ interface ScheduleFormModalProps {
   isOpen: boolean;
   onClose: () => void;
   editingId: string | null;
+  /** Quando true, o modal opera em modo "Remanejar" (swap atômico da vaga cancelada). */
+  isReschedule?: boolean;
   formData: ScheduleFormData;
   setFormData: React.Dispatch<React.SetStateAction<ScheduleFormData>>;
   handleSubmit: (e: React.FormEvent) => Promise<void>;
@@ -34,7 +36,7 @@ interface ScheduleFormModalProps {
 }
 
 export const ScheduleFormModal: React.FC<ScheduleFormModalProps> = ({
-  isOpen, onClose, editingId, formData, setFormData, handleSubmit, isSaving,
+  isOpen, onClose, editingId, isReschedule, formData, setFormData, handleSubmit, isSaving,
   updateFuture, setUpdateFuture, customers, psychologists, rooms, appointments, plans,
   onDeleteFromModal,
 }) => {
@@ -177,8 +179,21 @@ export const ScheduleFormModal: React.FC<ScheduleFormModalProps> = ({
   });
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={editingId ? 'Editar Agendamento' : 'Novo Agendamento'}>
+    <Modal isOpen={isOpen} onClose={onClose} title={isReschedule ? 'Remanejar Horário' : editingId ? 'Editar Agendamento' : 'Novo Agendamento'}>
       <form onSubmit={handleSubmit} className="space-y-6">
+
+        {/* Banner de contexto do remanejamento */}
+        {isReschedule && (
+          <div className="flex items-start gap-2.5 p-3 bg-sky-50 border border-sky-200 rounded-xl text-sky-800">
+            <ArrowLeftRight size={16} className="mt-0.5 shrink-0" />
+            <div>
+              <p className="text-sm font-bold">Remanejamento de vaga</p>
+              <p className="text-xs text-sky-600">
+                O atendimento cancelado será mantido no histórico (marcado como remanejado) e este novo atendimento ocupará a vaga no mesmo horário.
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Tab: Paciente / Bloqueio Interno */}
         <div className="flex bg-zinc-100/80 rounded-xl p-1">
@@ -336,7 +351,7 @@ export const ScheduleFormModal: React.FC<ScheduleFormModalProps> = ({
           <div className={cn('flex gap-3', !editingId && 'ml-auto')}>
             <Button type="button" variant="outline" onClick={onClose}>Cancelar</Button>
             <Button type="submit" disabled={isSaving} className="bg-priori-navy text-white hover:bg-priori-navy/90">
-              {isSaving ? 'Salvando...' : editingId ? 'Salvar Alterações' : 'Criar Agendamento'}
+              {isSaving ? 'Salvando...' : isReschedule ? 'Confirmar Remanejamento' : editingId ? 'Salvar Alterações' : 'Criar Agendamento'}
             </Button>
           </div>
         </div>

@@ -29,7 +29,8 @@ export const APPOINTMENT_COLUMNS = [
 
   'denial_reason', 'denial_resolution',
 
-  'cancellation_billing', 'cancellation_fault',
+  'cancellation_billing', 'cancellation_fault', 'cancellation_type',
+  'replaced_by_appointment_id', 'replaces_appointment_id',
   'is_internal', 'internal_type', 'internal_title', 'internal_notes',
   'created_at',
 ].join(', ');
@@ -161,6 +162,9 @@ export function toAppointment(row: any): Appointment {
     createdAt: row.created_at,
     cancellationBilling: row.cancellation_billing ?? undefined,
     cancellationFault: row.cancellation_fault ?? undefined,
+    cancellationType: row.cancellation_type ?? undefined,
+    replacedByAppointmentId: row.replaced_by_appointment_id ?? undefined,
+    replacesAppointmentId: row.replaces_appointment_id ?? undefined,
     isInternal: row.is_internal ?? false,
     internalType: row.internal_type ?? undefined,
     internalTitle: row.internal_title ?? undefined,

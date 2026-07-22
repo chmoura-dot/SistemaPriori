@@ -8,6 +8,7 @@ import {
   Trash2,
   Globe,
   Calendar as CalendarIcon,
+  ArrowLeftRight,
 } from 'lucide-react';
 import { Appointment, Customer, AppointmentStatus, AttendanceMode } from '../../services/types';
 import { cn } from '../../lib/utils';
@@ -59,6 +60,7 @@ export interface AppointmentCardProps {
   onDelete: (app: Appointment) => void;
   onReminder: (app: Appointment) => void;
   onCancelBilling: (id: string) => void;
+  onReschedule?: (app: Appointment) => void;
 }
 
 export const AppointmentCard: React.FC<AppointmentCardProps> = ({
@@ -70,6 +72,7 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({
   onDelete,
   onReminder,
   onCancelBilling,
+  onReschedule,
 }) => {
   const statusColors = {
     confirmed: 'bg-emerald-50/70 border-emerald-200 border-l-emerald-500',
@@ -153,7 +156,14 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({
               {PLAN_LABELS[customer.healthPlan] ?? customer.healthPlan}
             </span>
           )}
-          {!appointment.isInternal && appointment.status === AppointmentStatus.CANCELED && appointment.cancellationFault && (
+          {/* Badge de remanejamento: vaga foi reaproveitada por outro paciente.
+              Tem prioridade visual sobre "falta", pois NÃO é ausência real. */}
+          {!appointment.isInternal && appointment.status === AppointmentStatus.CANCELED && appointment.cancellationType === 'reschedule' && (
+            <span className="text-[7px] font-black uppercase tracking-tight px-1 py-0.5 rounded-sm mt-0.5 self-start leading-none bg-sky-100 text-sky-700 flex items-center gap-0.5">
+              <ArrowLeftRight size={7} /> Remanejado
+            </span>
+          )}
+          {!appointment.isInternal && appointment.status === AppointmentStatus.CANCELED && appointment.cancellationType !== 'reschedule' && appointment.cancellationFault && (
             <span className={cn(
               'text-[7px] font-black uppercase tracking-tight px-1 py-0.5 rounded-sm mt-0.5 self-start leading-none',
               appointment.cancellationFault === 'psychologist'
@@ -192,6 +202,24 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({
               ✕
             </button>
           )}
+          {/* Remanejar: só aparece em atendimento cancelado que ainda NÃO foi
+              substituído — evita criar dois substitutos para a mesma vaga. */}
+          {!appointment.isInternal &&
+            appointment.status === AppointmentStatus.CANCELED &&
+            !appointment.replacedByAppointmentId &&
+            onReschedule && (
+              <button
+                type="button"
+                onClick={e => {
+                  e.stopPropagation();
+                  onReschedule(appointment);
+                }}
+                className="text-sky-500 hover:text-sky-700 bg-sky-50 px-1 rounded"
+                title="Remanejar (encaixar outro paciente nesta vaga)"
+              >
+                <ArrowLeftRight size={10} />
+              </button>
+            )}
           <button
             type="button"
             onClick={e => {
