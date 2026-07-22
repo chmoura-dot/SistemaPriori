@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { ChevronLeft, ChevronRight, Printer, Loader2, CalendarSearch } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Printer, Loader2, CalendarSearch, RefreshCw, AlertTriangle } from 'lucide-react';
 import { api } from '../services/api';
 import { Appointment, Customer, Plan, HealthPlan, AppointmentStatus } from '../services/types';
 import { cn } from '../lib/utils';
@@ -13,6 +13,8 @@ interface ForecastDate {
   date: string;
   /** Sessão originada de cancelamento faturável (falta do paciente, cobrança mantida) */
   isCanceledBillable: boolean;
+  /** Atendimento de mês anterior ao navegado, ainda não faturado (nunca entrou em lote) */
+  isOverdue: boolean;
 }
 
 interface ForecastRow {
@@ -20,6 +22,8 @@ interface ForecastRow {
   procedureCode: string;
   procedureDescription: string;
   count: number;
+  /** Quantidade de atendimentos atrasados (meses anteriores, não faturados) */
+  overdueCount: number;
   dates: ForecastDate[];
 }
 
@@ -27,13 +31,16 @@ interface PlanGroup {
   planName: string;
   rows: ForecastRow[];
   total: number;
+  overdueTotal: number;
 }
+
 
 export const ForecastPage = () => {
   const now = new Date();
   const [month, setMonth] = useState(now.getMonth()); // 0-11
   const [year, setYear] = useState(now.getFullYear());
   const [planFilter, setPlanFilter] = useState<string>('all');
+  const [lookbackMonths, setLookbackMonths] = useState<number>(3); // meses anteriores vasculhados p/ pendências
   const [isLoading, setIsLoading] = useState(true);
 
   const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -43,9 +50,17 @@ export const ForecastPage = () => {
   const loadData = async () => {
     setIsLoading(true);
     try {
-      // Calcula primeiro e último dia do mês selecionado
-      const firstDay = `${year}-${String(month + 1).padStart(2, '0')}-01`;
-      const lastDay = new Date(year, month + 1, 0).toISOString().split('T')[0];
+      // Início da janela: dia 1 do mês navegado, recuado `lookbackMonths` meses.
+      // Aritmética explícita ano/mês evita overflow de dia (ex.: 31 - 1 mês).
+      let startYear = year;
+      let startMonth = month - lookbackMonths;
+      while (startMonth < 0) { startMonth += 12; startYear -= 1; }
+      const firstDay = `${startYear}-${String(startMonth + 1).padStart(2, '0')}-01`;
+
+      // Fim da janela: último dia do mês navegado.
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const lastDate = new Date(year, month + 1, 0);
+      const lastDay = `${lastDate.getFullYear()}-${pad(lastDate.getMonth() + 1)}-${pad(lastDate.getDate())}`;
 
       const [apps, custs, pls] = await Promise.all([
         api.getAppointmentsByRange(firstDay, lastDay),
@@ -64,7 +79,8 @@ export const ForecastPage = () => {
 
   useEffect(() => {
     loadData();
-  }, [month, year]);
+  }, [month, year, lookbackMonths]);
+
 
   // ---------- Navegação de mês ----------
   const prevMonth = () => {
@@ -93,13 +109,23 @@ export const ForecastPage = () => {
     const isCanceledBillable = (a: Appointment) =>
       a.status === AppointmentStatus.CANCELED && !isCanceledExempt(a);
 
-    // Filtrar agendamentos do mês, não-internos, excluindo apenas cancelamentos isentos.
-    // Faltas do paciente com cobrança mantida seguem na relação (passíveis de faturamento).
-    const monthApps = appointments.filter(a =>
-      a.date.startsWith(prefix) &&
-      !a.isInternal &&
-      !isCanceledExempt(a)
-    );
+    // Regra de faturamento (conforme negócio):
+    //   • Atendimento é considerado "já faturado" assim que vinculado a QUALQUER lote
+    //     (rascunho ou enviado), i.e. billingBatchId preenchido. Ao ser retirado do lote,
+    //     o campo volta a null e ele reaparece aqui automaticamente.
+    //
+    // Filtro por competência:
+    //   • Mês navegado (== prefix): mostra TODOS os atendimentos previstos (comportamento
+    //     original preservado — visão de previsão do mês corrente).
+    //   • Meses anteriores (< prefix, dentro da janela de lookback): mostra APENAS os
+    //     ainda não faturados (billingBatchId vazio) — pendências a incluir no convênio.
+    const monthApps = appointments.filter(a => {
+      if (a.isInternal || isCanceledExempt(a)) return false;
+      const appMonth = a.date.substring(0, 7);
+      if (appMonth === prefix) return true;              // mês navegado: tudo
+      if (appMonth < prefix) return !a.billingBatchId;    // meses anteriores: só não faturados
+      return false;                                       // meses futuros: ignora
+    });
 
     // Mapas rápidos
     const customerMap = new Map(customers.map(c => [c.id, c]));
@@ -120,6 +146,7 @@ export const ForecastPage = () => {
       const forecastDate: ForecastDate = {
         date: app.date,
         isCanceledBillable: isCanceledBillable(app),
+        isOverdue: app.date.substring(0, 7) < prefix,
       };
 
       const key = `${cust.id}::${app.type}`;
@@ -141,6 +168,7 @@ export const ForecastPage = () => {
       for (const [, data] of patientMap) {
         const sortedDates = [...data.dates].sort((a, b) => a.date.localeCompare(b.date));
         const proc = plan?.procedures?.find(p => p.type === data.app.type);
+        const overdueCount = sortedDates.filter(d => d.isOverdue).length;
 
 
         rows.push({
@@ -148,6 +176,7 @@ export const ForecastPage = () => {
           procedureCode: proc?.code || data.app.procedureCode || '—',
           procedureDescription: proc?.description || data.app.type,
           count: data.dates.length,
+          overdueCount,
           dates: sortedDates,
         });
       }
@@ -159,6 +188,7 @@ export const ForecastPage = () => {
         planName,
         rows,
         total: rows.reduce((s, r) => s + r.count, 0),
+        overdueTotal: rows.reduce((s, r) => s + r.overdueCount, 0),
       });
     }
 
@@ -168,12 +198,15 @@ export const ForecastPage = () => {
     return result;
   }, [appointments, customers, plans, month, year]);
 
+
   // Filtro por plano
   const visibleGroups = planFilter === 'all'
     ? planGroups
     : planGroups.filter(g => g.planName === planFilter);
 
   const totalGeral = visibleGroups.reduce((s, g) => s + g.total, 0);
+  const totalGeralOverdue = visibleGroups.reduce((s, g) => s + g.overdueTotal, 0);
+
 
   // Planos únicos para o dropdown
   const availablePlans = useMemo(() => {
@@ -210,8 +243,25 @@ export const ForecastPage = () => {
           <p className="text-xs text-zinc-400 mt-1">
             <span className="font-semibold text-amber-600">*</span> Falta do paciente com cobrança mantida (passível de faturamento)
           </p>
+          <p className="text-xs text-zinc-400 mt-0.5">
+            <span className="font-semibold text-red-600">●</span> Atendimento de mês anterior ainda não faturado (incluir na solicitação)
+          </p>
         </div>
       </div>
+
+      {/* Banner de alerta de pendências atrasadas */}
+      {totalGeralOverdue > 0 && (
+        <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl px-4 py-3 print:border-red-300">
+          <AlertTriangle size={20} className="text-red-600 mt-0.5 flex-shrink-0" />
+          <p className="text-sm text-red-700">
+            <span className="font-bold">
+              {totalGeralOverdue} atendimento{totalGeralOverdue !== 1 ? 's' : ''} de meses anteriores
+            </span>{' '}
+            ainda {totalGeralOverdue !== 1 ? 'não foram faturados' : 'não foi faturado'}. Inclua
+            {totalGeralOverdue !== 1 ? '-os' : '-o'} na próxima solicitação ao convênio.
+          </p>
+        </div>
+      )}
 
 
       {/* Controles */}
@@ -241,6 +291,30 @@ export const ForecastPage = () => {
           ))}
         </select>
 
+        {/* Janela de pendências (lookback) */}
+        <div className="flex items-center gap-2 bg-white border border-zinc-200 rounded-xl px-3 py-2 shadow-sm">
+          <span className="text-xs font-medium text-zinc-500">Pendências desde:</span>
+          <select
+            value={lookbackMonths}
+            onChange={e => setLookbackMonths(Number(e.target.value))}
+            className="text-sm font-medium text-priori-navy bg-transparent focus:ring-2 focus:ring-priori-navy/20 outline-none"
+          >
+            <option value={3}>3 meses</option>
+            <option value={6}>6 meses</option>
+            <option value={12}>12 meses</option>
+          </select>
+        </div>
+
+        {/* Botão atualizar */}
+        <button
+          onClick={loadData}
+          className="flex items-center gap-2 px-4 py-2.5 bg-white border border-zinc-200 text-priori-navy rounded-xl text-sm font-semibold hover:bg-zinc-50 transition-colors shadow-sm"
+          title="Atualizar dados"
+        >
+          <RefreshCw size={16} />
+          Atualizar
+        </button>
+
         {/* Botão imprimir */}
         <button
           onClick={handlePrint}
@@ -250,6 +324,7 @@ export const ForecastPage = () => {
           Imprimir
         </button>
       </div>
+
 
       {/* Conteúdo */}
       {visibleGroups.length === 0 ? (
@@ -270,10 +345,18 @@ export const ForecastPage = () => {
                   </div>
                   <h2 className="text-lg font-bold text-priori-navy">{group.planName}</h2>
                 </div>
-                <span className="text-xs font-bold text-priori-gold bg-priori-gold/10 px-3 py-1.5 rounded-full border border-priori-gold/20">
-                  {group.total} atendimento{group.total !== 1 ? 's' : ''}
-                </span>
+                <div className="flex items-center gap-2">
+                  {group.overdueTotal > 0 && (
+                    <span className="text-xs font-bold text-red-600 bg-red-50 px-3 py-1.5 rounded-full border border-red-200">
+                      {group.overdueTotal} atrasado{group.overdueTotal !== 1 ? 's' : ''}
+                    </span>
+                  )}
+                  <span className="text-xs font-bold text-priori-gold bg-priori-gold/10 px-3 py-1.5 rounded-full border border-priori-gold/20">
+                    {group.total} atendimento{group.total !== 1 ? 's' : ''}
+                  </span>
+                </div>
               </div>
+
 
               {/* Tabela */}
               <div className="overflow-x-auto">
@@ -303,16 +386,18 @@ export const ForecastPage = () => {
                           {row.dates.map((d, i) => (
                             <React.Fragment key={d.date + i}>
                               {i > 0 && ', '}
-                              {d.isCanceledBillable ? (
-                                <span
-                                  title="Falta do paciente — cobrança mantida (passível de faturamento)"
-                                  className="font-semibold text-amber-600"
-                                >
-                                  {fmtDate(d.date)}*
-                                </span>
-                              ) : (
-                                <span>{fmtDate(d.date)}</span>
-                              )}
+                              <span
+                                title={cn(
+                                  d.isOverdue && 'Mês anterior — ainda não faturado (incluir na solicitação)',
+                                  d.isCanceledBillable && 'Falta do paciente — cobrança mantida (passível de faturamento)'
+                                ) || undefined}
+                                className={cn(
+                                  d.isOverdue && 'font-semibold text-red-600',
+                                  !d.isOverdue && d.isCanceledBillable && 'font-semibold text-amber-600'
+                                )}
+                              >
+                                {fmtDate(d.date)}{d.isCanceledBillable ? '*' : ''}
+                              </span>
                             </React.Fragment>
                           ))}
                         </td>
@@ -334,6 +419,11 @@ export const ForecastPage = () => {
           <div className="flex justify-end">
             <div className="bg-priori-navy text-white px-6 py-3 rounded-xl text-sm font-bold shadow-sm">
               Total Geral: {totalGeral} atendimento{totalGeral !== 1 ? 's' : ''}
+              {totalGeralOverdue > 0 && (
+                <span className="ml-2 text-red-300">
+                  ({totalGeralOverdue} atrasado{totalGeralOverdue !== 1 ? 's' : ''})
+                </span>
+              )}
             </div>
           </div>
         </div>
