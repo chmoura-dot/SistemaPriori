@@ -41,6 +41,7 @@ export enum RecurrenceFrequency {
 export enum AppointmentType {
   INFANTIL = 'Psicoterapia Infantil',
   ADULTO = 'Psicoterapia Adulto',
+  PSICOPEDAGOGIA = 'Psicopedagogia',
   CASAL = 'Terapia de Casal',
   NEUROPSICOLOGICA = 'Avaliação Neuropsicológica'
 }
