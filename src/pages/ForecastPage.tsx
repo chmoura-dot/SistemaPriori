@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { ChevronLeft, ChevronRight, Printer, Loader2, CalendarSearch, RefreshCw, AlertTriangle } from 'lucide-react';
 import { api } from '../services/api';
-import { Appointment, Customer, Plan, HealthPlan, AppointmentStatus } from '../services/types';
+import { Appointment, Customer, Plan, HealthPlan, AppointmentStatus, AppointmentType } from '../services/types';
 import { cn } from '../lib/utils';
+import { getAppPrice, PricingContext } from '../lib/pricing';
+
 
 const MONTH_NAMES = [
   'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
@@ -43,7 +45,13 @@ export const ForecastPage = () => {
   const [lookbackMonths, setLookbackMonths] = useState<number>(3); // meses anteriores vasculhados p/ pendências
   const [isLoading, setIsLoading] = useState(true);
 
+  // Atendimentos exibidos (janela de exibição: mês navegado + lookback de pendências)
   const [appointments, setAppointments] = useState<Appointment[]>([]);
+  // Contexto de precificação (janela ampliada ≥7 meses) — usado APENAS para
+  // aplicar a regra de elegibilidade neuropsicológica (carência de 180 dias /
+  // ciclo AMS). NÃO é exibido diretamente; garante que getAppPrice tenha
+  // histórico suficiente para classificar corretamente 1ª sessão vs. controle.
+  const [contextAppointments, setContextAppointments] = useState<Appointment[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [plans, setPlans] = useState<Plan[]>([]);
 
@@ -57,17 +65,29 @@ export const ForecastPage = () => {
       while (startMonth < 0) { startMonth += 12; startYear -= 1; }
       const firstDay = `${startYear}-${String(startMonth + 1).padStart(2, '0')}-01`;
 
+      // Início da janela de CONTEXTO: no mínimo 7 meses (>180 dias) antes do mês
+      // navegado, independente do lookback escolhido. Necessário para a regra de
+      // carência de 180 dias e o ciclo AMS de 10 meses não classificarem uma
+      // sessão de controle como "1ª sessão faturável" por falta de histórico.
+      const CONTEXT_MONTHS = Math.max(lookbackMonths, 12);
+      let ctxYear = year;
+      let ctxMonth = month - CONTEXT_MONTHS;
+      while (ctxMonth < 0) { ctxMonth += 12; ctxYear -= 1; }
+      const contextFirstDay = `${ctxYear}-${String(ctxMonth + 1).padStart(2, '0')}-01`;
+
       // Fim da janela: último dia do mês navegado.
       const pad = (n: number) => String(n).padStart(2, '0');
       const lastDate = new Date(year, month + 1, 0);
       const lastDay = `${lastDate.getFullYear()}-${pad(lastDate.getMonth() + 1)}-${pad(lastDate.getDate())}`;
 
-      const [apps, custs, pls] = await Promise.all([
+      const [apps, ctxApps, custs, pls] = await Promise.all([
         api.getAppointmentsByRange(firstDay, lastDay),
+        api.getAppointmentsByRange(contextFirstDay, lastDay),
         api.getCustomers(),
         api.getPlans(),
       ]);
       setAppointments(apps);
+      setContextAppointments(ctxApps);
       setCustomers(custs);
       setPlans(pls);
     } catch {
@@ -76,6 +96,7 @@ export const ForecastPage = () => {
       setIsLoading(false);
     }
   };
+
 
   useEffect(() => {
     loadData();
@@ -109,6 +130,26 @@ export const ForecastPage = () => {
     const isCanceledBillable = (a: Appointment) =>
       a.status === AppointmentStatus.CANCELED && !isCanceledExempt(a);
 
+    // Contexto de precificação com histórico ampliado (≥12 meses). Reutiliza a
+    // MESMA regra do Faturamento/Repasse (getAppPrice) para não duplicar lógica
+    // de negócio nem divergir das outras telas.
+    const pricingCtx: PricingContext = {
+      customers,
+      plans,
+      appointments: contextAppointments,
+    };
+
+    // Avaliação Neuropsicológica: só a sessão PASSÍVEL DE FATURAMENTO aparece.
+    //   • Convênios comuns/particular: 1ª sessão ou após 180 dias de carência.
+    //   • AMS Petrobras: 1ª/2ª/3ª sessão do ciclo (faturáveis, ainda que com
+    //     código distinto); 4ª+ no ciclo é R$0.
+    // As demais (sessões de controle, valor R$0) são ocultadas por completo:
+    // não entram nas datas nem na contagem. getAppPrice já aplica todas essas
+    // regras e retorna 0 para as sessões de controle.
+    const isNeuropsicoControl = (a: Appointment) =>
+      a.type === AppointmentType.NEUROPSICOLOGICA && getAppPrice(a, pricingCtx) <= 0;
+
+
     // Regra de faturamento (conforme negócio):
     //   • Atendimento é considerado "já faturado" assim que vinculado a QUALQUER lote
     //     (rascunho ou enviado), i.e. billingBatchId preenchido. Ao ser retirado do lote,
@@ -124,11 +165,14 @@ export const ForecastPage = () => {
     //     reaparecer como pendência atrasada.
     const monthApps = appointments.filter(a => {
       if (a.isInternal || isCanceledExempt(a)) return false;
+      // Neuropsico de controle (sessão não faturável): não aparece na previsão.
+      if (isNeuropsicoControl(a)) return false;
       const appMonth = a.date.substring(0, 7);
       if (appMonth === prefix) return true;                          // mês navegado: tudo
       if (appMonth < prefix) return !a.billingBatchId && !a.billingIgnored; // anteriores: só não faturados e não ignorados
       return false;                                                  // meses futuros: ignora
     });
+
 
 
     // Mapas rápidos
@@ -200,7 +244,8 @@ export const ForecastPage = () => {
     result.sort((a, b) => a.planName.localeCompare(b.planName, 'pt-BR'));
 
     return result;
-  }, [appointments, customers, plans, month, year]);
+  }, [appointments, contextAppointments, customers, plans, month, year]);
+
 
 
   // Filtro por plano
