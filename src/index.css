@@ -80,3 +80,40 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   @apply transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] shadow-md hover:shadow-lg;
 }
 
+/* ── Impressão / geração de PDF ──────────────────────────────────────────────
+   Corrige o corte de conteúdo ao imprimir (ex.: Previsão de Atendimentos):
+   • Sidebar/cabeçalho fixos (position: fixed) sobrepõem e cortam a esquerda da
+     página, pois o padding-left (lg:pl-64) não é aplicado na largura de impressão.
+   • Tabelas largas estouram a largura em retrato → forçamos paisagem (A4). */
+@media print {
+  @page {
+    size: A4 landscape;
+    margin: 12mm;
+  }
+
+  /* Remove fundos decorativos e sombras que atrapalham o PDF */
+  .bg-blob {
+    display: none !important;
+  }
+
+  body {
+    background: #fff !important;
+  }
+
+  /* Container principal ocupa toda a largura, sem reservar espaço da sidebar */
+  main {
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* Evita quebra de página no meio de um bloco de plano/linha da tabela */
+  table {
+    page-break-inside: auto;
+  }
+
+  tr {
+    page-break-inside: avoid;
+  }
+}
+
+

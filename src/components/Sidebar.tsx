@@ -100,7 +100,7 @@ export const Sidebar = ({ currentPath, onNavigate }: SidebarProps) => {
   return (
     <>
       {/* Mobile Header */}
-      <div className="lg:hidden flex items-center justify-between bg-priori-navy border-b border-priori-navy px-4 py-4 fixed top-0 w-full z-40">
+      <div className="lg:hidden print:hidden flex items-center justify-between bg-priori-navy border-b border-priori-navy px-4 py-4 fixed top-0 w-full z-40">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-lg bg-priori-gold flex items-center justify-center">
             <Activity size={20} className="text-white" />
@@ -125,7 +125,7 @@ export const Sidebar = ({ currentPath, onNavigate }: SidebarProps) => {
 
       {/* Sidebar Content */}
       <aside className={cn(
-        "fixed top-0 left-0 h-full w-64 bg-priori-navy z-50 transition-transform lg:translate-x-0 flex flex-col",
+        "fixed top-0 left-0 h-full w-64 bg-priori-navy z-50 transition-transform lg:translate-x-0 flex flex-col print:hidden",
         isOpen ? "translate-x-0" : "-translate-x-full"
       )}>
         <div className="p-8 flex flex-col items-center gap-4">

@@ -363,7 +363,7 @@ export const ForecastPage = () => {
 
 
               {/* Tabela */}
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto print:overflow-visible">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-zinc-100 text-left">
