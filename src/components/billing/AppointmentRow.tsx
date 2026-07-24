@@ -73,6 +73,14 @@ export const AppointmentRow: React.FC<Props> = memo(({
   const isCanceledExempt =
     app.status === AppointmentStatus.CANCELED &&
     (!app.cancellationBilling || app.cancellationBilling === 'none');
+  // Falta do psicólogo cobrada normalmente do convênio (autorização por sessão
+  // já consumida): fatura igual, mas o repasse ao profissional é bloqueado.
+  // Badge apenas informativo — não altera valor nem seleção.
+  const isPsychologistAbsenceBilled =
+    app.status === AppointmentStatus.CANCELED &&
+    app.cancellationFault === 'psychologist' &&
+    app.cancellationBilling === 'plan';
+
 
   const appMonth = app.date.substring(0, 7);
   const isFromOtherMonth = (includePrevMonth || includeNextMonth) && appMonth !== monthFilter;
@@ -224,6 +232,15 @@ export const AppointmentRow: React.FC<Props> = memo(({
               Cancelado — Isento
             </span>
           )}
+          {isPsychologistAbsenceBilled && (
+            <span
+              title="Falta do psicólogo: cobrada do convênio (autorização por sessão já consumida), mas SEM repasse ao profissional."
+              className="text-[10px] px-1.5 py-0.5 rounded bg-purple-50 text-purple-600 border border-purple-200 font-semibold"
+            >
+              Falta Psicólogo — Cobrado
+            </span>
+          )}
+
           {!isIgnored && !isCanceledExempt && !isConfirmed && (
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-600 border border-amber-200">
               Ag. confirmação

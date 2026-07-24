@@ -184,8 +184,9 @@ export const CancellationModals: React.FC<CancellationModalsProps> = ({
                   <div className="text-center">
                     <span className="block font-bold text-red-700 text-sm">Falta do Psicólogo</span>
                     <span className="block text-xs text-red-600/70 mt-1">
-                      Não cobra e não repassa (ausência do profissional)
+                      Nunca repassa. Cobrança automática do convênio, exceto AMS Petrobras/Particular (isentos)
                     </span>
+
                   </div>
                 </button>
               </div>

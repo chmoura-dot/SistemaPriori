@@ -5,6 +5,8 @@ import {
 import { supabase } from '../../lib/supabase';
 import { logger } from '../../lib/logger';
 import { hasTimeOverlap } from '../../lib/timeUtils';
+import { resolvePsychologistAbsenceBilling } from '../../lib/pricing';
+
 import { useScheduleData, makeDefaultForm } from './useScheduleData';
 import { ScheduleFormData } from './scheduleUtils';
 
@@ -228,12 +230,17 @@ export const useScheduleActions = (s: ScheduleData) => {
         });
         if (error) throw new Error(error.message);
       } else if (billingMode === 'psychologist_absence') {
-        // Falta do psicólogo → não cobra e não repassa.
+        // Falta do psicólogo → NUNCA repassa. A cobrança depende do plano:
+        // AMS/Particular isentam ('none'); demais convênios cobram ('plan'),
+        // pois a autorização por sessão já foi consumida. Ver resolvePsychologistAbsenceBilling.
+        const customer = s.customers.find(c => c.id === appointment?.customerId);
+        const effectiveHealthPlan = appointment?.healthPlanAtTime ?? customer?.healthPlan;
         await api.updateAppointment(s.cancellationModalAppId, {
           status: AppointmentStatus.CANCELED,
-          cancellationBilling: 'none',
+          cancellationBilling: resolvePsychologistAbsenceBilling(effectiveHealthPlan),
           cancellationFault: 'psychologist',
         });
+
       } else {
         // Falta/cancelamento do paciente → cobra conforme escolha e mantém repasse.
         await api.updateAppointment(s.cancellationModalAppId, {

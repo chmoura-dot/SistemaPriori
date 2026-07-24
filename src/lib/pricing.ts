@@ -199,6 +199,38 @@ export function isRepassBlocked(app: Appointment): boolean {
   return app.status === AppointmentStatus.CANCELED && app.cancellationFault === 'psychologist';
 }
 
+/**
+ * Determina COMO faturar uma FALTA DO PSICÓLOGO conforme o plano do paciente.
+ *
+ * Regra de negócio:
+ *  • AMS Petrobras / Particular / sem plano → NÃO cobra ('none'). Na AMS a
+ *    autorização é ampla (não por sessão), então uma ausência do profissional
+ *    não gera fato gerador de cobrança; no particular não se cobra do paciente
+ *    por uma falha da clínica.
+ *  • Demais convênios → COBRA ('plan'). Nesses planos a autorização é solicitada
+ *    por sessão junto ao convênio e é "consumida" independentemente do
+ *    comparecimento do profissional — o convênio reconhece o atendimento.
+ *
+ * Em TODOS os casos o repasse ao psicólogo é bloqueado (ver isRepassBlocked),
+ * pois quem faltou foi o profissional: a clínica não paga por atendimento não
+ * realizado, mesmo quando cobra do convênio.
+ *
+ * @param effectiveHealthPlan Plano vigente do atendimento (healthPlanAtTime ?? customer.healthPlan)
+ */
+export function resolvePsychologistAbsenceBilling(
+  effectiveHealthPlan: HealthPlan | string | undefined,
+): 'none' | 'plan' {
+  if (
+    !effectiveHealthPlan ||
+    effectiveHealthPlan === HealthPlan.AMS_PETROBRAS ||
+    effectiveHealthPlan === HealthPlan.PARTICULAR
+  ) {
+    return 'none';
+  }
+  return 'plan';
+}
+
+
 /** Percentual do repasse liberado em cada fase do split neuropsicológico (50%). */
 export const NEUROPSICO_REPORT_SPLIT_RATE = 0.5;
 

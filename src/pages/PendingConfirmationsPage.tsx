@@ -4,7 +4,9 @@ import { api } from '../services/api';
 import { supabase } from '../lib/supabase';
 import { Appointment, Psychologist, Customer, AppointmentStatus } from '../services/types';
 import { cn } from '../lib/utils';
+import { resolvePsychologistAbsenceBilling } from '../lib/pricing';
 import { PsychologistConfirmationGroup } from './pendingConfirmations/PsychologistConfirmationGroup';
+
 import { CancellationBillingModal } from './pendingConfirmations/CancellationBillingModal';
 
 const SUPABASE_URL     = import.meta.env.VITE_SUPABASE_URL as string;
@@ -91,13 +93,19 @@ export const PendingConfirmationsPage = () => {
 
         await loadData();
       } else if (billingMode === 'psychologist_absence') {
-        // Falta do psicólogo → não cobra (billing 'none') e não repassa (fault).
+        // Falta do psicólogo → NUNCA repassa. A cobrança depende do plano:
+        // AMS/Particular isentam ('none'); demais convênios cobram ('plan'),
+        // pois a autorização por sessão já foi consumida. Ver resolvePsychologistAbsenceBilling.
+        const currentApp = appointments.find(a => a.id === cancellationModalAppId);
+        const customer = customers.find(c => c.id === currentApp?.customerId);
+        const effectiveHealthPlan = currentApp?.healthPlanAtTime ?? customer?.healthPlan;
         await api.updateAppointment(cancellationModalAppId, {
           status: AppointmentStatus.CANCELED,
-          cancellationBilling: 'none',
+          cancellationBilling: resolvePsychologistAbsenceBilling(effectiveHealthPlan),
           cancellationFault: 'psychologist',
         });
         await loadData();
+
       } else {
         // Falta do paciente → cobra conforme escolha e mantém repasse.
         await api.updateAppointment(cancellationModalAppId, {
