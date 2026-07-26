@@ -256,10 +256,15 @@ export function createBillingActions({
     const batch = batches.find(b => b.id === batchId);
     if (!batch || batch.status === BillingBatchStatus.DRAFT) return;
     const source = appsOverride ?? appointments;
+    // Só atendimentos COBRÁVEIS (valor > 0) contam para o status do lote.
+    // Itens de R$0 (4ª+ sessão neuropsico AMS, cancelamento isento) não têm
+    // ação de pagamento na UI, então incluí-los travaria o lote em
+    // PARTIALLY_PAID para sempre.
     const batchApps = batch.appointmentIds
       .map(id => source.find(a => a.id === id))
-      .filter((a): a is Appointment => !!a);
+      .filter((a): a is Appointment => !!a && getAppPrice(a) > 0);
     if (batchApps.length === 0) return;
+
 
     const resolvedCount = batchApps.filter(a => a.billingStatus === 'paid' || a.billingStatus === 'denied').length;
 
@@ -371,12 +376,13 @@ export function createBillingActions({
         .reduce((sum, a) => sum + Math.round(getAppPrice(a) * 100), 0) / 100;
 
       // Recalcula o status do lote com base nos atendimentos restantes.
-      // O atendimento removido nunca era "resolvido" (billingStatus vazio), então
-      // ele só sai do denominador da contagem.
+      // Só atendimentos COBRÁVEIS (valor > 0) contam — itens de R$0 não têm
+      // ação de pagamento, então não podem travar o status do lote.
       const remainingApps = remainingIds
         .map(id => appointments.find(a => a.id === id))
-        .filter((a): a is Appointment => !!a);
+        .filter((a): a is Appointment => !!a && getAppPrice(a) > 0);
       const resolvedCount = remainingApps.filter(a => a.billingStatus === 'paid' || a.billingStatus === 'denied').length;
+
       let newStatus: BillingBatchStatus;
       if (resolvedCount === 0) newStatus = BillingBatchStatus.SENT;
       else if (resolvedCount < remainingApps.length) newStatus = BillingBatchStatus.PARTIALLY_PAID;
@@ -411,8 +417,99 @@ export function createBillingActions({
     }
   };
 
+  /**
+   * Adiciona um atendimento a um lote JÁ ENVIADO (não-DRAFT).
+   * Uso: o atendimento deveria ter entrado no lote mas foi esquecido.
+   *
+   * Salvaguardas financeiras (a operação é abortada se qualquer uma falhar):
+   *   1. Nunca opera em lote DRAFT (a edição de rascunho é feita na seleção).
+   *   2. Bloqueia se o lote já possui QUALQUER repasse gerado — a partir daí o
+   *      lote está financeiramente "fechado" para edição.
+   *   3. Só adiciona atendimento COBRÁVEL (valor > 0) do MESMO plano do lote e
+   *      que ainda não pertence a outro lote.
+   * Efeitos: vincula billingBatchId, recalcula totalAmount e status do lote.
+   */
+  const handleAddAppointmentToBatch = async (batch: BillingBatch, appId: string) => {
+    if (batch.status === BillingBatchStatus.DRAFT) return;
+
+    const app = appointments.find(a => a.id === appId);
+    if (!app) return;
+
+    // Salvaguarda 3a: não duplicar.
+    if (batch.appointmentIds.includes(appId)) {
+      toastError('Este atendimento já está no lote.');
+      return;
+    }
+
+    // Salvaguarda 3b: precisa ser cobrável.
+    const price = getAppPrice(app);
+    if (price <= 0) {
+      toastError('Este atendimento não possui valor a faturar e não pode ser adicionado.');
+      return;
+    }
+
+    // Salvaguarda 3c: não pode já pertencer a outro lote.
+    if (app.billingBatchId && app.billingBatchId !== batch.id) {
+      toastError('Este atendimento já pertence a outro lote.');
+      return;
+    }
+
+    try {
+      // Salvaguarda 2: bloqueia se o lote já tem repasse gerado.
+      const repasses = await api.getRepasses();
+      const hasRepasse = repasses.some(r => r.billingBatchId === batch.id);
+      if (hasRepasse) {
+        toastError('Este lote já possui repasse gerado e não pode mais ser editado.');
+        return;
+      }
+
+      const newIds = [...batch.appointmentIds, appId];
+      const newTotal = appointments
+        .filter(a => newIds.includes(a.id))
+        .reduce((sum, a) => sum + Math.round(getAppPrice(a) * 100), 0) / 100;
+
+      // Recalcula o status: o atendimento adicionado entra como pendente
+      // (billingStatus vazio), então o lote nunca fica "mais pago" do que estava.
+      const newApps = newIds
+        .map(id => appointments.find(a => a.id === id))
+        .filter((a): a is Appointment => !!a && getAppPrice(a) > 0);
+      const resolvedCount = newApps.filter(a => a.billingStatus === 'paid' || a.billingStatus === 'denied').length;
+      let newStatus: BillingBatchStatus;
+      if (resolvedCount === 0) newStatus = BillingBatchStatus.SENT;
+      else if (resolvedCount < newApps.length) newStatus = BillingBatchStatus.PARTIALLY_PAID;
+      else newStatus = BillingBatchStatus.PAID;
+
+      const batchUpdates: Partial<BillingBatch> = {
+        appointmentIds: newIds,
+        totalAmount: newTotal,
+        status: newStatus,
+        paidAt: newStatus === BillingBatchStatus.PAID ? new Date().toISOString() : undefined,
+      };
+
+      // Se for particular sem customPrice, congela o valor (mesma regra da criação de lote).
+      await snapshotParticularPrices([appId]);
+      await api.updateAppointment(appId, { billingBatchId: batch.id });
+      await api.updateBillingBatch(batch.id, batchUpdates);
+
+      setAppointments(prev => prev.map(a => a.id === appId ? { ...a, billingBatchId: batch.id } : a));
+      setSelectedBatch(prev =>
+        prev && prev.id === batch.id
+          ? { ...prev, appointmentIds: newIds, totalAmount: newTotal, status: newStatus, paidAt: batchUpdates.paidAt }
+          : prev
+      );
+      toastSuccess('Atendimento adicionado ao lote.');
+      fetchData();
+    } catch (error) {
+      logger.critical('billing.handleAddAppointmentToBatch', error, {
+        batchId: batch.id, appointmentId: appId,
+      });
+      toastError('Erro ao adicionar atendimento ao lote.');
+    }
+  };
+
 
   const submitPayment = async () => {
+
     if (!batchToPay) return;
     try {
       await Promise.all(batchToPay.appointmentIds.map(id => {
@@ -505,7 +602,8 @@ export function createBillingActions({
     handleMarkAsPaid, submitPayment, handleDeleteBatch, handleExportBatch,
     handleConfirmAppointment, handleIgnoreAppointment, handleUnignoreAppointment,
     handleMarkAppointmentPaid, handleUnmarkAppointmentPaid,
-    handleRemoveAppointmentFromBatch,
+    handleRemoveAppointmentFromBatch, handleAddAppointmentToBatch,
   };
+
 
 }

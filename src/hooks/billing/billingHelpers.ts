@@ -145,8 +145,34 @@ export function createBillingHelpers({
     return counts;
   };
 
-  return { getNeuropsicoStatus, getAmsNeuropsicoSessionIndex, getAppPrice, getTussCode, getPlanProcedures, generateBatchNumber, getPlansWithEarlierDrafts, getEligibleAppointments, calculateTotalSelectedAmount, getPendingCountByPlan };
+  // Atendimentos que podem ser ADICIONADOS a um lote JÁ ENVIADO (não-DRAFT).
+  // Uso: incluir no lote um atendimento que foi esquecido na criação.
+  // Regras: mesmo plano do lote, cobrável (valor > 0), realizado (date <= hoje),
+  // não interno e ainda não vinculado a nenhum lote (ou já vinculado a este).
+  const getAvailableAppointmentsToAddToBatch = (batch: BillingBatch): Appointment[] => {
+    const today = new Date().toISOString().split('T')[0];
+    const billedAppointmentIds = new Set(
+      batches
+        .filter(b => b.status !== BillingBatchStatus.DRAFT && b.id !== batch.id)
+        .flatMap(b => b.appointmentIds)
+    );
+    return appointments.filter(a => {
+      if (a.isInternal) return false;
+      if (batch.appointmentIds.includes(a.id)) return false;
+      if (a.date > today) return false;
+      if (getAppPrice(a) <= 0) return false;
+      // Não pode já pertencer a outro lote (enviado ou rascunho).
+      if (a.billingBatchId && a.billingBatchId !== batch.id) return false;
+      if (billedAppointmentIds.has(a.id)) return false;
+      const customer = customers.find(c => c.id === a.customerId);
+      const effectivePlan = a.healthPlanAtTime ?? customer?.healthPlan;
+      return effectivePlan === batch.healthPlan;
+    }).sort((a, b) => a.date.localeCompare(b.date));
+  };
+
+  return { getNeuropsicoStatus, getAmsNeuropsicoSessionIndex, getAppPrice, getTussCode, getPlanProcedures, generateBatchNumber, getPlansWithEarlierDrafts, getEligibleAppointments, calculateTotalSelectedAmount, getPendingCountByPlan, getAvailableAppointmentsToAddToBatch };
 }
+
 
 export async function syncAppointmentsBatch(batchId: string, prevIds: string[], nextIds: string[]) {
   const toAdd = nextIds.filter(id => !prevIds.includes(id));

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Download, Pencil, Check, X, CircleDollarSign, RotateCcw, Search, Trash2 } from 'lucide-react';
+import { Download, Pencil, Check, X, CircleDollarSign, RotateCcw, Search, Trash2, Plus, Lock } from 'lucide-react';
+
 import { format } from 'date-fns';
 import { BillingBatch, BillingBatchStatus, Appointment, Customer, Psychologist, HealthPlan } from '../../services/types';
 import { Modal } from '../Modal';
@@ -16,6 +17,8 @@ interface Props {
   onMarkPaid?: (appointmentId: string) => Promise<void>;
   onUnmarkPaid?: (appointmentId: string) => Promise<void>;
   onRemoveFromBatch?: (batch: BillingBatch, appointmentId: string) => Promise<void>;
+  onAddToBatch?: (batch: BillingBatch, appointmentId: string) => Promise<void>;
+  getAvailableToAdd?: (batch: BillingBatch) => Appointment[];
   onClose: () => void;
   onExport: (batch: BillingBatch) => void;
 }
@@ -30,6 +33,8 @@ export const BatchDetailsModal: React.FC<Props> = ({
   onMarkPaid,
   onUnmarkPaid,
   onRemoveFromBatch,
+  onAddToBatch,
+  getAvailableToAdd,
   onClose,
   onExport,
 }) => {
@@ -37,6 +42,10 @@ export const BatchDetailsModal: React.FC<Props> = ({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
   const [search, setSearch] = useState('');
+  // Busca do bloco "adicionar atendimento ao lote".
+  const [addSearch, setAddSearch] = useState('');
+  const [isAddOpen, setIsAddOpen] = useState(false);
+
 
   // Normaliza texto para busca tolerante a acentos/caixa (ex.: "joao" casa com "João").
   const normalize = (value: string) =>
@@ -48,7 +57,10 @@ export const BatchDetailsModal: React.FC<Props> = ({
     setSearch('');
     setEditingId(null);
     setEditValue('');
+    setAddSearch('');
+    setIsAddOpen(false);
   }, [batch?.id]);
+
 
   // Cancela qualquer edição de valor em andamento ao digitar na busca,
   // evitando um input de edição "fantasma" caso o item saia da lista filtrada.
@@ -122,12 +134,17 @@ export const BatchDetailsModal: React.FC<Props> = ({
           </div>
 
           {batch.status !== BillingBatchStatus.DRAFT && (() => {
+            // Considera apenas atendimentos COBRÁVEIS (valor > 0). Itens de R$0
+            // (ex.: 4ª+ sessão neuropsico AMS, cancelamento isento) não aparecem
+            // na lista nem têm ação de pagamento, então NÃO podem entrar na
+            // contagem de progresso — senão a barra nunca chega a 100%.
             const batchApps = batch.appointmentIds
               .map(id => appointments.find(a => a.id === id))
-              .filter((a): a is Appointment => !!a);
+              .filter((a): a is Appointment => !!a && getAppPrice(a) > 0);
             const total = batchApps.length;
             const resolved = batchApps.filter(a => a.billingStatus === 'paid' || a.billingStatus === 'denied').length;
             const pct = total > 0 ? Math.round((resolved / total) * 100) : 0;
+
             return (
               <div className="border-t border-zinc-100 pt-4">
                 <div className="flex items-center justify-between text-sm mb-1.5">
@@ -328,7 +345,98 @@ export const BatchDetailsModal: React.FC<Props> = ({
             })()}
           </div>
 
+          {/* ─── Adicionar atendimento ao lote (lote enviado, sem repasse) ───── */}
+          {batch.status !== BillingBatchStatus.DRAFT && onAddToBatch && getAvailableToAdd && (() => {
+            const available = getAvailableToAdd(batch);
+            const addTerm = normalize(addSearch);
+            const filtered = available.filter(a => {
+              if (!addTerm) return true;
+              const customer = customers.find(c => c.id === a.customerId);
+              return customer ? normalize(customer.name).includes(addTerm) : false;
+            });
+
+            return (
+              <div className="border-t border-zinc-100 pt-4">
+                {!isAddOpen ? (
+                  <button
+                    onClick={() => setIsAddOpen(true)}
+                    className="flex items-center gap-1.5 text-sm font-medium text-priori-navy hover:bg-priori-navy/5 px-3 py-2 rounded-lg transition-colors"
+                    title="Incluir um atendimento que ficou de fora deste lote"
+                  >
+                    <Plus size={15} />
+                    Adicionar atendimento ao lote
+                  </button>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-semibold text-priori-navy">Adicionar atendimento</h4>
+                      <button
+                        onClick={() => { setIsAddOpen(false); setAddSearch(''); }}
+                        className="p-1 text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100 rounded transition-colors"
+                        title="Fechar"
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+                    <p className="text-xs text-zinc-500 flex items-center gap-1.5">
+                      <Lock size={11} />
+                      Só é possível editar enquanto o lote não tiver repasse gerado.
+                    </p>
+
+                    <div className="relative">
+                      <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" />
+                      <input
+                        type="text"
+                        placeholder="Buscar paciente elegível..."
+                        value={addSearch}
+                        onChange={e => setAddSearch(e.target.value)}
+                        className="w-full rounded-xl border border-zinc-200 bg-zinc-50 text-sm pl-9 pr-3 py-2 focus:outline-none focus:ring-2 focus:ring-priori-navy/30 focus:border-priori-navy"
+                      />
+                    </div>
+
+                    {filtered.length === 0 ? (
+                      <div className="p-6 text-center text-zinc-500 text-sm">
+                        {addSearch.trim()
+                          ? `Nenhum atendimento elegível para "${addSearch.trim()}".`
+                          : `Nenhum atendimento elegível de ${batch.healthPlan} disponível para adicionar.`}
+                      </div>
+                    ) : (
+                      <div className="space-y-2 max-h-56 overflow-y-auto pr-2">
+                        {filtered.map(a => {
+                          const customer = customers.find(c => c.id === a.customerId);
+                          const psychologist = psychologists.find(p => p.id === a.psychologistId);
+                          return (
+                            <div key={a.id} className="flex items-center justify-between p-3 bg-zinc-50 rounded-xl text-sm gap-2">
+                              <div>
+                                <div className="font-medium text-priori-navy">{customer?.name}</div>
+                                <div className="text-xs text-zinc-500">
+                                  {psychologist?.name} • {format(new Date(a.date + 'T12:00:00'), 'dd/MM/yyyy')}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className="font-medium text-priori-navy">{formatCurrency(getAppPrice(a))}</span>
+                                <button
+                                  onClick={() => onAddToBatch(batch, a.id)}
+                                  className="flex items-center gap-1 text-[11px] font-semibold text-priori-navy hover:bg-priori-navy/10 px-2 py-1 rounded-lg transition-colors border border-priori-navy/20"
+                                  title="Adicionar este atendimento ao lote"
+                                >
+                                  <Plus size={13} />
+                                  Adicionar
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
           <div className="flex justify-between items-center pt-4 border-t border-zinc-100">
+
 
             <Button
               variant="outline"

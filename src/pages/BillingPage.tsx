@@ -124,9 +124,12 @@ export const BillingPage = () => {
         onMarkPaid={billing.handleMarkAppointmentPaid}
         onUnmarkPaid={billing.handleUnmarkAppointmentPaid}
         onRemoveFromBatch={billing.handleRemoveAppointmentFromBatch}
+        onAddToBatch={billing.handleAddAppointmentToBatch}
+        getAvailableToAdd={billing.getAvailableAppointmentsToAddToBatch}
         onClose={() => billing.setSelectedBatch(null)}
         onExport={billing.handleExportBatch}
       />
+
 
 
       {/* Modal: Registrar Pagamento */}

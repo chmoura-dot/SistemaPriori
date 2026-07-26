@@ -137,7 +137,25 @@ export function useBillingData() {
   const handleMonthFilterChange = (month: string) => { setMonthFilter(month); setSelectedAppointmentIds([]); setBatchNumber(helpers.generateBatchNumber(selectedPlan, month, editingDraftBatch !== null)); };
   const toggleAppointmentSelection = (id: string) => { const app = appointments.find(a => a.id === id); if (app?.billingIgnored || (app?.status === AppointmentStatus.CANCELED && (!app?.cancellationBilling || app?.cancellationBilling === 'none'))) return; setSelectedAppointmentIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]); };
 
-  const handleUpdateAppointmentPrice = async (id: string, newPrice: number) => { await api.updateAppointment(id, { customPrice: newPrice }); setAppointments(prev => prev.map(a => a.id === id ? { ...a, customPrice: newPrice } : a)); };
+  const handleUpdateAppointmentPrice = async (id: string, newPrice: number) => {
+    await api.updateAppointment(id, { customPrice: newPrice });
+    const updatedApps = appointments.map(a => a.id === id ? { ...a, customPrice: newPrice } : a);
+    setAppointments(updatedApps);
+    // Se o atendimento já pertence a um lote NÃO-rascunho, o totalAmount do lote
+    // precisa ser recalculado e persistido — senão a tabela principal e os cards
+    // de resumo (que leem batch.totalAmount do banco) ficam divergentes do modal.
+    const app = updatedApps.find(a => a.id === id);
+    const batch = app?.billingBatchId ? batches.find(b => b.id === app.billingBatchId) : undefined;
+    if (batch && batch.status !== BillingBatchStatus.DRAFT) {
+      const newTotal = updatedApps
+        .filter(a => batch.appointmentIds.includes(a.id))
+        .reduce((sum, a) => sum + Math.round(helpers.getAppPrice(a) * 100), 0) / 100;
+      await api.updateBillingBatch(batch.id, { totalAmount: newTotal });
+      setBatches(prev => prev.map(b => b.id === batch.id ? { ...b, totalAmount: newTotal } : b));
+      setSelectedBatch(prev => prev && prev.id === batch.id ? { ...prev, totalAmount: newTotal } : prev);
+    }
+  };
+
   const handleOverrideProcedureCode = async (id: string, newCode: string) => { try { await api.updateAppointment(id, { procedureCode: newCode || null, customPrice: null } as any); setAppointments(p => p.map(a => a.id === id ? { ...a, procedureCode: newCode || undefined, customPrice: undefined } : a)); } catch (err) { logger.error('Erro:', err); } };
 
   // ─── Valores derivados ────────────────────────────────────────────────────
