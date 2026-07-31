@@ -18,6 +18,12 @@ export function useBillingData() {
   const [plans, setPlans]               = useState<Plan[]>([]);
   const [psychologists, setPsychologists] = useState<Psychologist[]>([]);
   const [isLoading, setIsLoading]       = useState(true);
+  // Marca se o primeiro carregamento já ocorreu. A partir daí, os refetch
+  // disparados por ações de faturamento (marcar pago, adicionar/remover, etc.)
+  // NÃO devem exibir o spinner de tela cheia — isso desmontava/remontava os
+  // modais abertos a cada clique, resetando estados locais (busca, edição).
+  const hasLoadedOnceRef = useRef(false);
+
 
   // ─── Estado do modal de criação/edição ────────────────────────────────────
   const [isCreateModalOpen, setIsCreateModalOpen]   = useState(false);
@@ -78,7 +84,10 @@ export function useBillingData() {
   }, [selectedAppointmentIds]);
 
   const fetchData = async () => {
-    setIsLoading(true);
+    // Só mostra o spinner de tela cheia no PRIMEIRO carregamento. Refetch de
+    // ações (marcar pago, etc.) atualizam os dados em background, sem desmontar
+    // os modais abertos.
+    if (!hasLoadedOnceRef.current) setIsLoading(true);
     try {
       const [batchesData, appsData, customersData, plansData, psyData] = await Promise.all([
         api.getBillingBatches(), api.getAppointmentsForBilling(),
@@ -90,9 +99,11 @@ export function useBillingData() {
     } catch (error) {
       logger.error('Error fetching billing data:', error);
     } finally {
+      hasLoadedOnceRef.current = true;
       setIsLoading(false);
     }
   };
+
 
   const helpers = createBillingHelpers({
     appointments, customers, plans, batches,

@@ -252,7 +252,10 @@ export function createBillingActions({
    * `appsOverride` permite passar o estado já atualizado dos atendimentos
    * (antes do fetch), garantindo cálculo correto no mesmo ciclo.
    */
-  const recalcBatchStatus = async (batchId: string, appsOverride?: Appointment[]) => {
+  const recalcBatchStatus = async (
+    batchId: string,
+    appsOverride?: Appointment[],
+  ): Promise<{ status: BillingBatchStatus; paidAt?: string } | undefined> => {
     const batch = batches.find(b => b.id === batchId);
     if (!batch || batch.status === BillingBatchStatus.DRAFT) return;
     const source = appsOverride ?? appointments;
@@ -273,11 +276,17 @@ export function createBillingActions({
     else if (resolvedCount < batchApps.length) newStatus = BillingBatchStatus.PARTIALLY_PAID;
     else newStatus = BillingBatchStatus.PAID;
 
-    if (newStatus === batch.status && newStatus !== BillingBatchStatus.PAID) return;
+    // Se o status não mudou (e não é PAID, que sempre reescreve paidAt), evita
+    // um UPDATE redundante — mas ainda devolve o status atual para que o
+    // chamador possa sincronizar o estado local (selectedBatch) se precisar.
+    if (newStatus === batch.status && newStatus !== BillingBatchStatus.PAID) {
+      return { status: newStatus, paidAt: batch.paidAt };
+    }
 
-    const updates: Partial<BillingBatch> = { status: newStatus };
-    updates.paidAt = newStatus === BillingBatchStatus.PAID ? new Date().toISOString() : undefined;
+    const paidAt = newStatus === BillingBatchStatus.PAID ? new Date().toISOString() : undefined;
+    const updates: Partial<BillingBatch> = { status: newStatus, paidAt };
     await api.updateBillingBatch(batchId, updates);
+    return { status: newStatus, paidAt };
   };
 
   const handleMarkAppointmentPaid = async (appId: string) => {
@@ -290,7 +299,17 @@ export function createBillingActions({
         a.id === appId ? { ...a, billingStatus: 'paid' as const, paidAt: now } : a
       );
       setAppointments(updatedApps);
-      await recalcBatchStatus(app.billingBatchId, updatedApps);
+      const recalc = await recalcBatchStatus(app.billingBatchId, updatedApps);
+      // Sincroniza o modal de detalhes na hora (sem esperar o refetch), senão o
+      // campo "Status" fica congelado no valor anterior mesmo com o banco já
+      // atualizado (ex.: continua "Parcialmente Pago" após quitar o último).
+      if (recalc) {
+        setSelectedBatch(prev =>
+          prev && prev.id === app.billingBatchId
+            ? { ...prev, status: recalc.status, paidAt: recalc.paidAt }
+            : prev
+        );
+      }
       toastSuccess('Atendimento marcado como pago!');
       fetchData();
     } catch (error) {
@@ -308,7 +327,16 @@ export function createBillingActions({
         a.id === appId ? { ...a, billingStatus: undefined, paidAt: undefined, denialReason: undefined, denialResolution: undefined } : a
       );
       setAppointments(updatedApps);
-      await recalcBatchStatus(app.billingBatchId, updatedApps);
+      const recalc = await recalcBatchStatus(app.billingBatchId, updatedApps);
+      // Mesma sincronização do modal ao desfazer um pagamento (ex.: de PAID
+      // volta para PARTIALLY_PAID/SENT).
+      if (recalc) {
+        setSelectedBatch(prev =>
+          prev && prev.id === app.billingBatchId
+            ? { ...prev, status: recalc.status, paidAt: recalc.paidAt }
+            : prev
+        );
+      }
       toastSuccess('Pagamento do atendimento desfeito.');
       fetchData();
     } catch (error) {
@@ -316,6 +344,7 @@ export function createBillingActions({
       toastError('Erro ao desfazer pagamento.');
     }
   };
+
 
   /**
    * Remove um único atendimento de um lote JÁ ENVIADO (não-DRAFT).
