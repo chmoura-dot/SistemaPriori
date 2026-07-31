@@ -223,8 +223,11 @@ export const BillingBatchTable: React.FC<Props> = ({
                   onClick={() => onDetails(batch)}
                   className="text-xs"
                 >
-                  Detalhes
+                  {batch.status === BillingBatchStatus.SENT || batch.status === BillingBatchStatus.PARTIALLY_PAID
+                    ? 'Detalhes / Editar'
+                    : 'Detalhes'}
                 </Button>
+
                 {batch.status === BillingBatchStatus.SENT && (
                   <Button
                     size="sm"

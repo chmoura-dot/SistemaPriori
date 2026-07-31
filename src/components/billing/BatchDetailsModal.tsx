@@ -58,8 +58,13 @@ export const BatchDetailsModal: React.FC<Props> = ({
     setEditingId(null);
     setEditValue('');
     setAddSearch('');
-    setIsAddOpen(false);
+    // Lotes editáveis (enviados / parcialmente pagos) já abrem com a seção de
+    // "Adicionar atendimento ao lote" expandida, deixando a edição à mão.
+    const editable = batch?.status === BillingBatchStatus.SENT
+      || batch?.status === BillingBatchStatus.PARTIALLY_PAID;
+    setIsAddOpen(!!editable);
   }, [batch?.id]);
+
 
 
   // Cancela qualquer edição de valor em andamento ao digitar na busca,

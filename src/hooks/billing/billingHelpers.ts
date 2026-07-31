@@ -158,9 +158,13 @@ export function createBillingHelpers({
     );
     return appointments.filter(a => {
       if (a.isInternal) return false;
+      // Atendimentos marcados como "ignorar faturamento" não podem ser
+      // adicionados a um lote — foram explicitamente excluídos pelo usuário.
+      if (a.billingIgnored) return false;
       if (batch.appointmentIds.includes(a.id)) return false;
       if (a.date > today) return false;
       if (getAppPrice(a) <= 0) return false;
+
       // Não pode já pertencer a outro lote (enviado ou rascunho).
       if (a.billingBatchId && a.billingBatchId !== batch.id) return false;
       if (billedAppointmentIds.has(a.id)) return false;
