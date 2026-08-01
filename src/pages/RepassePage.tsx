@@ -94,9 +94,12 @@ function getRepassValue(
   //    Para AMS Petrobras neuropsico 2ª/3ª sessão, usa procedimento 95090010.
   const plan = matchPlanByHealthPlan(plans, customer?.healthPlan);
 
+  // AMS Petrobras neuropsico: a 2ª/3ª sessão do ciclo usa SEMPRE o procedimento
+  // 95090010 (repasse próprio), sobrepondo o procedureCode gravado no agendamento
+  // (que é sempre 95110011, o único procedimento neuropsico do plano). A resolução
+  // é INCONDICIONAL — não depende de procedureCode estar vazio — igual a getTussCode.
   let resolvedProcCode = app.procedureCode;
   if (
-    !resolvedProcCode &&
     customer?.healthPlan === HealthPlan.AMS_PETROBRAS &&
     app.type === AppointmentType.NEUROPSICOLOGICA
   ) {
@@ -105,6 +108,7 @@ function getRepassValue(
       resolvedProcCode = '95090010';
     }
   }
+
 
   // Valida se o código TUSS pertence ao plano do paciente.
   // Se o código armazenado for de outro plano (ex: AMS 95110011 em atendimento Porto Seguro),
@@ -196,9 +200,9 @@ function getExpectedRepass(
   }
 
   const plan = matchPlanByHealthPlan(plans, customer?.healthPlan);
+  // AMS Petrobras neuropsico 2ª/3ª sessão → 95090010, INCONDICIONAL (igual getRepassValue).
   let resolvedProcCode = app.procedureCode;
   if (
-    !resolvedProcCode &&
     customer?.healthPlan === HealthPlan.AMS_PETROBRAS &&
     app.type === AppointmentType.NEUROPSICOLOGICA
   ) {
@@ -206,6 +210,7 @@ function getExpectedRepass(
     if (sessionIdx === 1 || sessionIdx === 2) resolvedProcCode = '95090010';
   }
   // Valida se o código TUSS pertence ao plano do paciente (mesma lógica do getRepassValue).
+
   const procedureByCode = resolvedProcCode
     ? plan?.procedures?.find(p => p.code === resolvedProcCode)
     : undefined;
@@ -236,9 +241,9 @@ function buildRepassItem(
   let plan_repass: number | null = null;
   if (gross > 0) {
     const plan = matchPlanByHealthPlan(plans, customer?.healthPlan);
+    // AMS Petrobras neuropsico 2ª/3ª sessão → 95090010, INCONDICIONAL (igual getRepassValue).
     let resolvedProcCode = app.procedureCode;
     if (
-      !resolvedProcCode &&
       customer?.healthPlan === HealthPlan.AMS_PETROBRAS &&
       app.type === AppointmentType.NEUROPSICOLOGICA
     ) {
@@ -246,6 +251,7 @@ function buildRepassItem(
       if (sessionIdx === 1 || sessionIdx === 2) resolvedProcCode = '95090010';
     }
     const procedureByCode = resolvedProcCode
+
       ? plan?.procedures?.find(p => p.code === resolvedProcCode)
       : undefined;
     const procedure = procedureByCode ?? plan?.procedures?.find(p => p.type === app.type);
@@ -320,13 +326,13 @@ function generateRepassePDF(
       // sessão) em todas as sessões, divergindo do valor de repasse realmente calculado.
       let resolvedProcCode = app.procedureCode;
       if (
-        !resolvedProcCode &&
         customer?.healthPlan === HealthPlan.AMS_PETROBRAS &&
         app.type === AppointmentType.NEUROPSICOLOGICA
       ) {
         const sessionIdx = getAmsNeuropsicoSessionIndex(app, pricingCtx);
         if (sessionIdx === 1 || sessionIdx === 2) resolvedProcCode = '95090010';
       }
+
       // Valida se o código TUSS pertence ao plano (consistente com getRepassValue).
       const procedureByCode = resolvedProcCode
         ? plan?.procedures?.find(proc => proc.code === resolvedProcCode)
