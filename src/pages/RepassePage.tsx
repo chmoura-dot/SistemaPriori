@@ -314,11 +314,25 @@ function generateRepassePDF(
       if (!app || app.billingStatus === 'denied') return null;
       const customer = customers.find(c => c.id === app.customerId);
       const plan = matchPlanByHealthPlan(plans, customer?.healthPlan);
+      // Resolve o código TUSS efetivo com a MESMA lógica de getRepassValue/getTussCode.
+      // Para AMS Petrobras neuropsico, a 2ª/3ª sessão do ciclo (índices 1 e 2) usa o
+      // procedimento 95090010 — sem isso, o comprovante exibia 95110011 (código da 1ª
+      // sessão) em todas as sessões, divergindo do valor de repasse realmente calculado.
+      let resolvedProcCode = app.procedureCode;
+      if (
+        !resolvedProcCode &&
+        customer?.healthPlan === HealthPlan.AMS_PETROBRAS &&
+        app.type === AppointmentType.NEUROPSICOLOGICA
+      ) {
+        const sessionIdx = getAmsNeuropsicoSessionIndex(app, pricingCtx);
+        if (sessionIdx === 1 || sessionIdx === 2) resolvedProcCode = '95090010';
+      }
       // Valida se o código TUSS pertence ao plano (consistente com getRepassValue).
-      const procedureByCode = app.procedureCode
-        ? plan?.procedures?.find(proc => proc.code === app.procedureCode)
+      const procedureByCode = resolvedProcCode
+        ? plan?.procedures?.find(proc => proc.code === resolvedProcCode)
         : undefined;
       const procedure = procedureByCode ?? plan?.procedures?.find(proc => proc.type === app.type);
+
 
       // Valor phase-aware: se este atendimento entra no split neuropsicológico,
       // o comprovante mostra apenas a parcela correspondente a ESTE repasse
