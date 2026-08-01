@@ -21,6 +21,7 @@ interface ForecastDate {
 
 interface ForecastRow {
   customerName: string;
+  cardNumber: string;
   procedureCode: string;
   procedureDescription: string;
   count: number;
@@ -221,6 +222,7 @@ export const ForecastPage = () => {
 
         rows.push({
           customerName: data.customer.name,
+          cardNumber: data.customer.cardNumber || '—',
           procedureCode: proc?.code || data.app.procedureCode || '—',
           procedureDescription: proc?.description || data.app.type,
           count: data.dates.length,
@@ -413,6 +415,7 @@ export const ForecastPage = () => {
                   <thead>
                     <tr className="border-b border-zinc-100 text-left">
                       <th className="px-6 py-3 text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Paciente</th>
+                      <th className="px-4 py-3 text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Carteirinha</th>
                       <th className="px-4 py-3 text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Cód. TUSS</th>
                       <th className="px-4 py-3 text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Procedimento</th>
                       <th className="px-4 py-3 text-[10px] font-bold text-zinc-400 uppercase tracking-wider text-center">Datas</th>
@@ -429,6 +432,7 @@ export const ForecastPage = () => {
                         )}
                       >
                         <td className="px-6 py-3 font-medium text-priori-navy">{row.customerName}</td>
+                        <td className="px-4 py-3 font-mono text-xs text-zinc-600">{row.cardNumber}</td>
                         <td className="px-4 py-3 font-mono text-xs text-zinc-600">{row.procedureCode}</td>
                         <td className="px-4 py-3 text-zinc-600">{row.procedureDescription}</td>
                         <td className="px-4 py-3 text-center text-zinc-500 text-xs">

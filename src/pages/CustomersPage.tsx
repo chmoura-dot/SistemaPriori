@@ -17,7 +17,7 @@ const ITEMS_PER_PAGE = 20;
 const DEFAULT_FORM: CustomerFormData = {
   name: '', email: '', phone: '', birthDate: '', gender: '', healthPlan: HealthPlan.PARTICULAR,
   psychologistId: '', customPrice: undefined, customRepassAmount: undefined,
-  notes: '', amsPassword: '', amsPasswordExpiry: '',
+  notes: '', amsPassword: '', amsPasswordExpiry: '', cardNumber: '',
 };
 
 const PLAN_BADGE: Record<string, string> = {
@@ -99,6 +99,7 @@ export const CustomersPage = () => {
       customPrice: customer.customPrice, customRepassAmount: customer.customRepassAmount,
       notes: customer.notes || '', amsPassword: customer.amsPassword || '',
       amsPasswordExpiry: customer.amsPasswordExpiry || '',
+      cardNumber: customer.cardNumber || '',
     });
     setEditingId(customer.id);
     setIsFormOpen(true);

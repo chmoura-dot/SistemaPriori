@@ -19,6 +19,7 @@ export type CustomerFormData = {
   notes: string;
   amsPassword: string;
   amsPasswordExpiry: string;
+  cardNumber: string;
 };
 
 interface CustomerFormModalProps {
@@ -164,6 +165,19 @@ export const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
             </select>
           </div>
         </div>
+
+        {/* Número da Carteirinha (apenas para convênios) */}
+        {!isParticular && (
+          <div className="space-y-1">
+            <label className={label}>Número da Carteirinha</label>
+            <input
+              className={input}
+              value={formData.cardNumber}
+              onChange={e => setFormData(p => ({ ...p, cardNumber: e.target.value }))}
+              placeholder="Número da carteirinha do convênio"
+            />
+          </div>
+        )}
 
         {/* Alerta de mudança de plano */}
         {healthPlanChanged && (

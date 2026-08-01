@@ -57,6 +57,7 @@ export interface Customer {
   gender?: 'M' | 'F' | null;
   amsPassword?: string;
   amsPasswordExpiry?: string;
+  cardNumber?: string;
   createdAt: string;
   // Metrics
   totalAppointmentsPerformed?: number;

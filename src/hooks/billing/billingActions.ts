@@ -584,6 +584,10 @@ export function createBillingActions({
     const patientName = (app: Appointment) =>
       customers.find(c => c.id === app.customerId)?.name || '---';
 
+    // Número da carteirinha do convênio (cadastro do paciente).
+    const patientCard = (app: Appointment) =>
+      customers.find(c => c.id === app.customerId)?.cardNumber || '---';
+
     // ─── Ordenação: Lote → Operadora → Paciente → Data da sessão ────────────
     // (dentro de um único lote, Lote/Operadora são constantes; a ordenação por
     // 3 chaves já deixa o arquivo pronto para um eventual export multi-lote.)
@@ -604,6 +608,7 @@ export function createBillingActions({
         'Lote': `#${batch.batchNumber}`,
         'Operadora': batch.healthPlan,
         'Paciente': patientName(app),
+        'Carteirinha': patientCard(app),
         'Profissional': psychologist?.name || '---',
         'Cód. TUSS': getTussCode(app) || '---',
         'Data da Sessão': format(new Date(app.date + 'T12:00:00'), 'dd/MM/yyyy'),

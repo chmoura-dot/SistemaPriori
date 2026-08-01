@@ -39,6 +39,8 @@ export const getIncompleteFields = (customer: Customer): string[] => {
   if (customer.healthPlan === HealthPlan.PARTICULAR && !customer.customPrice) missing.push('Valor da Consulta');
   const plan = String(customer.healthPlan || '').toUpperCase();
   if ((plan.includes('AMS') || plan.includes('PETROBRAS')) && !customer.amsPasswordExpiry) missing.push('Vencimento Senha');
+  // Convênios (não-particular) devem ter número da carteirinha para faturamento.
+  if (customer.healthPlan !== HealthPlan.PARTICULAR && !customer.cardNumber) missing.push('Nº Carteirinha');
   return missing;
 };
 

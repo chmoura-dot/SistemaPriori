@@ -263,6 +263,11 @@ export const PatientLookupPage = () => {
                   <span className="text-xs bg-zinc-100 text-zinc-600 px-2.5 py-0.5 rounded-full font-medium">
                     {selectedCustomer.healthPlan}
                   </span>
+                  {selectedCustomer.cardNumber && (
+                    <span className="text-xs bg-blue-50 text-blue-700 px-2.5 py-0.5 rounded-full font-medium">
+                      Carteirinha: {selectedCustomer.cardNumber}
+                    </span>
+                  )}
                   <span
                     className={`text-xs px-2.5 py-0.5 rounded-full font-medium ${
                       selectedCustomer.status === 'active'

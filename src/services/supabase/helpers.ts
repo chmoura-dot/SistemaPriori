@@ -42,6 +42,7 @@ export const CUSTOMER_COLUMNS = [
   'notes', 'custom_price', 'custom_repass_amount',
   'birth_date', 'gender',
   'ams_password', 'ams_password_expiry',
+  'card_number',
   'created_at',
 ].join(', ');
 
@@ -115,6 +116,7 @@ export function toCustomer(row: any): Customer {
     gender: row.gender ?? undefined,
     amsPassword: row.ams_password ?? undefined,
     amsPasswordExpiry: row.ams_password_expiry ?? undefined,
+    cardNumber: row.card_number ?? undefined,
     createdAt: row.created_at,
   };
 }
