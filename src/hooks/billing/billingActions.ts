@@ -4,7 +4,7 @@
  */
 import React from 'react';
 import { api } from '../../services/api';
-import { exportToExcel } from '../../lib/excel';
+import { exportToExcel, exportMultiSheetExcel } from '../../lib/excel';
 import { toastSuccess, toastError } from '../../lib/toast';
 import { logger } from '../../lib/logger';
 import { format } from 'date-fns';
@@ -579,14 +579,31 @@ export function createBillingActions({
       // Oculta atendimentos com valor R$0,00 (ex: sessão AMS sem cobrança,
       // cancelamento isento) para não poluir o arquivo exportado.
       .filter(a => getAppPrice(a) > 0);
-    const exportData = batchAppointments.map(app => {
 
-      const customer    = customers.find(c => c.id === app.customerId);
+    // Nome do paciente memoizado por atendimento (usado na ordenação e agrupamento).
+    const patientName = (app: Appointment) =>
+      customers.find(c => c.id === app.customerId)?.name || '---';
+
+    // ─── Ordenação: Lote → Operadora → Paciente → Data da sessão ────────────
+    // (dentro de um único lote, Lote/Operadora são constantes; a ordenação por
+    // 3 chaves já deixa o arquivo pronto para um eventual export multi-lote.)
+    const sortedAppointments = [...batchAppointments].sort((a, b) => {
+      const byLote = `#${batch.batchNumber}`.localeCompare(`#${batch.batchNumber}`);
+      if (byLote !== 0) return byLote;
+      const byOperadora = batch.healthPlan.localeCompare(batch.healthPlan);
+      if (byOperadora !== 0) return byOperadora;
+      const byPaciente = patientName(a).localeCompare(patientName(b), 'pt-BR');
+      if (byPaciente !== 0) return byPaciente;
+      return (a.date || '').localeCompare(b.date || '');
+    });
+
+    // ─── Aba 1: Atendimentos (detalhe ordenado) ────────────────────────────
+    const detailData = sortedAppointments.map(app => {
       const psychologist = psychologists.find(p => p.id === app.psychologistId);
       return {
         'Lote': `#${batch.batchNumber}`,
         'Operadora': batch.healthPlan,
-        'Paciente': customer?.name || '---',
+        'Paciente': patientName(app),
         'Profissional': psychologist?.name || '---',
         'Cód. TUSS': getTussCode(app) || '---',
         'Data da Sessão': format(new Date(app.date + 'T12:00:00'), 'dd/MM/yyyy'),
@@ -595,7 +612,86 @@ export function createBillingActions({
         'Status de Faturamento': app.billingStatus === 'paid' ? 'Pago' : app.billingStatus === 'denied' ? 'Glosa' : 'Pendente',
       };
     });
-    exportToExcel(exportData, `Lote_${batch.batchNumber}_${batch.healthPlan}_${format(new Date(), 'yyyyMMdd')}`, 'Atendimentos');
+
+    // ─── Aba 2: Resumo por Paciente ────────────────────────────────────────
+    // Agrupa por (Paciente, Cód. TUSS) somando quantidade e valor. Para cada
+    // paciente adiciona uma linha "TOTAL DO PACIENTE" e, ao final, "TOTAL GERAL".
+    // Ordenado por nome do paciente e, dentro dele, por código TUSS.
+    type SummaryAcc = { patient: string; tuss: string; count: number; total: number };
+    const acc = new Map<string, SummaryAcc>();
+    for (const app of sortedAppointments) {
+      const patient = patientName(app);
+      const tuss = getTussCode(app) || '---';
+      const key = `${patient}||${tuss}`;
+      const entry = acc.get(key) ?? { patient, tuss, count: 0, total: 0 };
+      entry.count += 1;
+      entry.total = Math.round((entry.total + getAppPrice(app)) * 100) / 100;
+      acc.set(key, entry);
+    }
+
+    const groups = Array.from(acc.values()).sort((a, b) => {
+      const byPatient = a.patient.localeCompare(b.patient, 'pt-BR');
+      if (byPatient !== 0) return byPatient;
+      return a.tuss.localeCompare(b.tuss, 'pt-BR');
+    });
+
+    const summaryData: Record<string, string | number | null>[] = [];
+    let grandCount = 0;
+    let grandTotal = 0;
+    let currentPatient: string | null = null;
+    let patientCount = 0;
+    let patientTotal = 0;
+
+    const pushPatientSubtotal = () => {
+      if (currentPatient === null) return;
+      summaryData.push({
+        'Paciente': `TOTAL — ${currentPatient}`,
+        'Cód. TUSS': '',
+        'Qtd. Atendimentos': patientCount,
+        'Valor Total (R$)': Math.round(patientTotal * 100) / 100,
+      });
+    };
+
+    for (const g of groups) {
+      if (g.patient !== currentPatient) {
+        pushPatientSubtotal();
+        currentPatient = g.patient;
+        patientCount = 0;
+        patientTotal = 0;
+      }
+      summaryData.push({
+        'Paciente': g.patient,
+        'Cód. TUSS': g.tuss,
+        'Qtd. Atendimentos': g.count,
+        'Valor Total (R$)': g.total,
+      });
+      patientCount += g.count;
+      patientTotal = Math.round((patientTotal + g.total) * 100) / 100;
+      grandCount += g.count;
+      grandTotal = Math.round((grandTotal + g.total) * 100) / 100;
+    }
+    // Subtotal do último paciente + total geral.
+    pushPatientSubtotal();
+    summaryData.push({
+      'Paciente': 'TOTAL GERAL',
+      'Cód. TUSS': '',
+      'Qtd. Atendimentos': grandCount,
+      'Valor Total (R$)': grandTotal,
+    });
+
+    const summaryNotes = [
+      `Resumo do Lote #${batch.batchNumber} — Operadora: ${batch.healthPlan}`,
+      'Quantidade de atendimentos e valor total faturado, agrupados por paciente e código TUSS.',
+      'As linhas "TOTAL — <paciente>" somam o paciente; a última linha traz o TOTAL GERAL do lote.',
+    ];
+
+    exportMultiSheetExcel(
+      [
+        { sheetName: 'Atendimentos', data: detailData },
+        { sheetName: 'Resumo por Paciente', data: summaryData, topNotes: summaryNotes },
+      ],
+      `Lote_${batch.batchNumber}_${batch.healthPlan}_${format(new Date(), 'yyyyMMdd')}`,
+    );
   };
 
   const handleConfirmAppointment = async (id: string, e: React.MouseEvent) => {
