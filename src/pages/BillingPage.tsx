@@ -52,7 +52,7 @@ export const BillingPage = () => {
       <BillingBatchTable
         batches={billing.batches}
         appointments={billing.appointments}
-        onDetails={(batch) => billing.setSelectedBatch(batch)}
+        onDetails={(batch) => billing.openBatchDetails(batch)}
         onMarkAsPaid={billing.handleMarkAsPaid}
         onExport={billing.handleExportBatch}
         onDelete={billing.handleDeleteBatch}

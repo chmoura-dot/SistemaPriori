@@ -632,7 +632,9 @@ export function createBillingActions({
     handleConfirmAppointment, handleIgnoreAppointment, handleUnignoreAppointment,
     handleMarkAppointmentPaid, handleUnmarkAppointmentPaid,
     handleRemoveAppointmentFromBatch, handleAddAppointmentToBatch,
+    recalcBatchStatus,
   };
+
 
 
 }

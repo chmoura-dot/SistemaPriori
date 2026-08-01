@@ -124,7 +124,33 @@ export function useBillingData() {
     setSelectedBatch,
   });
 
+  /**
+   * Abre o modal de detalhes de um lote e, para lotes JÁ ENVIADOS, reconcilia o
+   * status imediatamente. Isso corrige lotes cujo campo `status` ficou "preso"
+   * num valor desatualizado (ex.: PARTIALLY_PAID mesmo com todos os
+   * atendimentos cobráveis já pagos) — situação que o recálculo por-clique não
+   * conserta sozinho, pois só roda ao marcar/desmarcar um pagamento.
+   */
+  const openBatchDetails = async (batch: BillingBatch) => {
+    setSelectedBatch(batch);
+    if (batch.status === BillingBatchStatus.DRAFT) return;
+    try {
+      const recalc = await actions.recalcBatchStatus(batch.id);
+      if (recalc && (recalc.status !== batch.status || recalc.paidAt !== batch.paidAt)) {
+        setBatches(prev => prev.map(b =>
+          b.id === batch.id ? { ...b, status: recalc.status, paidAt: recalc.paidAt } : b
+        ));
+        setSelectedBatch(prev =>
+          prev && prev.id === batch.id ? { ...prev, status: recalc.status, paidAt: recalc.paidAt } : prev
+        );
+      }
+    } catch (err) {
+      logger.error('Erro ao reconciliar status do lote:', err);
+    }
+  };
+
   const toggleNeuropsicoDecision = (id: string, value: boolean) => setNeuropsicoDecisions(prev => ({ ...prev, [id]: value }));
+
   const updateAppointmentPaymentStatus = (id: string, update: Partial<AppointmentPaymentStatus>) => setAppointmentStatuses(prev => ({ ...prev, [id]: { ...prev[id], ...update } }));
 
   const openCreateModal = (draftBatch?: BillingBatch) => {
@@ -190,7 +216,7 @@ export function useBillingData() {
     selectedAppointmentIds, setSelectedAppointmentIds, neuropsicoDecisions,
     toggleNeuropsicoDecision, patientFilter, setPatientFilter,
     monthFilter, setMonthFilter, includePrevMonth, setIncludePrevMonth,
-    includeNextMonth, setIncludeNextMonth, selectedBatch, setSelectedBatch,
+    includeNextMonth, setIncludeNextMonth, selectedBatch, setSelectedBatch, openBatchDetails,
     isPaymentModalOpen, setIsPaymentModalOpen, batchToPay, appointmentStatuses,
     updateAppointmentPaymentStatus,
     ...helpers,
