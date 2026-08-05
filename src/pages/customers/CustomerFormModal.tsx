@@ -22,6 +22,10 @@ export type CustomerFormData = {
   cardNumber: string;
 };
 
+// Escopo da correção retroativa de plano de saúde, aplicável apenas
+// quando a troca ocorre entre dois convênios (nunca envolvendo Particular).
+export type RetroScope = 'none' | 'future' | 'all';
+
 interface CustomerFormModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -33,6 +37,8 @@ interface CustomerFormModalProps {
   psychologists: Psychologist[];
   existingCustomers: Customer[];
   onInactivate?: () => void;
+  retroScope: RetroScope;
+  onRetroScopeChange: (scope: RetroScope) => void;
 }
 
 export const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
@@ -46,6 +52,8 @@ export const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
   psychologists,
   existingCustomers,
   onInactivate,
+  retroScope,
+  onRetroScopeChange,
 }) => {
   const nameUpper = formData.name.trim().toUpperCase();
   const duplicateWarning =
@@ -59,6 +67,12 @@ export const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
   // Detecta mudança de plano ao editar um paciente existente
   const originalCustomer = editingId ? existingCustomers.find(c => c.id === editingId) : undefined;
   const healthPlanChanged = editingId && originalCustomer && originalCustomer.healthPlan !== formData.healthPlan;
+
+  // A correção retroativa só é oferecida quando a troca ocorre entre dois
+  // convênios (nunca envolvendo Particular, cuja lógica de valor/repasse é distinta).
+  const canOfferRetroScope = healthPlanChanged &&
+    originalCustomer?.healthPlan !== HealthPlan.PARTICULAR &&
+    formData.healthPlan !== HealthPlan.PARTICULAR;
 
   const input = 'w-full rounded-xl bg-white border border-zinc-200 px-4 py-3 text-base text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/10 transition-all';
   const label = 'text-sm font-bold text-zinc-500 uppercase tracking-widest';
@@ -181,13 +195,39 @@ export const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
 
         {/* Alerta de mudança de plano */}
         {healthPlanChanged && (
-          <div className="flex gap-2 p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm animate-in fade-in duration-300">
-            <AlertTriangle size={16} className="shrink-0 mt-0.5" />
-            <span>
-              <strong>Atenção:</strong> Plano alterado de <em>{originalCustomer?.healthPlan}</em> para <em>{formData.healthPlan}</em>.
-              Sessões passadas preservarão o plano original no faturamento.
-              Apenas atendimentos criados <strong>a partir de agora</strong> usarão o novo plano.
-            </span>
+          <div className="flex flex-col gap-2 p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm animate-in fade-in duration-300">
+            <div className="flex gap-2">
+              <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+              <span>
+                <strong>Atenção:</strong> Plano alterado de <em>{originalCustomer?.healthPlan}</em> para <em>{formData.healthPlan}</em>.
+                {canOfferRetroScope
+                  ? ' Escolha abaixo o que fazer com os atendimentos já existentes.'
+                  : ' Sessões passadas preservarão o plano original no faturamento. Apenas atendimentos criados a partir de agora usarão o novo plano.'}
+              </span>
+            </div>
+
+            {canOfferRetroScope && (
+              <div className="flex flex-col gap-1.5 pl-6">
+                <label className="flex items-start gap-2 cursor-pointer">
+                  <input type="radio" className="mt-0.5" name="retroScope" checked={retroScope === 'none'}
+                    onChange={() => onRetroScopeChange('none')} />
+                  <span><strong>Apenas novos atendimentos</strong> — sessões já cadastradas mantêm o plano original no faturamento.</span>
+                </label>
+                <label className="flex items-start gap-2 cursor-pointer">
+                  <input type="radio" className="mt-0.5" name="retroScope" checked={retroScope === 'future'}
+                    onChange={() => onRetroScopeChange('future')} />
+                  <span><strong>Atendimentos futuros ainda não faturados</strong> — corrige apenas sessões a partir de hoje.</span>
+                </label>
+                <label className="flex items-start gap-2 cursor-pointer">
+                  <input type="radio" className="mt-0.5" name="retroScope" checked={retroScope === 'all'}
+                    onChange={() => onRetroScopeChange('all')} />
+                  <span><strong>Atendimentos passados e futuros não faturados</strong> — corrige todo o histórico ainda não enviado ao convênio (uso para correção de cadastro errado).</span>
+                </label>
+                <span className="text-xs text-amber-700 italic">
+                  Atendimentos já incluídos em lotes enviados ou pagos nunca são alterados.
+                </span>
+              </div>
+            )}
           </div>
         )}
 

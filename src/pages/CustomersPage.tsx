@@ -6,7 +6,7 @@ import { Customer, CustomerStatus, HealthPlan, Psychologist } from '../services/
 
 import { Button } from '../components/Button';
 import { cn } from '../lib/utils';
-import { CustomerFormData, CustomerFormModal } from './customers/CustomerFormModal';
+import { CustomerFormData, CustomerFormModal, RetroScope } from './customers/CustomerFormModal';
 import { CustomerInactivationModal } from './customers/CustomerInactivationModal';
 import { CustomerBulkModal } from './customers/CustomerBulkModal';
 import { CustomerImportModal } from './customers/CustomerImportModal';
@@ -52,6 +52,7 @@ export const CustomersPage = () => {
   const [isBulkOpen, setIsBulkOpen] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [retroScope, setRetroScope] = useState<RetroScope>('none');
 
   // ── Load ──────────────────────────────────────────────────────────────────
   const loadData = async () => {
@@ -88,6 +89,7 @@ export const CustomersPage = () => {
   const openCreate = () => {
     setFormData(DEFAULT_FORM);
     setEditingId(null);
+    setRetroScope('none');
     setIsFormOpen(true);
   };
 
@@ -102,6 +104,7 @@ export const CustomersPage = () => {
       cardNumber: customer.cardNumber || '',
     });
     setEditingId(customer.id);
+    setRetroScope('none');
     setIsFormOpen(true);
   };
 
@@ -118,6 +121,59 @@ export const CustomersPage = () => {
       } as any;
       if (editingId) await api.updateCustomer(editingId, payload);
       else await api.createCustomer(payload);
+
+      // ── Correção retroativa do plano de saúde em atendimentos existentes ──
+      // Só se aplica quando a troca é entre dois convênios (nunca envolvendo
+      // Particular) e a secretaria escolheu explicitamente um escopo retroativo.
+      if (
+        editingId &&
+        retroScope !== 'none' &&
+        formData.healthPlan !== HealthPlan.PARTICULAR
+      ) {
+        const existing = customers.find(c => c.id === editingId);
+        if (existing && existing.healthPlan !== HealthPlan.PARTICULAR && existing.healthPlan !== formData.healthPlan) {
+          try {
+            // Busca lotes já enviados/pagos para nunca alterá-los (faturamento fechado)
+            const { data: sentBatches } = await supabase
+              .from('billing_batches')
+              .select('appointment_ids')
+              .in('status', ['SENT', 'PAID']);
+
+            const lockedAppIds = new Set<string>();
+            sentBatches?.forEach(b => (b.appointment_ids as string[])?.forEach(id => lockedAppIds.add(id)));
+
+            // Busca atendimentos do paciente ainda não incluídos em nenhum lote
+            let query = supabase
+              .from('appointments')
+              .select('id, date')
+              .eq('customer_id', editingId)
+              .eq('is_internal', false)
+              .is('billing_batch_id', null);
+
+            if (retroScope === 'future') {
+              const today = new Date().toISOString().split('T')[0];
+              query = query.gte('date', today);
+            }
+
+            const { data: apps } = await query;
+            const idsToUpdate = (apps || []).map(a => a.id).filter(id => !lockedAppIds.has(id));
+            const blockedCount = (apps || []).length - idsToUpdate.length;
+
+            if (idsToUpdate.length > 0) {
+              await supabase
+                .from('appointments')
+                .update({ health_plan_at_time: formData.healthPlan })
+                .in('id', idsToUpdate);
+            }
+
+            if (blockedCount > 0) {
+              alert(`${blockedCount} atendimento(s) já enviados ao convênio não foram alterados e continuarão faturados com o plano original.`);
+            }
+          } catch {
+            // Erro silencioso — correção retroativa é best-effort
+          }
+        }
+      }
 
       // ── Propagação automática de valor para atendimentos não faturados ──
       if (editingId && formData.healthPlan === HealthPlan.PARTICULAR && formData.customPrice !== undefined) {
@@ -339,6 +395,8 @@ export const CustomersPage = () => {
         psychologists={psychologists}
         existingCustomers={customers}
         onInactivate={editingId ? () => setInactivateId(editingId) : undefined}
+        retroScope={retroScope}
+        onRetroScopeChange={setRetroScope}
       />
       <CustomerInactivationModal
         isOpen={!!inactivateId}
