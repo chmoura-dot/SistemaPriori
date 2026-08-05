@@ -6,6 +6,7 @@ import { BillingBatch, BillingBatchStatus, Appointment, Customer, Psychologist, 
 import { Modal } from '../Modal';
 import { Button } from '../Button';
 import { formatCurrency, cn } from '../../lib/utils';
+import { RemoveFromBatchModal, RemoveFromBatchMode } from './RemoveFromBatchModal';
 
 interface Props {
   batch: BillingBatch | null;
@@ -16,7 +17,7 @@ interface Props {
   onUpdatePrice?: (appointmentId: string, newPrice: number) => Promise<void>;
   onMarkPaid?: (appointmentId: string) => Promise<void>;
   onUnmarkPaid?: (appointmentId: string) => Promise<void>;
-  onRemoveFromBatch?: (batch: BillingBatch, appointmentId: string) => Promise<void>;
+  onRemoveFromBatch?: (batch: BillingBatch, appointmentId: string, mode?: RemoveFromBatchMode, reason?: string) => Promise<void>;
   onAddToBatch?: (batch: BillingBatch, appointmentId: string) => Promise<void>;
   getAvailableToAdd?: (batch: BillingBatch) => Appointment[];
   onClose: () => void;
@@ -45,6 +46,9 @@ export const BatchDetailsModal: React.FC<Props> = ({
   // Busca do bloco "adicionar atendimento ao lote".
   const [addSearch, setAddSearch] = useState('');
   const [isAddOpen, setIsAddOpen] = useState(false);
+  // Id do atendimento cujo modal "Remover do lote" (remover vs. desconsiderar
+  // definitivamente) está aberto. null = nenhum modal aberto.
+  const [removeTargetId, setRemoveTargetId] = useState<string | null>(null);
 
 
   // Normaliza texto para busca tolerante a acentos/caixa (ex.: "joao" casa com "João").
@@ -58,6 +62,7 @@ export const BatchDetailsModal: React.FC<Props> = ({
     setEditingId(null);
     setEditValue('');
     setAddSearch('');
+    setRemoveTargetId(null);
     // Lotes editáveis (enviados / parcialmente pagos) já abrem com a seção de
     // "Adicionar atendimento ao lote" expandida, deixando a edição à mão.
     const editable = batch?.status === BillingBatchStatus.SENT
@@ -323,9 +328,9 @@ export const BatchDetailsModal: React.FC<Props> = ({
                             pagamento antes — proteção financeira. */}
                         {!app.billingStatus && onRemoveFromBatch && (
                           <button
-                            onClick={() => onRemoveFromBatch(batch, id)}
+                            onClick={() => setRemoveTargetId(id)}
                             className="flex items-center gap-1 text-[11px] font-medium text-zinc-400 hover:text-red-600 hover:bg-red-50 px-2 py-1 rounded-lg transition-colors"
-                            title="Remover este atendimento do lote (caso tenha entrado por engano)"
+                            title="Remover este atendimento do lote (caso tenha entrado por engano) ou desconsiderá-lo definitivamente"
                           >
                             <Trash2 size={12} />
                             Remover do lote
@@ -455,6 +460,24 @@ export const BatchDetailsModal: React.FC<Props> = ({
               Fechar
             </Button>
           </div>
+
+          {removeTargetId && (() => {
+            const targetApp = appointments.find(a => a.id === removeTargetId);
+            if (!targetApp) return null;
+            const targetCustomer = customers.find(c => c.id === targetApp.customerId);
+            return (
+              <RemoveFromBatchModal
+                batch={batch}
+                appointment={targetApp}
+                customer={targetCustomer}
+                price={getAppPrice(targetApp)}
+                onClose={() => setRemoveTargetId(null)}
+                onConfirm={async (mode, reason) => {
+                  if (onRemoveFromBatch) await onRemoveFromBatch(batch, removeTargetId, mode, reason);
+                }}
+              />
+            );
+          })()}
         </div>
       )}
     </Modal>

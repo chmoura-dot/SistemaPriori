@@ -95,6 +95,10 @@ export interface Appointment {
   billingBatchId?: string;
   billingStatus?: 'paid' | 'denied';
   billingIgnored?: boolean;
+  // Justificativa registrada ao desconsiderar definitivamente um atendimento
+  // de faturamento futuro (fluxo "Remover do lote" > "Desconsiderar").
+  billingIgnoredReason?: string;
+  billingIgnoredAt?: string;
   paidAt?: string;
 
   // Split de repasse da Avaliação Neuropsicológica (2 fases de 50%)

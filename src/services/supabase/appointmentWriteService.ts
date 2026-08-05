@@ -246,6 +246,8 @@ export const appointmentWriteService = {
     if (a.billingBatchId !== undefined) updates.billing_batch_id = a.billingBatchId;
     if (a.billingStatus !== undefined) updates.billing_status = a.billingStatus;
     if (a.billingIgnored !== undefined) updates.billing_ignored = a.billingIgnored;
+    if (a.billingIgnoredReason !== undefined) updates.billing_ignored_reason = a.billingIgnoredReason;
+    if (a.billingIgnoredAt !== undefined) updates.billing_ignored_at = a.billingIgnoredAt;
     if (a.paidAt !== undefined) updates.paid_at = a.paidAt;
     if (a.reportDeliveredAt !== undefined) updates.report_delivered_at = a.reportDeliveredAt;
     if (a.reportDeliveredBy !== undefined) updates.report_delivered_by = a.reportDeliveredBy;

@@ -361,8 +361,19 @@ export function createBillingActions({
    *      lote inteiro.
    * Efeitos: recalcula totalAmount e status do lote, e libera billingBatchId
    * do atendimento (volta a ficar elegível para novo lote).
+   *
+   * @param mode 'remove_only' (padrão, mantém compatibilidade com chamadas antigas)
+   *   apenas solta o atendimento do lote — ele volta a ficar elegível para um
+   *   próximo lote. 'ignore_permanently' além disso marca billingIgnored = true
+   *   com a justificativa obrigatória, para que NUNCA mais seja sugerido em
+   *   nenhum lote futuro (RemoveFromBatchModal exige o motivo antes de chamar).
    */
-  const handleRemoveAppointmentFromBatch = async (batch: BillingBatch, appId: string) => {
+  const handleRemoveAppointmentFromBatch = async (
+    batch: BillingBatch,
+    appId: string,
+    mode: 'remove_only' | 'ignore_permanently' = 'remove_only',
+    reason?: string,
+  ) => {
     if (batch.status === BillingBatchStatus.DRAFT) return;
 
     const app = appointments.find(a => a.id === appId);
@@ -381,14 +392,13 @@ export function createBillingActions({
       return;
     }
 
-    const customer = customers.find(c => c.id === app.customerId);
-    const price = getAppPrice(app);
-    const confirmMsg =
-      `Remover este atendimento do lote #${batch.batchNumber}?\n\n` +
-      `Paciente: ${customer?.name ?? '-'}\n` +
-      `Valor: ${price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}\n\n` +
-      `O total do lote será recalculado e o atendimento voltará a ficar disponível para faturamento.`;
-    if (!confirm(confirmMsg)) return;
+    // Salvaguarda 5: desconsiderar definitivamente exige justificativa não vazia
+    // (a UI já bloqueia o botão, mas a checagem aqui protege contra chamadas
+    // diretas/futuras que pulem o modal).
+    if (mode === 'ignore_permanently' && !reason?.trim()) {
+      toastError('Informe a justificativa para desconsiderar este atendimento.');
+      return;
+    }
 
     try {
       // Salvaguarda 3: confirma que o atendimento não está em nenhum repasse.
@@ -425,22 +435,45 @@ export function createBillingActions({
       };
 
       // 1. Solta o atendimento do lote (volta a ser elegível para faturamento).
-      await api.updateAppointment(appId, { billingBatchId: null as any });
+      //    Se mode === 'ignore_permanently', também marca billingIgnored com a
+      //    justificativa e o timestamp — o atendimento nunca mais será sugerido
+      //    em getEligibleAppointments/getAvailableAppointmentsToAddToBatch.
+      const isPermanentIgnore = mode === 'ignore_permanently';
+      await api.updateAppointment(appId, {
+        billingBatchId: null as any,
+        ...(isPermanentIgnore
+          ? {
+              billingIgnored: true,
+              billingIgnoredReason: reason!.trim(),
+              billingIgnoredAt: new Date().toISOString(),
+            }
+          : {}),
+      });
       // 2. Atualiza o lote (nova lista, total e status).
       await api.updateBillingBatch(batch.id, batchUpdates);
 
-      setAppointments(prev => prev.map(a => a.id === appId ? { ...a, billingBatchId: undefined } : a));
+      setAppointments(prev => prev.map(a => a.id === appId ? {
+        ...a,
+        billingBatchId: undefined,
+        ...(isPermanentIgnore
+          ? { billingIgnored: true, billingIgnoredReason: reason!.trim(), billingIgnoredAt: new Date().toISOString() }
+          : {}),
+      } : a));
       // Atualiza o modal de detalhes imediatamente (sem esperar o refetch).
       setSelectedBatch(prev =>
         prev && prev.id === batch.id
           ? { ...prev, appointmentIds: remainingIds, totalAmount: newTotal, status: newStatus, paidAt: batchUpdates.paidAt }
           : prev
       );
-      toastSuccess('Atendimento removido do lote.');
+      toastSuccess(
+        isPermanentIgnore
+          ? 'Atendimento removido do lote e desconsiderado de faturamentos futuros.'
+          : 'Atendimento removido do lote.'
+      );
       fetchData();
     } catch (error) {
       logger.critical('billing.handleRemoveAppointmentFromBatch', error, {
-        batchId: batch.id, appointmentId: appId,
+        batchId: batch.id, appointmentId: appId, mode,
       });
       toastError('Erro ao remover atendimento do lote.');
     }
