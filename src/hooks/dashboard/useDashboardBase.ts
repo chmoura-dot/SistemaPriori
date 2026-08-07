@@ -132,9 +132,15 @@ export function useDashboardBase() {
     [plans]
   );
 
+  // Inclui o caso 'patient_exempt' (Falta do Paciente — Isento em convênio):
+  // billing fica 'none', mas o convênio é cobrado normalmente (getAppPrice),
+  // apenas o repasse ao psicólogo é bloqueado. Sem essa condição, o Dashboard
+  // Financeiro subestimaria receita/retenção/LTV desses atendimentos.
   const isCanceledButBilled = useCallback((app: Appointment) =>
     app.status === AppointmentStatus.CANCELED &&
-    (app.cancellationBilling === 'plan' || app.cancellationBilling === 'particular'),
+    (app.cancellationBilling === 'plan' ||
+     app.cancellationBilling === 'particular' ||
+     app.cancellationFault === 'patient_exempt'),
     []
   );
 

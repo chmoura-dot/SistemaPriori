@@ -74,7 +74,7 @@ export const PendingConfirmationsPage = () => {
   };
 
   const handleCancelBillingChoice = async (
-    billingMode: 'none' | 'plan' | 'particular' | 'discharge' | 'psychologist_absence'
+    billingMode: 'none' | 'plan' | 'discharge' | 'psychologist_absence'
   ) => {
     if (!cancellationModalAppId) return;
     try {
@@ -107,11 +107,16 @@ export const PendingConfirmationsPage = () => {
         await loadData();
 
       } else {
-        // Falta do paciente → cobra conforme escolha e mantém repasse.
+        // Falta do paciente:
+        //  • 'plan' → cobra do convênio normalmente e mantém repasse ('patient').
+        //  • 'none' → "Isento": convênio cobrado normalmente (getAppPrice trata
+        //    'patient_exempt' de convênio como faturável), mas SEM repasse ao
+        //    psicólogo (isRepassBlocked). Distinto de 'patient' para não colidir
+        //    com a RPC discharge_customer (Alta), que também usa billing='none'.
         await api.updateAppointment(cancellationModalAppId, {
           status: AppointmentStatus.CANCELED,
           cancellationBilling: billingMode,
-          cancellationFault: 'patient',
+          cancellationFault: billingMode === 'none' ? 'patient_exempt' : 'patient',
         });
         await loadData();
       }

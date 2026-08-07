@@ -209,7 +209,7 @@ export const useScheduleActions = (s: ScheduleData) => {
     } catch { alert('Erro ao confirmar'); }
   };
 
-  const handleCancelBillingChoice = async (billingMode: 'none' | 'plan' | 'particular' | 'psychologist_absence') => {
+  const handleCancelBillingChoice = async (billingMode: 'none' | 'plan' | 'psychologist_absence') => {
     if (!s.cancellationModalAppId) return;
     s.setIsSaving(true);
     try {
@@ -242,11 +242,17 @@ export const useScheduleActions = (s: ScheduleData) => {
         });
 
       } else {
-        // Falta/cancelamento do paciente → cobra conforme escolha e mantém repasse.
+        // Falta/cancelamento do paciente:
+        //  • 'plan'  → cobra do convênio normalmente e mantém repasse ('patient').
+        //  • 'none'  → "Isento": convênio é cobrado normalmente (getAppPrice trata
+        //    o caso 'patient_exempt' de convênio como faturável), mas o repasse ao
+        //    psicólogo é bloqueado (isRepassBlocked). Distinto de 'patient' para
+        //    não colidir com a RPC discharge_customer (Alta), que também grava
+        //    cancellationBilling='none' e NUNCA deve passar a cobrar o convênio.
         await api.updateAppointment(s.cancellationModalAppId, {
           status: AppointmentStatus.CANCELED,
           cancellationBilling: billingMode,
-          cancellationFault: 'patient',
+          cancellationFault: billingMode === 'none' ? 'patient_exempt' : 'patient',
         });
       }
       await s.loadData(s.date, true);

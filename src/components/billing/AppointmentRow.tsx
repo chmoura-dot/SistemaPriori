@@ -70,9 +70,14 @@ export const AppointmentRow: React.FC<Props> = memo(({
 
   const isIgnored = app.billingIgnored === true;
   const isConfirmed = app.confirmedPsychologist === true;
+  // "Isento" de fato (não aparece/não seleciona) só quando NÃO há cobrança
+  // real, ou seja, basePrice já veio R$0 do getAppPrice — cobre tanto o
+  // billing='none' tradicional (particular, alta/encerramento) quanto
+  // qualquer outra combinação que resulte em R$0.
   const isCanceledExempt =
     app.status === AppointmentStatus.CANCELED &&
-    (!app.cancellationBilling || app.cancellationBilling === 'none');
+    (!app.cancellationBilling || app.cancellationBilling === 'none') &&
+    basePrice <= 0;
   // Falta do psicólogo cobrada normalmente do convênio (autorização por sessão
   // já consumida): fatura igual, mas o repasse ao profissional é bloqueado.
   // Badge apenas informativo — não altera valor nem seleção.
@@ -80,6 +85,14 @@ export const AppointmentRow: React.FC<Props> = memo(({
     app.status === AppointmentStatus.CANCELED &&
     app.cancellationFault === 'psychologist' &&
     app.cancellationBilling === 'plan';
+  // Falta do paciente marcada como "Isento" para paciente de CONVÊNIO: o
+  // convênio é cobrado normalmente (basePrice > 0), mas o repasse ao
+  // psicólogo é bloqueado (isRepassBlocked). Badge apenas informativo.
+  const isPatientExemptBilled =
+    app.status === AppointmentStatus.CANCELED &&
+    app.cancellationFault === 'patient_exempt' &&
+    app.cancellationBilling === 'none' &&
+    basePrice > 0;
 
 
   const appMonth = app.date.substring(0, 7);
@@ -238,6 +251,14 @@ export const AppointmentRow: React.FC<Props> = memo(({
               className="text-[10px] px-1.5 py-0.5 rounded bg-purple-50 text-purple-600 border border-purple-200 font-semibold"
             >
               Falta Psicólogo — Cobrado
+            </span>
+          )}
+          {isPatientExemptBilled && (
+            <span
+              title="Falta do paciente (Isento): convênio cobrado normalmente (autorização por sessão já consumida), mas SEM repasse ao psicólogo."
+              className="text-[10px] px-1.5 py-0.5 rounded bg-orange-50 text-orange-600 border border-orange-200 font-semibold"
+            >
+              Isento — Sem Repasse
             </span>
           )}
 

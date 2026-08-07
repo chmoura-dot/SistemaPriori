@@ -2,7 +2,7 @@ import React from 'react';
 import { Modal } from '../../components/Modal';
 import { Appointment } from '../../services/types';
 
-export type CancellationChoice = 'plan' | 'particular' | 'none' | 'discharge' | 'psychologist_absence';
+export type CancellationChoice = 'plan' | 'none' | 'discharge' | 'psychologist_absence';
 
 interface Props {
   app: Appointment | undefined;
@@ -15,9 +15,8 @@ export const CancellationBillingModal: React.FC<Props> = ({ app, onClose, onConf
 
   const options: { value: CancellationChoice; label: string; desc: string; color: string }[] = [
     { value: 'plan',       label: 'Falta do Paciente — Cobrar Convênio',    desc: 'O paciente faltou. Cobra do plano e repassa ao psicólogo normalmente',          color: 'border-blue-200 bg-blue-50 text-blue-800 hover:bg-blue-100' },
-    { value: 'particular', label: 'Falta do Paciente — Cobrar Particular',  desc: 'O paciente faltou. Cobra diretamente do paciente e repassa ao psicólogo',    color: 'border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100' },
-    { value: 'none',       label: 'Falta do Paciente — Não Cobrar (Isento)', desc: 'O paciente faltou, mas não haverá cobrança. Repasse mantido ao psicólogo',    color: 'border-zinc-200 bg-zinc-50 text-zinc-600 hover:bg-zinc-100' },
-    { value: 'psychologist_absence', label: 'Falta do Psicólogo', desc: 'O profissional não compareceu. Nunca repassa. Cobrança automática do convênio, exceto AMS Petrobras/Particular (isentos)', color: 'border-red-200 bg-red-50 text-red-800 hover:bg-red-100' },
+    { value: 'none',       label: 'Falta do Paciente — Não Cobrar (Isento)', desc: 'O paciente faltou. Convênio é cobrado normalmente (autorização já consumida), mas SEM repasse ao psicólogo. Particular: não cobra e não repassa', color: 'border-zinc-200 bg-zinc-50 text-zinc-600 hover:bg-zinc-100' },
+    { value: 'psychologist_absence', label: 'Falta do Psicólogo', desc: 'O profissional não compareceu. Nunca repassa. Cobrança automática do convênio (qualquer plano), exceto Particular (isento)', color: 'border-red-200 bg-red-50 text-red-800 hover:bg-red-100' },
 
     { value: 'discharge',  label: 'Alta / Interrompeu Tratamento', desc: 'Todos os agendamentos futuros deste paciente serão cancelados', color: 'border-purple-200 bg-purple-50 text-purple-800 hover:bg-purple-100' },
   ];

@@ -113,7 +113,12 @@ export interface Appointment {
   denialResolution?: 'accepted' | 'appealed';
   createdAt: string;
   cancellationBilling?: 'none' | 'plan' | 'particular' | null;
-  cancellationFault?: 'patient' | 'psychologist' | null;
+  // 'patient_exempt': falta do paciente marcada como "Não Cobrar (Isento)" —
+  // convênio é cobrado normalmente (getAppPrice), mas o repasse ao psicólogo
+  // é bloqueado (isRepassBlocked). Distinto de 'patient' para não colidir com
+  // a RPC discharge_customer (Alta/Encerramento), que também grava
+  // cancellationBilling='none' e NUNCA deve passar a cobrar o convênio.
+  cancellationFault?: 'patient' | 'patient_exempt' | 'psychologist' | null;
   // Motivo do cancelamento (separado de "quem faltou" e "como cobra").
   // 'reschedule' = remanejamento: vaga reaproveitada, NÃO é falta/no-show real.
   cancellationType?: 'no_show' | 'psychologist_absence' | 'discharge' | 'reschedule' | 'other' | null;

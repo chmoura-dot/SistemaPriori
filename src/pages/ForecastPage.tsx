@@ -119,18 +119,6 @@ export const ForecastPage = () => {
     // Mês/ano selecionado no formato YYYY-MM
     const prefix = `${year}-${String(month + 1).padStart(2, '0')}`;
 
-    // Determina se um cancelamento é ISENTO de cobrança.
-    // Mesma regra de negócio usada no Faturamento (AppointmentRow.tsx / pricing.ts):
-    //   cancellationBilling 'none' ou vazio → isento (falta do psicólogo / encerramento sem cobrança)
-    //   cancellationBilling 'plan' | 'particular' → cobrança mantida (falta do paciente, horário reservado)
-    const isCanceledExempt = (a: Appointment) =>
-      a.status === AppointmentStatus.CANCELED &&
-      (!a.cancellationBilling || a.cancellationBilling === 'none');
-
-    // Uma sessão faturável originada de cancelamento (falta do paciente) permanece na relação.
-    const isCanceledBillable = (a: Appointment) =>
-      a.status === AppointmentStatus.CANCELED && !isCanceledExempt(a);
-
     // Contexto de precificação com histórico ampliado (≥12 meses). Reutiliza a
     // MESMA regra do Faturamento/Repasse (getAppPrice) para não duplicar lógica
     // de negócio nem divergir das outras telas.
@@ -139,6 +127,19 @@ export const ForecastPage = () => {
       plans,
       appointments: contextAppointments,
     };
+
+    // Determina se um cancelamento é ISENTO de cobrança.
+    // Mesma regra de negócio usada no Faturamento/Repasse (pricing.ts::getAppPrice):
+    // delega a getAppPrice em vez de checar cancellationBilling diretamente, para
+    // cobrir corretamente o caso 'patient_exempt' de convênio (Falta do Paciente
+    // — Isento), que tem cancellationBilling='none' mas AINDA É FATURÁVEL
+    // (getAppPrice > 0) — só o repasse ao psicólogo é bloqueado, não a cobrança.
+    const isCanceledExempt = (a: Appointment) =>
+      a.status === AppointmentStatus.CANCELED && getAppPrice(a, pricingCtx) <= 0;
+
+    // Uma sessão faturável originada de cancelamento (falta do paciente) permanece na relação.
+    const isCanceledBillable = (a: Appointment) =>
+      a.status === AppointmentStatus.CANCELED && !isCanceledExempt(a);
 
     // Avaliação Neuropsicológica: só a sessão PASSÍVEL DE FATURAMENTO aparece.
     //   • Convênios comuns/particular: 1ª sessão ou após 180 dias de carência.

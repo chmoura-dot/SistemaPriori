@@ -168,9 +168,15 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({
               'text-[7px] font-black uppercase tracking-tight px-1 py-0.5 rounded-sm mt-0.5 self-start leading-none',
               appointment.cancellationFault === 'psychologist'
                 ? 'bg-red-100 text-red-600'
-                : 'bg-amber-100 text-amber-700'
+                : appointment.cancellationFault === 'patient_exempt'
+                  ? 'bg-orange-100 text-orange-700'
+                  : 'bg-amber-100 text-amber-700'
             )}>
-              {appointment.cancellationFault === 'psychologist' ? 'Falta Psicólogo' : 'Falta Paciente'}
+              {appointment.cancellationFault === 'psychologist'
+                ? 'Falta Psicólogo'
+                : appointment.cancellationFault === 'patient_exempt'
+                  ? 'Falta Isento'
+                  : 'Falta Paciente'}
             </span>
           )}
           {!appointment.isInternal && <StatusIcons appointment={appointment} />}

@@ -1,11 +1,78 @@
--- ============================================================
--- FASE 4 — get_appointment_price + validate_price_parity (Shadow Calculation)
--- ============================================================
--- Rode este script no SQL Editor do Supabase (produção).
--- É idempotente (CREATE OR REPLACE) — seguro reexecutar.
--- Conteúdo idêntico à migration 20260717_get_appointment_price.sql.
--- ============================================================
+-- ============================================================================
+-- Migration: Falta do Psicólogo (todos os convênios) + Falta do Paciente Isento
+-- Data: 2026-08-06
+-- ============================================================================
+--
+-- CONTEXTO DE NEGÓCIO
+-- --------------------------------------------------------------------------
+-- 1) Falta do Psicólogo (cancellation_fault='psychologist'):
+--    Antes: AMS Petrobras e Particular eram tratados como isentos
+--    (cancellation_billing='none'), o que zerava o preço e removia o
+--    atendimento do faturamento. Agora, TODOS os planos de saúde (incluindo
+--    AMS Petrobras) devem ser cobrados normalmente do convênio — a
+--    autorização por sessão já foi consumida —, mantendo o repasse ao
+--    psicólogo sempre bloqueado (isRepassBlocked, inalterado). Somente
+--    Particular continua isento (não se cobra do paciente por falha da
+--    clínica).
+--
+-- 2) Falta do Paciente — "Isento" (nova categoria cancellation_fault=
+--    'patient_exempt'):
+--    Quando a secretária escolhe "Falta do Paciente — Não Cobrar (Isento)"
+--    para um paciente de CONVÊNIO, o sistema passa a cobrar o convênio
+--    normalmente (autorização já consumida), mas SEM repasse ao psicólogo.
+--    Para paciente PARTICULAR, o comportamento permanece: não cobra e não
+--    repassa.
+--    Esta categoria é distinta de 'patient' para não colidir com a RPC
+--    discharge_customer (Alta/Encerramento de Tratamento), que também grava
+--    cancellation_billing='none' + cancellation_fault='patient' e NUNCA deve
+--    passar a cobrar o convênio.
+--    IMPORTANTE: por essa mesma razão de ambiguidade histórica (registros
+--    antigos de "Isento" e de "Alta" são indistinguíveis no banco — ambos
+--    usam 'patient'), esta migration NÃO reclassifica retroativamente casos
+--    de "Falta do Paciente — Isento" já existentes. A nova categoria
+--    'patient_exempt' vale apenas para cancelamentos registrados a partir da
+--    atualização do código-fonte.
+--
+-- ESCOPO DESTA MIGRATION
+-- --------------------------------------------------------------------------
+--   a) Amplia o CHECK constraint de cancellation_fault para aceitar o novo
+--      valor 'patient_exempt'.
+--   b) Corrige RETROATIVAMENTE os registros de "Falta do Psicólogo" em
+--      convênios (exceto Particular) que foram gravados como
+--      cancellation_billing='none' (regra antiga) — passam a 'plan', o que
+--      os torna novamente elegíveis para faturamento.
+-- ============================================================================
 
+-- ── 1. Amplia o CHECK constraint de cancellation_fault ─────────────────────
+ALTER TABLE appointments
+  DROP CONSTRAINT IF EXISTS appointments_cancellation_fault_check;
+
+ALTER TABLE appointments
+  ADD CONSTRAINT appointments_cancellation_fault_check
+  CHECK (cancellation_fault IS NULL OR cancellation_fault IN ('patient', 'patient_exempt', 'psychologist'));
+
+COMMENT ON COLUMN appointments.cancellation_fault IS
+  'De quem foi a falta em um cancelamento: patient (cobra e repassa normalmente), patient_exempt (falta do paciente ''Isento'' — cobra o convênio mas SEM repasse ao psicólogo; particular não cobra nem repassa), psychologist (falta do profissional — cobra convênio mas SEM repasse; particular isento). NULL para não cancelados ou legado.';
+
+-- ── 2. Corrige retroativamente: Falta do Psicólogo em convênios ────────────
+-- Antes desta mudança, resolvePsychologistAbsenceBilling() classificava AMS
+-- Petrobras como isento ('none'). Esses registros ficaram fora do
+-- faturamento indevidamente. Agora AMS (e qualquer outro convênio) deve
+-- cobrar normalmente ('plan'). Particular permanece intocado.
+UPDATE appointments a
+   SET cancellation_billing = 'plan'
+  FROM customers c
+ WHERE a.customer_id = c.id
+   AND a.status = 'canceled'
+   AND a.cancellation_fault = 'psychologist'
+   AND a.cancellation_billing = 'none'
+   AND COALESCE(a.health_plan_at_time, c.health_plan) IS DISTINCT FROM 'Particular';
+
+-- ── 3. Espelha a mesma regra em get_appointment_price (shadow calculation) ──
+-- Réplica fiel da mudança em src/lib/pricing.ts::getAppPrice, para que
+-- validate_price_parity não acuse divergência crítica quando o frontend
+-- passar a cobrar (a) falta do psicólogo em qualquer convênio ou (b) falta
+-- do paciente 'patient_exempt' em convênio.
 CREATE OR REPLACE FUNCTION get_appointment_price(
   p_appointment_id  uuid,
   p_psychologist_id uuid,
@@ -56,10 +123,9 @@ BEGIN
   v_is_ams        := (v_plan_name = 'AMS Petrobras');
   v_is_particular := (v_plan_name = 'Particular' OR v_plan_name IS NULL);
 
-  -- Cancelado sem cobrança = R$0, EXCETO "Falta do Paciente — Isento"
-  -- (cancellation_fault='patient_exempt') em convênio: cobra normalmente,
-  -- mas sem repasse (bloqueado à parte, fora desta função de preço).
-  -- Ver migration 20260806_billing_repass_exempt_rules.sql.
+  -- 1. Cancelado sem cobrança = R$0, EXCETO "Falta do Paciente — Isento"
+  --    (cancellation_fault='patient_exempt') em convênio: cobra normalmente,
+  --    mas sem repasse (bloqueado à parte, fora desta função de preço).
   IF v_app.status = 'canceled' AND v_app.cancellation_billing = 'none' THEN
     IF NOT (v_app.cancellation_fault = 'patient_exempt' AND NOT v_is_particular) THEN
       RETURN QUERY SELECT 0::numeric, 0::numeric, ARRAY['canceled_no_charge'];
@@ -67,6 +133,7 @@ BEGIN
     END IF;
   END IF;
 
+  -- 2. AMS Petrobras + Avaliação Neuropsicológica (pricing.ts:25-62, 121-130)
   IF v_is_ams AND p_session_type = 'NEUROPSICOLOGICA' THEN
     v_cycle_start := NULL;
     v_session_idx := -1;
@@ -118,6 +185,7 @@ BEGIN
     END IF;
   END IF;
 
+  -- 3. Neuropsico genérico — bloqueio de 180 dias (pricing.ts:75-102, 132-136)
   IF p_session_type = 'NEUROPSICOLOGICA' AND NOT v_is_ams THEN
     SELECT date INTO v_last_date
       FROM appointments
@@ -138,6 +206,7 @@ BEGIN
     END IF;
   END IF;
 
+  -- 4. Resolução padrão por procedimento (pricing.ts:142-184)
   v_proc_by_code := NULL;
   IF v_app.procedure_code IS NOT NULL THEN
     SELECT elem INTO v_proc_by_code
@@ -168,64 +237,3 @@ END;
 $$;
 
 GRANT EXECUTE ON FUNCTION get_appointment_price(uuid, uuid, uuid, date, text) TO authenticated;
-
-
--- ⚠️ Necessário: uma versão anterior pode existir com nome de parâmetro diferente
--- (o Postgres não permite renomear parâmetros de entrada via CREATE OR REPLACE).
-DROP FUNCTION IF EXISTS validate_price_parity(uuid, uuid, uuid, date, text, numeric);
-
-CREATE OR REPLACE FUNCTION validate_price_parity(
-  p_appointment_id      uuid,
-  p_psychologist_id     uuid,
-  p_plan_id             uuid,
-  p_date                date,
-  p_session_type        text,
-  p_price_from_frontend numeric
-)
-RETURNS jsonb
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE
-  v_result  record;
-  v_diff    numeric;
-  v_matched boolean;
-BEGIN
-  SELECT * INTO v_result
-    FROM get_appointment_price(p_appointment_id, p_psychologist_id, p_plan_id, p_date, p_session_type);
-
-  v_diff    := ABS(COALESCE(v_result.final_price, 0) - COALESCE(p_price_from_frontend, 0));
-  v_matched := v_diff < 1;
-
-  IF NOT v_matched THEN
-    PERFORM log_operation_failure(
-      'pricing.parityMismatch',
-      format('Divergência de preço: frontend=%s servidor=%s (appointment=%s)',
-             p_price_from_frontend, v_result.final_price, p_appointment_id),
-      jsonb_build_object(
-        'appointment_id', p_appointment_id,
-        'frontend_price', p_price_from_frontend,
-        'server_price', v_result.final_price,
-        'base_price', v_result.base_price,
-        'applied_rules', v_result.applied_rules
-      ),
-      'critical'
-    );
-  END IF;
-
-  RETURN jsonb_build_object(
-    'matched', v_matched,
-    'base_price', v_result.base_price,
-    'final_price', v_result.final_price,
-    'applied_rules', v_result.applied_rules
-  );
-END;
-$$;
-
-GRANT EXECUTE ON FUNCTION validate_price_parity(uuid, uuid, uuid, date, text, numeric) TO authenticated;
-
--- Verificação
-SELECT proname FROM pg_proc
- WHERE proname IN ('get_appointment_price', 'validate_price_parity')
- ORDER BY proname;

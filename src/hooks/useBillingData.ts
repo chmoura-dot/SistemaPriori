@@ -172,7 +172,13 @@ export function useBillingData() {
   const closeCreateModal = () => { setIsCreateModalOpen(false); setPatientFilter(''); setMonthFilter(''); setEditingDraftBatch(null); setSelectedAppointmentIds([]); };
   const handlePlanChange = (plan: HealthPlan) => { setSelectedPlan(plan); setSelectedAppointmentIds([]); setBatchNumber(helpers.generateBatchNumber(plan, monthFilter, editingDraftBatch !== null)); };
   const handleMonthFilterChange = (month: string) => { setMonthFilter(month); setSelectedAppointmentIds([]); setBatchNumber(helpers.generateBatchNumber(selectedPlan, month, editingDraftBatch !== null)); };
-  const toggleAppointmentSelection = (id: string) => { const app = appointments.find(a => a.id === id); if (app?.billingIgnored || (app?.status === AppointmentStatus.CANCELED && (!app?.cancellationBilling || app?.cancellationBilling === 'none'))) return; setSelectedAppointmentIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]); };
+  // Bloqueia seleção quando ignorado OU quando o preço calculado é R$0 (ex:
+  // cancelamento isento tradicional, alta/encerramento, AMS 4ª+ sessão).
+  // Delega a decisão a getAppPrice/basePrice em vez de checar
+  // cancellationBilling==='none' diretamente — isso permite selecionar o
+  // novo caso "Falta do Paciente — Isento" de convênio (cancellationFault=
+  // 'patient_exempt'), que agora fatura normalmente embora billing='none'.
+  const toggleAppointmentSelection = (id: string) => { const app = appointments.find(a => a.id === id); if (!app || app.billingIgnored || helpers.getAppPrice(app) <= 0) return; setSelectedAppointmentIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]); };
 
   const handleUpdateAppointmentPrice = async (id: string, newPrice: number) => {
     await api.updateAppointment(id, { customPrice: newPrice });

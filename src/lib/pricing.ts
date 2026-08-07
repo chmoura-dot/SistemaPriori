@@ -110,12 +110,22 @@ export function getNeuropsicoStatus(
  * - Fallback: customPrice > customer.customPrice > procedure.price
  */
 export function getAppPrice(app: Appointment, ctx: PricingContext): number {
-  if (app.status === AppointmentStatus.CANCELED && app.cancellationBilling === 'none') return 0;
-
   const customer = ctx.customers.find(c => c.id === app.customerId);
   // Usa o plano histórico gravado no agendamento; fallback para o plano atual do paciente
   const effectiveHealthPlan = (app.healthPlanAtTime ?? customer?.healthPlan) as HealthPlan | undefined;
-  const plan     = matchPlanByHealthPlan(ctx.plans, effectiveHealthPlan);
+  const isParticularPlan = !effectiveHealthPlan || effectiveHealthPlan === HealthPlan.PARTICULAR;
+
+  // Cancelado sem cobrança = R$0, EXCETO no caso "Falta do Paciente — Isento"
+  // (cancellationFault='patient_exempt') de um paciente de CONVÊNIO: nesse
+  // caso o convênio é cobrado normalmente (autorização já consumida), mas o
+  // repasse ao psicólogo é bloqueado separadamente por isRepassBlocked.
+  // Particular isento continua R$0 (não há convênio para cobrar).
+  if (app.status === AppointmentStatus.CANCELED && app.cancellationBilling === 'none') {
+    const isPatientExemptAtPlanCovered = app.cancellationFault === 'patient_exempt' && !isParticularPlan;
+    if (!isPatientExemptAtPlanCovered) return 0;
+  }
+
+  const plan = matchPlanByHealthPlan(ctx.plans, effectiveHealthPlan);
 
   // Regra específica AMS Petrobras para Avaliação Neuropsicológica
   if (effectiveHealthPlan === HealthPlan.AMS_PETROBRAS && app.type === AppointmentType.NEUROPSICOLOGICA) {
@@ -187,29 +197,35 @@ export function getAppPrice(app: Appointment, ctx: PricingContext): number {
 /**
  * Determina se um atendimento está BLOQUEADO para repasse ao psicólogo.
  *
- * Regra de negócio: quando a falta é do PSICÓLOGO, a clínica não fatura nem
- * paga repasse. Já a falta do PACIENTE (ou sessão realizada) mantém o repasse
- * normalmente, pois o profissional compareceu / reservou o horário.
+ * Regra de negócio:
+ *  • Falta do PSICÓLOGO (cancellationFault='psychologist') → nunca repassa,
+ *    mesmo quando o convênio é cobrado normalmente (autorização por sessão
+ *    já consumida). Quem faltou foi o profissional.
+ *  • Falta do PACIENTE marcada como "Isento" (cancellationFault=
+ *    'patient_exempt') → o convênio pode ser cobrado (getAppPrice), mas o
+ *    repasse também é bloqueado: a clínica optou por não cobrar do paciente,
+ *    então não há base para repassar ao profissional.
+ *  • Falta do PACIENTE normal ('patient') ou sessão realizada → mantém o
+ *    repasse normalmente, pois o profissional compareceu / reservou o horário.
  *
- * O faturamento (getAppPrice) NÃO usa esta função — uma falta do psicólogo
- * deve ser marcada como cancellationBilling='none', o que já zera o preço.
- * Esta guarda protege especificamente o cálculo de repasse.
+ * O faturamento (getAppPrice) tem sua PRÓPRIA guarda equivalente — ver o
+ * bloco "Cancelado sem cobrança" em getAppPrice, que já trata o caso
+ * 'patient_exempt' de convênio como faturável.
  */
 export function isRepassBlocked(app: Appointment): boolean {
-  return app.status === AppointmentStatus.CANCELED && app.cancellationFault === 'psychologist';
+  if (app.status !== AppointmentStatus.CANCELED) return false;
+  return app.cancellationFault === 'psychologist' || app.cancellationFault === 'patient_exempt';
 }
 
 /**
  * Determina COMO faturar uma FALTA DO PSICÓLOGO conforme o plano do paciente.
  *
  * Regra de negócio:
- *  • AMS Petrobras / Particular / sem plano → NÃO cobra ('none'). Na AMS a
- *    autorização é ampla (não por sessão), então uma ausência do profissional
- *    não gera fato gerador de cobrança; no particular não se cobra do paciente
+ *  • Particular / sem plano → NÃO cobra ('none'). Não se cobra do paciente
  *    por uma falha da clínica.
- *  • Demais convênios → COBRA ('plan'). Nesses planos a autorização é solicitada
- *    por sessão junto ao convênio e é "consumida" independentemente do
- *    comparecimento do profissional — o convênio reconhece o atendimento.
+ *  • Convênios (incluindo AMS Petrobras) → COBRA ('plan'). A autorização é
+ *    solicitada por sessão junto ao convênio e é "consumida" independente
+ *    do comparecimento do profissional — o convênio reconhece o atendimento.
  *
  * Em TODOS os casos o repasse ao psicólogo é bloqueado (ver isRepassBlocked),
  * pois quem faltou foi o profissional: a clínica não paga por atendimento não
@@ -220,11 +236,7 @@ export function isRepassBlocked(app: Appointment): boolean {
 export function resolvePsychologistAbsenceBilling(
   effectiveHealthPlan: HealthPlan | string | undefined,
 ): 'none' | 'plan' {
-  if (
-    !effectiveHealthPlan ||
-    effectiveHealthPlan === HealthPlan.AMS_PETROBRAS ||
-    effectiveHealthPlan === HealthPlan.PARTICULAR
-  ) {
+  if (!effectiveHealthPlan || effectiveHealthPlan === HealthPlan.PARTICULAR) {
     return 'none';
   }
   return 'plan';

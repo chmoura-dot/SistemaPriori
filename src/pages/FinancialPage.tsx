@@ -58,10 +58,16 @@ export const FinancialPage = () => {
           api.getPsychologists()
         ]);
 
-        // Apenas conferências confirmadas pelo psicólogo, ou cancelamentos com cobrança
+        // Apenas conferências confirmadas pelo psicólogo, ou cancelamentos com cobrança.
+        // Inclui 'patient_exempt' (Falta do Paciente — Isento em convênio): billing
+        // fica 'none', mas o convênio é cobrado normalmente (repasse é que é bloqueado).
         const billed = apps.filter(a => 
           a.confirmedPsychologist || 
-          (a.status === AppointmentStatus.CANCELED && (a.cancellationBilling === 'plan' || a.cancellationBilling === 'particular'))
+          (a.status === AppointmentStatus.CANCELED && (
+            a.cancellationBilling === 'plan' ||
+            a.cancellationBilling === 'particular' ||
+            a.cancellationFault === 'patient_exempt'
+          ))
         );
 
         setAppointments(billed);

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Download, Pencil, Check, X, CircleDollarSign, RotateCcw, Search, Trash2, Plus, Lock } from 'lucide-react';
 
 import { format } from 'date-fns';
-import { BillingBatch, BillingBatchStatus, Appointment, Customer, Psychologist, HealthPlan } from '../../services/types';
+import { BillingBatch, BillingBatchStatus, Appointment, AppointmentStatus, Customer, Psychologist, HealthPlan } from '../../services/types';
 import { Modal } from '../Modal';
 import { Button } from '../Button';
 import { formatCurrency, cn } from '../../lib/utils';
@@ -234,6 +234,13 @@ export const BatchDetailsModal: React.FC<Props> = ({
                 const price = app ? getAppPrice(app) : 0;
                 const isParticular = customer?.healthPlan === HealthPlan.PARTICULAR;
                 const isEditing = editingId === id;
+                // Faltas cobradas do convênio mas SEM repasse ao psicólogo:
+                // falta do psicólogo (cobrança automática) ou falta do paciente
+                // marcada como "Isento" (cancellationFault='patient_exempt').
+                const isNoRepassBilled = app?.status === AppointmentStatus.CANCELED && price > 0 && (
+                  (app?.cancellationFault === 'psychologist' && app?.cancellationBilling === 'plan') ||
+                  (app?.cancellationFault === 'patient_exempt' && app?.cancellationBilling === 'none')
+                );
 
                 return (
                   <div key={id} className="flex flex-col p-3 bg-zinc-50 rounded-xl text-sm gap-2">
@@ -244,6 +251,18 @@ export const BatchDetailsModal: React.FC<Props> = ({
                           {psychologist?.name} •{' '}
                           {app ? format(new Date(app.date + 'T12:00:00'), 'dd/MM/yyyy') : ''}
                         </div>
+                        {isNoRepassBilled && (
+                          <span
+                            title={
+                              app?.cancellationFault === 'psychologist'
+                                ? 'Falta do psicólogo: cobrada do convênio, mas SEM repasse ao profissional.'
+                                : 'Falta do paciente (Isento): cobrada do convênio, mas SEM repasse ao psicólogo.'
+                            }
+                            className="inline-block mt-1 text-[10px] px-1.5 py-0.5 rounded bg-orange-50 text-orange-600 border border-orange-200 font-semibold"
+                          >
+                            Sem Repasse
+                          </span>
+                        )}
                       </div>
                       <div className="text-right flex items-center gap-1.5">
                         {isEditing ? (
