@@ -1,4 +1,5 @@
 import { api } from '../../services/api';
+import { apiCache } from '../../services/apiCache';
 import {
   Appointment, AppointmentStatus, AttendanceMode, RecurrenceFrequency,
 } from '../../services/types';
@@ -229,6 +230,11 @@ export const useScheduleActions = (s: ScheduleData) => {
           p_current_appointment_id: s.cancellationModalAppId,
         });
         if (error) throw new Error(error.message);
+        // discharge_customer cancela a sessão atual + todas as futuras do
+        // paciente+psicólogo (appointments) e pausa assinaturas (subscriptions).
+        apiCache.invalidate('appointments');
+        apiCache.invalidate('customers');
+        apiCache.invalidate('subscriptions');
       } else if (billingMode === 'psychologist_absence') {
         // Falta do psicólogo → NUNCA repassa. A cobrança depende do plano:
         // AMS/Particular isentam ('none'); demais convênios cobram ('plan'),

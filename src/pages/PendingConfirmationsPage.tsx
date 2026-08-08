@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Filter, Loader2, CheckCircle2 } from 'lucide-react';
 import { api } from '../services/api';
 import { supabase } from '../lib/supabase';
+import { apiCache } from '../services/apiCache';
 import { Appointment, Psychologist, Customer, AppointmentStatus } from '../services/types';
 import { cn } from '../lib/utils';
 import { resolvePsychologistAbsenceBilling } from '../lib/pricing';
@@ -91,6 +92,11 @@ export const PendingConfirmationsPage = () => {
         });
         if (error) throw new Error(error.message);
 
+        // discharge_customer cancela sessão atual + futuras (appointments)
+        // e reflete em lastAppointmentDate/subscriptions derivados de customers.
+        apiCache.invalidate('appointments');
+        apiCache.invalidate('customers');
+        apiCache.invalidate('subscriptions');
         await loadData();
       } else if (billingMode === 'psychologist_absence') {
         // Falta do psicólogo → NUNCA repassa. A cobrança depende do plano:

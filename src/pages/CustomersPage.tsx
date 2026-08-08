@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Plus, Search, Upload, Users, AlertCircle, Edit2 } from 'lucide-react';
 import { api } from '../services/api';
 import { supabase } from '../lib/supabase';
+import { apiCache } from '../services/apiCache';
 import { Customer, CustomerStatus, HealthPlan, Psychologist } from '../services/types';
 
 import { Button } from '../components/Button';
@@ -164,6 +165,7 @@ export const CustomersPage = () => {
                 .from('appointments')
                 .update({ health_plan_at_time: formData.healthPlan })
                 .in('id', idsToUpdate);
+              apiCache.invalidate('appointments');
             }
 
             if (blockedCount > 0) {
@@ -203,6 +205,7 @@ export const CustomersPage = () => {
                 .from('appointments')
                 .update({ custom_price: formData.customPrice })
                 .in('id', idsToUpdate);
+              apiCache.invalidate('appointments');
             }
           } catch {
             // Erro silencioso — propagação é best-effort
@@ -229,6 +232,9 @@ export const CustomersPage = () => {
       });
       if (error) throw error;
 
+      apiCache.invalidate('customers');
+      apiCache.invalidate('appointments');
+      apiCache.invalidate('subscriptions');
       await loadData();
       setInactivateId(null);
       setIsFormOpen(false);
