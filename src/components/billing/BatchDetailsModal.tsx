@@ -261,7 +261,7 @@ export const BatchDetailsModal: React.FC<Props> = ({
                 const isParticular = customer?.healthPlan === HealthPlan.PARTICULAR;
                 const isEditing = editingId === id;
                 // Faltas cobradas do convênio mas SEM repasse ao psicólogo (isRepassBlocked):
-                const isNoRepassBilled = !!app && app.status === AppointmentStatus.CANCELED && price > 0 && isRepassBlocked(app);
+                const isNoRepassBilled = !!app && Boolean(isRepassBlocked(app)) && price > 0;
 
                 return (
                   <div key={id} className="flex flex-col p-3 bg-zinc-50 rounded-xl text-sm gap-2">

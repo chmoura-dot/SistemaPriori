@@ -80,8 +80,7 @@ export const AppointmentRow: React.FC<Props> = memo(({
     basePrice <= 0;
   // Atendimento faturado (basePrice > 0) mas cujo repasse ao psicólogo é bloqueado (isRepassBlocked)
   const isNoRepassBilled =
-    app.status === AppointmentStatus.CANCELED &&
-    isRepassBlocked(app) &&
+    Boolean(isRepassBlocked(app)) &&
     basePrice > 0;
 
 
