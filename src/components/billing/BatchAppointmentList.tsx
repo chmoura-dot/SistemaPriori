@@ -3,13 +3,13 @@
  * Renderiza a lista agrupada de atendimentos elegíveis dentro do modal de criação de lote.
  * Extraído de CreateBatchModal para manter cada arquivo abaixo de 300 linhas.
  */
-import React from 'react';
+import React, { useMemo } from 'react';
 import { AlertTriangle, Users } from 'lucide-react';
 import { Appointment, Customer, Plan, BillingBatch, AppointmentType, HealthPlan } from '../../services/types';
 import { cn, formatCurrency } from '../../lib/utils';
 import { AppointmentRow } from './AppointmentRow';
 import { PlanProcedureInfo } from '../../hooks/billing/billingHelpers';
-import { NeuropsicoStatus } from '../../lib/pricing';
+import { NeuropsicoStatus, isRepassBlocked } from '../../lib/pricing';
 
 interface SessionWarning {
   customerName: string;
@@ -67,8 +67,25 @@ export const BatchAppointmentList: React.FC<Props> = ({
   onPatientFilterChange, onSelectAll, onToggleSelection,
   onConfirmAppointment, onIgnoreAppointment, onUnignoreAppointment, onToggleNeuropsico, onQuickAddToDraft,
   onOverrideProcedureCode, onOverridePrice,
-}) => (
-  <div className="border-t border-zinc-100 pt-3">
+}) => {
+  const { totalRepassable, totalBlocked } = useMemo(() => {
+    let repassable = 0;
+    let blocked = 0;
+    const ss = new Set(selectedAppointmentIds);
+    eligibleAppointments.forEach(a => {
+      if (!ss.has(a.id)) return;
+      const price = getAppPrice(a);
+      if (isRepassBlocked(a)) {
+        blocked += price;
+      } else {
+        repassable += price;
+      }
+    });
+    return { totalRepassable: repassable, totalBlocked: blocked };
+  }, [selectedAppointmentIds, eligibleAppointments, getAppPrice]);
+
+  return (
+    <div className="border-t border-zinc-100 pt-3">
     {/* Filtro por paciente + Selecionar todos */}
     <div className="flex flex-col sm:flex-row gap-2 mb-3">
       <input
@@ -180,15 +197,30 @@ export const BatchAppointmentList: React.FC<Props> = ({
 
     {/* Total corrente */}
     {selectedAppointmentIds.length > 0 && (
-      <div className="mt-3 flex items-center justify-between px-4 py-3 bg-priori-navy/5 rounded-xl border border-priori-navy/10">
-        <div className="flex items-center gap-3 text-sm text-priori-navy">
-          <span className="font-medium">
-            {selectedAppointmentIds.length} {selectedAppointmentIds.length === 1 ? 'atendimento' : 'atendimentos'}
-          </span>
-          <span className="text-zinc-400">•</span>
-          <span className="text-zinc-500">{uniquePatients} {uniquePatients === 1 ? 'paciente' : 'pacientes'}</span>
+      <div className="mt-3 flex flex-col gap-2 px-4 py-3 bg-priori-navy/5 rounded-xl border border-priori-navy/10">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3 text-sm text-priori-navy">
+            <span className="font-semibold">
+              {selectedAppointmentIds.length} {selectedAppointmentIds.length === 1 ? 'atendimento' : 'atendimentos'}
+            </span>
+            <span className="text-zinc-400">•</span>
+            <span className="text-zinc-500 font-medium">{uniquePatients} {uniquePatients === 1 ? 'paciente' : 'pacientes'}</span>
+          </div>
+          <span className="text-lg font-bold text-priori-navy">{formatCurrency(totalSelectedAmount)}</span>
         </div>
-        <span className="text-lg font-bold text-priori-navy">{formatCurrency(totalSelectedAmount)}</span>
+
+        {totalBlocked > 0 && (
+          <div className="border-t border-dashed border-priori-navy/15 pt-2 flex flex-col gap-1.5 text-xs">
+            <div className="flex justify-between text-zinc-500">
+              <span>Valor Repassável:</span>
+              <span className="font-semibold text-zinc-700">{formatCurrency(totalRepassable)}</span>
+            </div>
+            <div className="flex justify-between text-purple-600 font-semibold bg-purple-50 px-2 py-1 rounded border border-purple-100">
+              <span>Faturado, sem repasse:</span>
+              <span>{formatCurrency(totalBlocked)}</span>
+            </div>
+          </div>
+        )}
       </div>
     )}
 
@@ -204,4 +236,5 @@ export const BatchAppointmentList: React.FC<Props> = ({
       </div>
     )}
   </div>
-);
+  );
+};

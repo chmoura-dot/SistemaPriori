@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Download, Pencil, Check, X, CircleDollarSign, RotateCcw, Search, Trash2, Plus, Lock } from 'lucide-react';
 
 import { format } from 'date-fns';
 import { BillingBatch, BillingBatchStatus, Appointment, AppointmentStatus, Customer, Psychologist, HealthPlan } from '../../services/types';
+import { isRepassBlocked } from '../../lib/pricing';
 import { Modal } from '../Modal';
 import { Button } from '../Button';
 import { formatCurrency, cn } from '../../lib/utils';
@@ -49,6 +50,26 @@ export const BatchDetailsModal: React.FC<Props> = ({
   // Id do atendimento cujo modal "Remover do lote" (remover vs. desconsiderar
   // definitivamente) está aberto. null = nenhum modal aberto.
   const [removeTargetId, setRemoveTargetId] = useState<string | null>(null);
+
+  const { totalAmount, totalBlocked, totalRepassable } = useMemo(() => {
+    if (!batch) return { totalAmount: 0, totalBlocked: 0, totalRepassable: 0 };
+    let amount = 0;
+    let blocked = 0;
+    let repassable = 0;
+    batch.appointmentIds.forEach(id => {
+      const app = appointments.find(a => a.id === id);
+      if (app) {
+        const price = getAppPrice(app);
+        amount += price;
+        if (isRepassBlocked(app)) {
+          blocked += price;
+        } else {
+          repassable += price;
+        }
+      }
+    });
+    return { totalAmount: amount, totalBlocked: blocked, totalRepassable: repassable };
+  }, [batch, appointments, getAppPrice]);
 
 
   // Normaliza texto para busca tolerante a acentos/caixa (ex.: "joao" casa com "João").
@@ -132,14 +153,19 @@ export const BatchDetailsModal: React.FC<Props> = ({
 
             <div>
               <span className="text-zinc-500 block">Valor Total</span>
-              <span className="font-medium text-priori-navy">
-                {formatCurrency(
-                  batch.appointmentIds.reduce((sum, id) => {
-                    const app = appointments.find(a => a.id === id);
-                    return sum + (app ? getAppPrice(app) : 0);
-                  }, 0)
-                )}
+              <span className="font-bold text-priori-navy text-base">
+                {formatCurrency(totalAmount)}
               </span>
+              {totalBlocked > 0 && (
+                <div className="mt-1 text-xs space-y-0.5">
+                  <span className="text-zinc-400 block">
+                    Repassável: <strong className="text-zinc-600 font-medium">{formatCurrency(totalRepassable)}</strong>
+                  </span>
+                  <span className="text-purple-600 block bg-purple-50 px-1.5 py-0.5 rounded border border-purple-100 inline-block font-semibold mt-1">
+                    Sem repasse: {formatCurrency(totalBlocked)}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -234,13 +260,8 @@ export const BatchDetailsModal: React.FC<Props> = ({
                 const price = app ? getAppPrice(app) : 0;
                 const isParticular = customer?.healthPlan === HealthPlan.PARTICULAR;
                 const isEditing = editingId === id;
-                // Faltas cobradas do convênio mas SEM repasse ao psicólogo:
-                // falta do psicólogo (cobrança automática) ou falta do paciente
-                // marcada como "Isento" (cancellationFault='patient_exempt').
-                const isNoRepassBilled = app?.status === AppointmentStatus.CANCELED && price > 0 && (
-                  (app?.cancellationFault === 'psychologist' && app?.cancellationBilling === 'plan') ||
-                  (app?.cancellationFault === 'patient_exempt' && app?.cancellationBilling === 'none')
-                );
+                // Faltas cobradas do convênio mas SEM repasse ao psicólogo (isRepassBlocked):
+                const isNoRepassBilled = !!app && app.status === AppointmentStatus.CANCELED && price > 0 && isRepassBlocked(app);
 
                 return (
                   <div key={id} className="flex flex-col p-3 bg-zinc-50 rounded-xl text-sm gap-2">
@@ -255,12 +276,12 @@ export const BatchDetailsModal: React.FC<Props> = ({
                           <span
                             title={
                               app?.cancellationFault === 'psychologist'
-                                ? 'Falta do psicólogo: cobrada do convênio, mas SEM repasse ao profissional.'
-                                : 'Falta do paciente (Isento): cobrada do convênio, mas SEM repasse ao psicólogo.'
+                                ? 'Falta do psicólogo: cobrada do convênio (autorização consumida), mas SEM repasse ao profissional.'
+                                : 'Falta do paciente (Isento): cobrada do convênio (autorização consumida), mas SEM repasse ao profissional.'
                             }
-                            className="inline-block mt-1 text-[10px] px-1.5 py-0.5 rounded bg-orange-50 text-orange-600 border border-orange-200 font-semibold"
+                            className="inline-block mt-1 text-[10px] px-1.5 py-0.5 rounded bg-purple-50 text-purple-600 border border-purple-200 font-semibold"
                           >
-                            Sem Repasse
+                            Faturado, sem repasse
                           </span>
                         )}
                       </div>

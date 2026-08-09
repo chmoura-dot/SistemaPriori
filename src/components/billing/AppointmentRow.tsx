@@ -5,7 +5,7 @@ import { Appointment, AppointmentStatus } from '../../services/types';
 import { Button } from '../Button';
 import { cn, formatCurrency } from '../../lib/utils';
 import { PlanProcedureInfo } from '../../hooks/billing/billingHelpers';
-import { NeuropsicoStatus } from '../../lib/pricing';
+import { NeuropsicoStatus, isRepassBlocked } from '../../lib/pricing';
 
 interface Props {
   app: Appointment;
@@ -78,20 +78,10 @@ export const AppointmentRow: React.FC<Props> = memo(({
     app.status === AppointmentStatus.CANCELED &&
     (!app.cancellationBilling || app.cancellationBilling === 'none') &&
     basePrice <= 0;
-  // Falta do psicólogo cobrada normalmente do convênio (autorização por sessão
-  // já consumida): fatura igual, mas o repasse ao profissional é bloqueado.
-  // Badge apenas informativo — não altera valor nem seleção.
-  const isPsychologistAbsenceBilled =
+  // Atendimento faturado (basePrice > 0) mas cujo repasse ao psicólogo é bloqueado (isRepassBlocked)
+  const isNoRepassBilled =
     app.status === AppointmentStatus.CANCELED &&
-    app.cancellationFault === 'psychologist' &&
-    app.cancellationBilling === 'plan';
-  // Falta do paciente marcada como "Isento" para paciente de CONVÊNIO: o
-  // convênio é cobrado normalmente (basePrice > 0), mas o repasse ao
-  // psicólogo é bloqueado (isRepassBlocked). Badge apenas informativo.
-  const isPatientExemptBilled =
-    app.status === AppointmentStatus.CANCELED &&
-    app.cancellationFault === 'patient_exempt' &&
-    app.cancellationBilling === 'none' &&
+    isRepassBlocked(app) &&
     basePrice > 0;
 
 
@@ -245,20 +235,16 @@ export const AppointmentRow: React.FC<Props> = memo(({
               Cancelado — Isento
             </span>
           )}
-          {isPsychologistAbsenceBilled && (
+          {isNoRepassBilled && (
             <span
-              title="Falta do psicólogo: cobrada do convênio (autorização por sessão já consumida), mas SEM repasse ao profissional."
+              title={
+                app.cancellationFault === 'psychologist'
+                  ? 'Falta do psicólogo: cobrada do convênio (autorização consumida), mas SEM repasse ao profissional.'
+                  : 'Falta do paciente (Isento): cobrada do convênio (autorização consumida), mas SEM repasse ao profissional.'
+              }
               className="text-[10px] px-1.5 py-0.5 rounded bg-purple-50 text-purple-600 border border-purple-200 font-semibold"
             >
-              Falta Psicólogo — Cobrado
-            </span>
-          )}
-          {isPatientExemptBilled && (
-            <span
-              title="Falta do paciente (Isento): convênio cobrado normalmente (autorização por sessão já consumida), mas SEM repasse ao psicólogo."
-              className="text-[10px] px-1.5 py-0.5 rounded bg-orange-50 text-orange-600 border border-orange-200 font-semibold"
-            >
-              Isento — Sem Repasse
+              Faturado, sem repasse
             </span>
           )}
 
