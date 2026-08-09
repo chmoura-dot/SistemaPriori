@@ -233,8 +233,8 @@ export function useDashboardKPIs({
     [todayApps]
   );
   const inactivePatients = useMemo(() => {
-    const thirtyDaysAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
-    const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().split('T')[0];
+    const sixtyDaysAgo = new Date(today.getTime() - 60 * 24 * 60 * 60 * 1000);
+    const sixtyDaysAgoStr = sixtyDaysAgo.toISOString().split('T')[0];
 
     return customers.filter(c => {
       if (c.status !== CustomerStatus.ACTIVE) return false;
@@ -242,16 +242,16 @@ export function useDashboardKPIs({
       // Se tem agendamento futuro, não está inativo
       if (c.nextAppointmentDate) return false;
 
-      // Se descartou o lembrete nos últimos 30 dias, ignora do alerta
+      // Se descartou o lembrete nos últimos 60 dias, ignora do alerta
       if (c.reminderDismissedAt) {
         const dismissedAt = new Date(c.reminderDismissedAt);
-        if (dismissedAt > thirtyDaysAgo) return false;
+        if (dismissedAt > sixtyDaysAgo) return false;
       }
 
       const dateToCompare = c.lastAppointmentDate || c.createdAt?.split('T')[0];
       if (!dateToCompare) return false;
 
-      return dateToCompare <= thirtyDaysAgoStr;
+      return dateToCompare <= sixtyDaysAgoStr;
     });
   }, [customers, today]);
   const waitingListPending = useMemo(() =>

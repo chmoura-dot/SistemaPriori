@@ -105,12 +105,12 @@ Deno.serve(async (req) => {
 
       if (appError) throw new Error(appError.message);
 
-      // ── Buscar Pacientes Sem Atendimento Há +30 Dias (Lembrete de Liberação) ──
+      // ── Buscar Pacientes Sem Atendimento Há +60 Dias (Lembrete de Liberação) ──
       let inactivePatients: any[] = [];
       try {
-        const thirtyDaysAgo = new Date();
-        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-        const thirtyDaysStr = thirtyDaysAgo.toISOString().split('T')[0];
+        const sixtyDaysAgo = new Date();
+        sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
+        const sixtyDaysStr = sixtyDaysAgo.toISOString().split('T')[0];
 
         // 1. Buscar todos os pacientes ativos do psicólogo
         const { data: actCustomers, error: actCustErr } = await supabase
@@ -120,29 +120,29 @@ Deno.serve(async (req) => {
           .eq('status', 'active');
 
         if (!actCustErr && actCustomers && actCustomers.length > 0) {
-          // 2. Buscar agendamentos nos últimos 30 dias ou futuros
+          // 2. Buscar agendamentos nos últimos 60 dias ou futuros
           const { data: recApps, error: recAppsErr } = await supabase
             .from('appointments')
             .select('customer_id, date')
             .eq('psychologist_id', tokenData.psychologist_id)
-            .gte('date', thirtyDaysStr)
+            .gte('date', sixtyDaysStr)
             .neq('status', 'canceled');
 
           if (!recAppsErr) {
             const activeSet = new Set((recApps || []).map(a => a.customer_id));
 
             inactivePatients = actCustomers.filter((c: any) => {
-              // Já teve agendamento nos últimos 30 dias ou tem futuro
+              // Já teve agendamento nos últimos 60 dias ou tem futuro
               if (activeSet.has(c.id)) return false;
 
-              // Criado há menos de 30 dias
+              // Criado há menos de 60 dias
               const createdAt = new Date(c.created_at);
-              if (createdAt > thirtyDaysAgo) return false;
+              if (createdAt > sixtyDaysAgo) return false;
 
-              // Lembrete descartado nos últimos 30 dias
+              // Lembrete descartado nos últimos 60 dias
               if (c.reminder_dismissed_at) {
                 const dismissedAt = new Date(c.reminder_dismissed_at);
-                if (dismissedAt > thirtyDaysAgo) return false;
+                if (dismissedAt > sixtyDaysAgo) return false;
               }
 
               return true;

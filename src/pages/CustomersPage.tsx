@@ -42,7 +42,7 @@ export const CustomersPage = () => {
   const [search, setSearch] = useState('');
   const [filterPlan, setFilterPlan] = useState('');
   const [filterPsy, setFilterPsy] = useState('');
-  const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'inactive' | 'inactive_30d' | 'admin_queue'>('active');
+  const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'inactive' | 'inactive_60d' | 'admin_queue'>('active');
   const [page, setPage] = useState(1);
 
   // ── Modal state ───────────────────────────────────────────────────────────
@@ -71,8 +71,8 @@ export const CustomersPage = () => {
   useEffect(() => {
     const savedFilter = localStorage.getItem('customers_filter');
     if (savedFilter) {
-      if (savedFilter === 'sem-consulta-30d') {
-        setFilterStatus('inactive_30d');
+      if (savedFilter === 'sem-consulta-60d') {
+        setFilterStatus('inactive_60d');
       } else if (savedFilter === 'admin_queue') {
         setFilterStatus('admin_queue');
       }
@@ -87,10 +87,10 @@ export const CustomersPage = () => {
       list = list.filter(c => c.status === CustomerStatus.ACTIVE);
     } else if (filterStatus === 'inactive') {
       list = list.filter(c => c.status !== CustomerStatus.ACTIVE);
-    } else if (filterStatus === 'inactive_30d' || filterStatus === 'admin_queue') {
-      const thirtyDaysAgo = new Date();
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-      const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().split('T')[0];
+    } else if (filterStatus === 'inactive_60d' || filterStatus === 'admin_queue') {
+      const sixtyDaysAgo = new Date();
+      sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
+      const sixtyDaysAgoStr = sixtyDaysAgo.toISOString().split('T')[0];
 
       list = list.filter(c => {
         if (c.status !== CustomerStatus.ACTIVE) return false;
@@ -99,7 +99,7 @@ export const CustomersPage = () => {
         
         // Data para comparar: última consulta ou data de criação
         const dateToCompare = c.lastAppointmentDate || c.createdAt.split('T')[0];
-        if (dateToCompare > thirtyDaysAgoStr) return false;
+        if (dateToCompare > sixtyDaysAgoStr) return false;
 
         if (filterStatus === 'admin_queue') {
           const psy = psychologists.find(p => p.id === c.psychologistId);
@@ -334,7 +334,7 @@ export const CustomersPage = () => {
         <select className="rounded-xl border border-zinc-100 px-3 py-2 text-sm text-priori-navy bg-zinc-50 focus:outline-none" value={filterStatus} onChange={e => { setFilterStatus(e.target.value as any); setPage(1); }}>
           <option value="active">Ativos</option>
           <option value="inactive">Inativos</option>
-          <option value="inactive_30d">Alerta: +30 dias sem atendimento</option>
+          <option value="inactive_60d">Alerta: +60 dias sem atendimento</option>
           <option value="admin_queue">Alerta: Fila Administrativa (Psi Inativo)</option>
           <option value="all">Todos</option>
         </select>

@@ -259,7 +259,7 @@ export const MagicConfirmationPage = () => {
               <h2 className="font-bold text-sm uppercase tracking-wider">Lembrete de Liberação de Pacientes</h2>
             </div>
             <p className="text-xs text-amber-700 font-medium">
-              Os pacientes abaixo estão há mais de 30 dias sem registro de atendimento no sistema. Por favor, atualize o status de cada um:
+              Os pacientes abaixo estão há mais de 60 dias sem registro de atendimento no sistema. Por favor, atualize o status de cada um:
             </p>
             <div className="space-y-3">
               {inactivePatients.map(patient => (
@@ -267,7 +267,7 @@ export const MagicConfirmationPage = () => {
                   <div className="flex justify-between items-start">
                     <div>
                       <h4 className="font-bold text-priori-navy text-sm">{patient.name}</h4>
-                      <p className="text-[10px] text-zinc-400 uppercase tracking-widest font-bold">Sem atendimento há +30 dias</p>
+                      <p className="text-[10px] text-zinc-400 uppercase tracking-widest font-bold">Sem atendimento há +60 dias</p>
                     </div>
                   </div>
                   <div className="grid grid-cols-3 gap-2">
