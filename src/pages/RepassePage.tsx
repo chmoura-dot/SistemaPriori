@@ -31,6 +31,7 @@ import {
   RepasseStatus,
 } from '../services/types';
 import { Button } from '../components/Button';
+import { MonthSelector } from '../components/MonthSelector';
 import { cn } from '../lib/utils';
 import { calcRepass } from '../lib/repassRules';
 import {
@@ -997,11 +998,9 @@ export const RepassePage = () => {
             {/* Mês de Referência */}
             <div>
               <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-2">Mês de Referência</label>
-              <input
-                type="month"
+              <MonthSelector
                 value={filterMonth}
-                onChange={(e) => setFilterMonth(e.target.value)}
-                className="w-full rounded-xl border border-zinc-200 bg-zinc-50 text-sm px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-priori-navy/30 focus:border-priori-navy transition-all text-zinc-700"
+                onChange={setFilterMonth}
               />
             </div>
 

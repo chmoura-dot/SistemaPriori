@@ -35,6 +35,7 @@ import {
 import { cn, formatCurrency } from '../lib/utils';
 import { getAppPrice } from '../lib/pricing';
 import { Button } from '../components/Button';
+import { MonthSelector } from '../components/MonthSelector';
 
 export const FinancialPage = () => {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -366,11 +367,9 @@ export const FinancialPage = () => {
             {/* Competência / Mês */}
             <div>
               <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-2">Mês de Referência</label>
-              <input
-                type="month"
+              <MonthSelector
                 value={filterMonth}
-                onChange={(e) => setFilterMonth(e.target.value)}
-                className="w-full rounded-xl border border-zinc-200 bg-zinc-50 text-sm px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-priori-navy/30 focus:border-priori-navy transition-all"
+                onChange={setFilterMonth}
               />
             </div>
 
