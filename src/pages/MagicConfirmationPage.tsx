@@ -52,6 +52,10 @@ export const MagicConfirmationPage = () => {
   const [cancellationModal, setCancellationModal] = useState<{ id: string } | null>(null);
   const [isNag, setIsNag] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+  const [inactivePatients, setInactivePatients] = useState<any[]>([]);
+  const [isProcessingPatient, setIsProcessingPatient] = useState<string | null>(null);
+  const [justificationModal, setJustificationModal] = useState<{ id: string; name: string } | null>(null);
+  const [justificationText, setJustificationText] = useState('');
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
     setToast({ message, type });
@@ -102,6 +106,7 @@ export const MagicConfirmationPage = () => {
       }
 
       setAppointments(data.appointments || []);
+      setInactivePatients(data.inactivePatients || []);
       setDate(data.date);
       setIsNag(!!data.isNag);
     } catch (err: any) {
@@ -114,6 +119,43 @@ export const MagicConfirmationPage = () => {
   useEffect(() => {
     loadAppointments();
   }, [loadAppointments]);
+
+  const handlePatientAction = async (customerId: string, subAction: 'alta' | 'pausa' | 'keep_active', justification?: string) => {
+    if (!token) return;
+    setIsProcessingPatient(customerId);
+
+    try {
+      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+      const response = await fetch(EDGE_FUNCTION_URL, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'apikey': supabaseAnonKey,
+          'Authorization': `Bearer ${supabaseAnonKey}`
+        },
+        body: JSON.stringify({ token, action: 'release_patient', customerId, subAction, justification })
+      });
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Erro ao atualizar paciente.');
+
+      const messages = {
+        alta: '🏥 Alta registrada com sucesso!',
+        pausa: '⏸️ Tratamento pausado com sucesso!',
+        keep_active: '✅ Tratamento mantido ativo.'
+      };
+      showToast(messages[subAction], 'success');
+      
+      // Remover paciente resolvido da lista local
+      setInactivePatients(prev => prev.filter(c => c.id !== customerId));
+      setJustificationModal(null);
+      setJustificationText('');
+    } catch (err: any) {
+      showToast(`Erro: ${err.message}`, 'error');
+    } finally {
+      setIsProcessingPatient(null);
+    }
+  };
 
   const handleAction = async (appointmentId: string, action: 'confirm' | 'cancel' | 'pendency' | 'discharge', billing?: string) => {
     if (!token) return;
@@ -209,6 +251,54 @@ export const MagicConfirmationPage = () => {
       </div>
 
       <div className="max-w-2xl mx-auto px-4 space-y-4">
+        {/* Lembrete de Liberação de Pacientes */}
+        {inactivePatients.length > 0 && (
+          <div className="bg-amber-50/50 border border-amber-200/60 rounded-3xl p-5 space-y-4 shadow-sm animate-in fade-in-50 duration-500">
+            <div className="flex items-center gap-2 text-amber-800">
+              <AlertCircle size={20} className="text-amber-500 shrink-0" />
+              <h2 className="font-bold text-sm uppercase tracking-wider">Lembrete de Liberação de Pacientes</h2>
+            </div>
+            <p className="text-xs text-amber-700 font-medium">
+              Os pacientes abaixo estão há mais de 30 dias sem registro de atendimento no sistema. Por favor, atualize o status de cada um:
+            </p>
+            <div className="space-y-3">
+              {inactivePatients.map(patient => (
+                <div key={patient.id} className="bg-white p-4 rounded-2xl border border-zinc-100 shadow-sm space-y-3">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <h4 className="font-bold text-priori-navy text-sm">{patient.name}</h4>
+                      <p className="text-[10px] text-zinc-400 uppercase tracking-widest font-bold">Sem atendimento há +30 dias</p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <button
+                      onClick={() => handlePatientAction(patient.id, 'alta')}
+                      disabled={isProcessingPatient === patient.id}
+                      className="py-2.5 px-1 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-xl text-xs font-bold border border-purple-100 transition-colors flex items-center justify-center gap-1"
+                    >
+                      Liberado/Alta
+                    </button>
+                    <button
+                      onClick={() => handlePatientAction(patient.id, 'pausa')}
+                      disabled={isProcessingPatient === patient.id}
+                      className="py-2.5 px-1 bg-zinc-50 hover:bg-zinc-100 text-zinc-600 rounded-xl text-xs font-bold border border-zinc-200 transition-colors flex items-center justify-center gap-1"
+                    >
+                      Pausar
+                    </button>
+                    <button
+                      onClick={() => setJustificationModal({ id: patient.id, name: patient.name })}
+                      disabled={isProcessingPatient === patient.id}
+                      className="py-2.5 px-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl text-xs font-bold border border-emerald-100 transition-colors flex items-center justify-center gap-1"
+                    >
+                      Manter Ativo
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         <p className="text-sm text-zinc-500 font-medium px-1">
           {isNag 
             ? "Olá, você possui atendimentos pendentes de confirmação de vários dias:"
@@ -351,6 +441,40 @@ export const MagicConfirmationPage = () => {
             >
               Cancelar
             </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Justificativa para Continuar Ativo */}
+      {justificationModal && (
+        <div className="fixed inset-0 bg-priori-navy/40 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4">
+          <div className="bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl p-6 shadow-2xl animate-in slide-in-from-bottom-5 duration-300">
+            <h2 className="text-xl font-bold text-priori-navy mb-2">Manter Paciente Ativo</h2>
+            <p className="text-zinc-500 mb-4 text-sm">Por que o tratamento de <strong>{justificationModal.name}</strong> deve continuar ativo no sistema mesmo sem sessões recentes?</p>
+
+            <textarea
+              value={justificationText}
+              onChange={(e) => setJustificationText(e.target.value)}
+              placeholder="Ex: Paciente de férias / Afastamento médico / Retorna no próximo mês..."
+              className="w-full border border-zinc-200 rounded-2xl p-3 text-sm min-h-[100px] mb-4 outline-none focus:border-priori-navy"
+            />
+
+            <div className="flex gap-3">
+              <Button 
+                variant="outline" 
+                onClick={() => { setJustificationModal(null); setJustificationText(''); }}
+                className="flex-1 py-3 text-zinc-400"
+              >
+                Cancelar
+              </Button>
+              <Button 
+                onClick={() => handlePatientAction(justificationModal.id, 'keep_active', justificationText)}
+                disabled={!justificationText.trim() || isProcessingPatient === justificationModal.id}
+                className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3"
+              >
+                Confirmar
+              </Button>
+            </div>
           </div>
         </div>
       )}

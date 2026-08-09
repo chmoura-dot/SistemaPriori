@@ -55,6 +55,8 @@ export const customerService = {
         ams_password: c.amsPassword || null,
         ams_password_expiry: c.amsPasswordExpiry || null,
         card_number: c.cardNumber || null,
+        reminder_dismissed_at: c.reminderDismissedAt || null,
+        reminder_justification: c.reminderJustification || null,
       }).select().single()
     );
     return toCustomer(row);
@@ -77,6 +79,8 @@ export const customerService = {
     if (c.amsPassword !== undefined) updates.ams_password = c.amsPassword;
     if (c.amsPasswordExpiry !== undefined) updates.ams_password_expiry = c.amsPasswordExpiry || null;
     if (c.cardNumber !== undefined) updates.card_number = c.cardNumber || null;
+    if (c.reminderDismissedAt !== undefined) updates.reminder_dismissed_at = c.reminderDismissedAt;
+    if (c.reminderJustification !== undefined) updates.reminder_justification = c.reminderJustification;
 
     const row = await throwOnError(
       supabase.from('customers').update(updates).eq('id', id).select().single()

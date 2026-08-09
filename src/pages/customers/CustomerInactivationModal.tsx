@@ -12,6 +12,9 @@ interface CustomerInactivationModalProps {
 
 const INACTIVATION_REASONS = [
   'Alta terapêutica',
+  'Alta Administrativa',
+  'Pausa no Tratamento',
+  'Abandono',
   'Solicitação do paciente',
   'Mudança de convênio',
   'Mudança de cidade / estado',

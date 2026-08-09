@@ -6,7 +6,10 @@ export enum CustomerStatus {
 export enum InactivationReason {
   DESISTENCIA = 'Desistência',
   PERDA_PLANO = 'Perda do Plano',
-  ALTA_PSICOLOGO = 'Liberação / Alta por psicólogo'
+  ALTA_PSICOLOGO = 'Liberação / Alta por psicólogo',
+  PAUSA_TRATAMENTO = 'Pausa no Tratamento',
+  ALTA_ADMINISTRATIVA = 'Alta Administrativa',
+  ABANDONO = 'Abandono'
 }
 
 export enum SubscriptionStatus {

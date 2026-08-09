@@ -105,9 +105,58 @@ Deno.serve(async (req) => {
 
       if (appError) throw new Error(appError.message);
 
+      // ── Buscar Pacientes Sem Atendimento Há +30 Dias (Lembrete de Liberação) ──
+      let inactivePatients: any[] = [];
+      try {
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        const thirtyDaysStr = thirtyDaysAgo.toISOString().split('T')[0];
+
+        // 1. Buscar todos os pacientes ativos do psicólogo
+        const { data: actCustomers, error: actCustErr } = await supabase
+          .from('customers')
+          .select('id, name, created_at, reminder_dismissed_at, reminder_justification')
+          .eq('psychologist_id', tokenData.psychologist_id)
+          .eq('status', 'active');
+
+        if (!actCustErr && actCustomers && actCustomers.length > 0) {
+          // 2. Buscar agendamentos nos últimos 30 dias ou futuros
+          const { data: recApps, error: recAppsErr } = await supabase
+            .from('appointments')
+            .select('customer_id, date')
+            .eq('psychologist_id', tokenData.psychologist_id)
+            .gte('date', thirtyDaysStr)
+            .neq('status', 'canceled');
+
+          if (!recAppsErr) {
+            const activeSet = new Set((recApps || []).map(a => a.customer_id));
+
+            inactivePatients = actCustomers.filter((c: any) => {
+              // Já teve agendamento nos últimos 30 dias ou tem futuro
+              if (activeSet.has(c.id)) return false;
+
+              // Criado há menos de 30 dias
+              const createdAt = new Date(c.created_at);
+              if (createdAt > thirtyDaysAgo) return false;
+
+              // Lembrete descartado nos últimos 30 dias
+              if (c.reminder_dismissed_at) {
+                const dismissedAt = new Date(c.reminder_dismissed_at);
+                if (dismissedAt > thirtyDaysAgo) return false;
+              }
+
+              return true;
+            });
+          }
+        }
+      } catch (err: any) {
+        console.error('[confirm-appointment GET] Erro ao buscar inativos:', err.message);
+      }
+
       return new Response(JSON.stringify({ 
         success: true, 
         appointments, 
+        inactivePatients,
         date: tokenData.date,
         isNag: !tokenData.date 
       }), {
@@ -120,9 +169,9 @@ Deno.serve(async (req) => {
     // ==========================================
     if (req.method === 'POST') {
       const body = await req.json();
-      const { token, appointmentId, action, billing, patientResponse, notes } = body; 
+      const { token, appointmentId, action, billing, patientResponse, notes, customerId, subAction, justification } = body; 
 
-      if (!appointmentId) {
+      if (action !== 'release_patient' && !appointmentId) {
         throw new Error('Appointment ID é obrigatório.');
       }
 
@@ -246,6 +295,81 @@ Deno.serve(async (req) => {
       
       if (tokenError || !tokenData) throw new Error('Token inválido.');
       if (new Date(tokenData.expires_at) < new Date()) throw new Error('Token expirado.');
+
+      // 1.1 Action Release Patient
+      if (action === 'release_patient') {
+        if (!customerId || !subAction) {
+          throw new Error('Customer ID e subAction são obrigatórios.');
+        }
+
+        // Verificar se o paciente pertence a este psicólogo
+        const { data: customerCheck, error: custErr } = await supabase
+          .from('customers')
+          .select('id, psychologist_id')
+          .eq('id', customerId)
+          .single();
+
+        if (custErr || !customerCheck) throw new Error('Paciente não encontrado.');
+        if (customerCheck.psychologist_id !== tokenData.psychologist_id) {
+          throw new Error('Você não tem permissão para atualizar este paciente.');
+        }
+
+        if (subAction === 'alta') {
+          await supabase
+            .from('customers')
+            .update({ status: 'inactive', inactivation_reason: 'Liberação / Alta por psicólogo' })
+            .eq('id', customerId);
+
+          // Cancel future appointments
+          await supabase
+            .from('appointments')
+            .update({ status: 'canceled', cancellation_billing: 'none' })
+            .eq('customer_id', customerId)
+            .gte('date', new Date().toISOString().split('T')[0])
+            .in('status', ['active', 'released']);
+
+          // Pause subscriptions
+          await supabase
+            .from('subscriptions')
+            .update({ status: 'inactive' })
+            .eq('customer_id', customerId)
+            .eq('status', 'active');
+            
+        } else if (subAction === 'pausa') {
+          await supabase
+            .from('customers')
+            .update({ status: 'inactive', inactivation_reason: 'Pausa no Tratamento' })
+            .eq('id', customerId);
+
+          // Cancel future appointments
+          await supabase
+            .from('appointments')
+            .update({ status: 'canceled', cancellation_billing: 'none' })
+            .eq('customer_id', customerId)
+            .gte('date', new Date().toISOString().split('T')[0])
+            .in('status', ['active', 'released']);
+
+          // Pause subscriptions
+          await supabase
+            .from('subscriptions')
+            .update({ status: 'inactive' })
+            .eq('customer_id', customerId)
+            .eq('status', 'active');
+
+        } else if (subAction === 'keep_active') {
+          await supabase
+            .from('customers')
+            .update({ 
+              reminder_dismissed_at: new Date().toISOString(),
+              reminder_justification: justification || 'Tratamento em andamento'
+            })
+            .eq('id', customerId);
+        }
+
+        return new Response(JSON.stringify({ success: true }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
 
       // 2. Validar se o agendamento pertence a esse psicólogo
       // Removida a trava de data específica no POST para evitar erros de fuso horário,

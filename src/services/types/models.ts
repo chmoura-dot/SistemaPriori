@@ -58,6 +58,8 @@ export interface Customer {
   amsPassword?: string;
   amsPasswordExpiry?: string;
   cardNumber?: string;
+  reminderDismissedAt?: string;
+  reminderJustification?: string;
   createdAt: string;
   // Metrics
   totalAppointmentsPerformed?: number;

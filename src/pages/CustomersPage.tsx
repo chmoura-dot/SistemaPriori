@@ -42,7 +42,7 @@ export const CustomersPage = () => {
   const [search, setSearch] = useState('');
   const [filterPlan, setFilterPlan] = useState('');
   const [filterPsy, setFilterPsy] = useState('');
-  const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'inactive'>('active');
+  const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'inactive' | 'inactive_30d' | 'admin_queue'>('active');
   const [page, setPage] = useState(1);
 
   // ── Modal state ───────────────────────────────────────────────────────────
@@ -68,16 +68,52 @@ export const CustomersPage = () => {
 
   useEffect(() => { loadData(); }, []);
 
+  useEffect(() => {
+    const savedFilter = localStorage.getItem('customers_filter');
+    if (savedFilter) {
+      if (savedFilter === 'sem-consulta-30d') {
+        setFilterStatus('inactive_30d');
+      } else if (savedFilter === 'admin_queue') {
+        setFilterStatus('admin_queue');
+      }
+      localStorage.removeItem('customers_filter');
+    }
+  }, []);
+
   // ── Filtered list ─────────────────────────────────────────────────────────
   const filtered = useMemo(() => {
     let list = customers;
-    if (filterStatus === 'active') list = list.filter(c => c.status === CustomerStatus.ACTIVE);
-    else if (filterStatus === 'inactive') list = list.filter(c => c.status !== CustomerStatus.ACTIVE);
+    if (filterStatus === 'active') {
+      list = list.filter(c => c.status === CustomerStatus.ACTIVE);
+    } else if (filterStatus === 'inactive') {
+      list = list.filter(c => c.status !== CustomerStatus.ACTIVE);
+    } else if (filterStatus === 'inactive_30d' || filterStatus === 'admin_queue') {
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().split('T')[0];
+
+      list = list.filter(c => {
+        if (c.status !== CustomerStatus.ACTIVE) return false;
+        // Não pode ter consulta futura
+        if (c.nextAppointmentDate) return false;
+        
+        // Data para comparar: última consulta ou data de criação
+        const dateToCompare = c.lastAppointmentDate || c.createdAt.split('T')[0];
+        if (dateToCompare > thirtyDaysAgoStr) return false;
+
+        if (filterStatus === 'admin_queue') {
+          const psy = psychologists.find(p => p.id === c.psychologistId);
+          // Se o psicólogo for ativo, não entra na fila administrativa
+          if (psy && psy.active) return false;
+        }
+        return true;
+      });
+    }
     if (search.trim()) list = list.filter(c => c.name.toLowerCase().includes(search.toLowerCase()));
     if (filterPlan) list = list.filter(c => c.healthPlan === filterPlan);
     if (filterPsy) list = list.filter(c => c.psychologistId === filterPsy);
     return list.sort((a, b) => a.name.localeCompare(b.name));
-  }, [customers, search, filterPlan, filterPsy, filterStatus]);
+  }, [customers, search, filterPlan, filterPsy, filterStatus, psychologists]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
   const paginated = filtered.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
@@ -298,6 +334,8 @@ export const CustomersPage = () => {
         <select className="rounded-xl border border-zinc-100 px-3 py-2 text-sm text-priori-navy bg-zinc-50 focus:outline-none" value={filterStatus} onChange={e => { setFilterStatus(e.target.value as any); setPage(1); }}>
           <option value="active">Ativos</option>
           <option value="inactive">Inativos</option>
+          <option value="inactive_30d">Alerta: +30 dias sem atendimento</option>
+          <option value="admin_queue">Alerta: Fila Administrativa (Psi Inativo)</option>
           <option value="all">Todos</option>
         </select>
         <select className="rounded-xl border border-zinc-100 px-3 py-2 text-sm text-priori-navy bg-zinc-50 focus:outline-none" value={filterPlan} onChange={e => { setFilterPlan(e.target.value); setPage(1); }}>

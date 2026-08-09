@@ -44,6 +44,8 @@ export const CUSTOMER_COLUMNS = [
   'birth_date', 'gender',
   'ams_password', 'ams_password_expiry',
   'card_number',
+  'reminder_dismissed_at',
+  'reminder_justification',
   'created_at',
 ].join(', ');
 
@@ -118,6 +120,8 @@ export function toCustomer(row: any): Customer {
     amsPassword: row.ams_password ?? undefined,
     amsPasswordExpiry: row.ams_password_expiry ?? undefined,
     cardNumber: row.card_number ?? undefined,
+    reminderDismissedAt: row.reminder_dismissed_at ?? undefined,
+    reminderJustification: row.reminder_justification ?? undefined,
     createdAt: row.created_at,
   };
 }

@@ -232,15 +232,28 @@ export function useDashboardKPIs({
     todayApps.filter(a => a.confirmationStatus === 'pending' && a.status !== AppointmentStatus.CANCELED),
     [todayApps]
   );
-  const inactivePatients = useMemo(() =>
-    customers.filter(c => {
-      if (c.status !== CustomerStatus.ACTIVE || !c.lastAppointmentDate) return false;
-      const last     = new Date(c.lastAppointmentDate + 'T12:00:00');
-      const diffDays = Math.ceil((today.getTime() - last.getTime()) / (1000 * 60 * 60 * 24));
-      return diffDays > 30;
-    }),
-    [customers, today]
-  );
+  const inactivePatients = useMemo(() => {
+    const thirtyDaysAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().split('T')[0];
+
+    return customers.filter(c => {
+      if (c.status !== CustomerStatus.ACTIVE) return false;
+      
+      // Se tem agendamento futuro, não está inativo
+      if (c.nextAppointmentDate) return false;
+
+      // Se descartou o lembrete nos últimos 30 dias, ignora do alerta
+      if (c.reminderDismissedAt) {
+        const dismissedAt = new Date(c.reminderDismissedAt);
+        if (dismissedAt > thirtyDaysAgo) return false;
+      }
+
+      const dateToCompare = c.lastAppointmentDate || c.createdAt?.split('T')[0];
+      if (!dateToCompare) return false;
+
+      return dateToCompare <= thirtyDaysAgoStr;
+    });
+  }, [customers, today]);
   const waitingListPending = useMemo(() =>
     waitingList.filter(w => w.status === 'pending'),
     [waitingList]
