@@ -9,6 +9,10 @@ import {
   Loader2,
   Plus,
   Trash2,
+  Filter,
+  X,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { format, parseISO, differenceInDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -159,6 +163,25 @@ function getPhaseRepassValue(
  */
 function isPhase1Done(app: Appointment, legacyRepassed: Set<string>): boolean {
   return app.repassPhase1RepasseId != null || legacyRepassed.has(app.id);
+}
+
+/**
+ * Retorna o mês e ano preponderante dos atendimentos do lote no formato YYYY-MM.
+ * Caso não haja atendimentos, faz fallback para a data de envio.
+ */
+function getBatchYearMonth(batch: BillingBatch, appointments: Appointment[]): string {
+  const batchApps = appointments.filter(a => batch.appointmentIds.includes(a.id));
+  const monthCounts: Record<string, number> = {};
+  for (const app of batchApps) {
+    const month = (app.date || '').substring(0, 7); // YYYY-MM
+    if (/^\d{4}-\d{2}$/.test(month)) {
+      monthCounts[month] = (monthCounts[month] || 0) + 1;
+    }
+  }
+  const predominant = Object.entries(monthCounts).sort((a, b) => b[1] - a[1])[0]?.[0];
+  if (predominant) return predominant;
+  if (batch.sentAt) return batch.sentAt.substring(0, 7);
+  return '';
 }
 
 // ─── Divergence Detection ────────────────────────────────────────────────────
@@ -592,6 +615,24 @@ export const RepassePage = () => {
 
   useEffect(() => { loadData(); }, []);
 
+  // Estados de Filtro
+  const [filterMonth, setFilterMonth] = useState<string>(''); // YYYY-MM
+  const [filterPsyId, setFilterPsyId] = useState<string>('');
+  const [filterStatus, setFilterStatus] = useState<string>(''); // '', 'READY', 'AWAITING_REPORT', 'PENDING', 'PAID'
+  const [isFiltersOpen, setIsFiltersOpen] = useState<boolean>(true);
+
+  // Estados de Expansão
+  const [expandedGroupKeys, setExpandedGroupKeys] = useState<Record<string, boolean>>({});
+  const [expandedRepasseIds, setExpandedRepasseIds] = useState<Record<string, boolean>>({});
+
+  const toggleGroupExpanded = (key: string) => {
+    setExpandedGroupKeys(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const toggleRepasseExpanded = (id: string) => {
+    setExpandedRepasseIds(prev => ({ ...prev, [id]: !prev[id] }));
+  };
+
   // Lotes pagos (total ou parcialmente) com atendimentos ainda não repassados.
   // Com pagamento individual, um mesmo lote pode gerar vários repasses ao longo
   // do tempo — por isso rastreamos os atendimentos JÁ repassados (por atendimento),
@@ -687,6 +728,69 @@ export const RepassePage = () => {
       .filter(i => i.phase2 > 0)
       .sort((a, b) => b.daysElapsed - a.daysElapsed);
   }, [appointments, repasses, customers, plans, psychologists]);
+
+  // ── Filtragem Client-Side Reativa (Zero Supabase Calls) ──────────────────────
+  const filteredPendingGroups = useMemo(() => {
+    if (filterStatus && filterStatus !== 'READY') return [];
+    return pendingGroups.filter(group => {
+      if (filterPsyId && group.psyId !== filterPsyId) return false;
+      if (filterMonth) {
+        const batchMonth = getBatchYearMonth(group.batch, appointments);
+        if (batchMonth !== filterMonth) return false;
+      }
+      return true;
+    });
+  }, [pendingGroups, filterPsyId, filterMonth, filterStatus, appointments]);
+
+  const filteredReportQueue = useMemo(() => {
+    if (filterStatus && filterStatus !== 'AWAITING_REPORT') return [];
+    return reportQueue.filter(item => {
+      if (filterPsyId && item.app.psychologistId !== filterPsyId) return false;
+      if (filterMonth) {
+        const appMonth = item.app.date ? item.app.date.substring(0, 7) : '';
+        if (appMonth !== filterMonth) return false;
+      }
+      return true;
+    });
+  }, [reportQueue, filterPsyId, filterMonth, filterStatus]);
+
+  const filteredRepasses = useMemo(() => {
+    return repasses.filter(repasse => {
+      if (filterPsyId && repasse.psychologistId !== filterPsyId) return false;
+      if (filterStatus === 'PENDING' && repasse.status !== RepasseStatus.PENDING) return false;
+      if (filterStatus === 'PAID' && repasse.status !== RepasseStatus.PAID) return false;
+      if (filterStatus && filterStatus !== 'PENDING' && filterStatus !== 'PAID') return false;
+      if (filterMonth) {
+        const batch = batches.find(b => b.id === repasse.billingBatchId);
+        const repasseMonth = batch ? getBatchYearMonth(batch, appointments) : '';
+        if (repasseMonth !== filterMonth) return false;
+      }
+      return true;
+    });
+  }, [repasses, filterPsyId, filterMonth, filterStatus, batches, appointments]);
+
+  // ── Métricas Consolidadas para os Cards de Resumo ────────────────────────────
+  const summary = useMemo(() => {
+    const totalPendingGeneration = pendingGroups.reduce((acc, g) => acc + g.total, 0);
+    const totalAwaitingReport = reportQueue.reduce((acc, r) => acc + r.phase2, 0);
+    
+    const repassesPending = repasses.filter(r => r.status === RepasseStatus.PENDING);
+    const totalRepassesPending = repassesPending.reduce((acc, r) => acc + r.totalAmount, 0);
+    
+    const repassesPaid = repasses.filter(r => r.status === RepasseStatus.PAID);
+    const totalRepassesPaid = repassesPaid.reduce((acc, r) => acc + r.totalAmount, 0);
+
+    return {
+      pendingGenerationCount: pendingGroups.length,
+      pendingGenerationAmount: totalPendingGeneration,
+      awaitingReportCount: reportQueue.length,
+      awaitingReportAmount: totalAwaitingReport,
+      repassesPendingCount: repassesPending.length,
+      repassesPendingAmount: totalRepassesPending,
+      repassesPaidCount: repassesPaid.length,
+      repassesPaidAmount: totalRepassesPaid,
+    };
+  }, [pendingGroups, reportQueue, repasses]);
 
   // Registra a entrega do laudo (habilita a 2ª parcela).
   const handleMarkReportDelivered = async (app: Appointment) => {
@@ -848,277 +952,529 @@ export const RepassePage = () => {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-priori-navy">Repasses</h1>
-        <p className="text-zinc-500 mt-1">Gerencie pagamentos aos psicólogos após recebimento dos planos</p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-priori-navy tracking-tight">Repasses</h1>
+          <p className="text-zinc-500 mt-1">Gerencie pagamentos aos psicólogos após recebimento dos planos</p>
+        </div>
+        <Button
+          onClick={() => setIsFiltersOpen(!isFiltersOpen)}
+          variant="outline"
+          className="border-zinc-200 text-zinc-700 hover:bg-zinc-50 flex items-center gap-2 shadow-sm"
+        >
+          <Filter size={16} />
+          {isFiltersOpen ? 'Ocultar Filtros' : 'Mostrar Filtros'}
+          {(filterMonth || filterPsyId || filterStatus) && (
+            <span className="w-2 h-2 rounded-full bg-priori-navy animate-pulse" />
+          )}
+        </Button>
       </div>
 
-      {/* Pendentes */}
-      <section>
-        <h2 className="text-base font-semibold text-priori-navy mb-3 flex items-center gap-2">
-          <Clock size={16} className="text-amber-500" />
-          Repasses Pendentes de Geração
-        </h2>
+      {/* Barra de Filtros */}
+      {isFiltersOpen && (
+        <div className="bg-white rounded-2xl border border-zinc-100 p-6 shadow-sm space-y-4 animate-in fade-in slide-in-from-top-2 duration-200">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Psicólogo */}
+            <div>
+              <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-2">Psicólogo(a)</label>
+              <select
+                value={filterPsyId}
+                onChange={(e) => setFilterPsyId(e.target.value)}
+                className="w-full rounded-xl border border-zinc-200 bg-zinc-50 text-sm px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-priori-navy/30 focus:border-priori-navy transition-all"
+              >
+                <option value="">Todos os psicólogos</option>
+                {psychologists
+                  .filter(p => p.active)
+                  .map(psy => (
+                    <option key={psy.id} value={psy.id}>{psy.name}</option>
+                  ))
+                }
+              </select>
+            </div>
 
-        {pendingGroups.length === 0 ? (
-          <div className="bg-white rounded-2xl border border-zinc-100 shadow-sm p-10 text-center text-zinc-400 text-sm">
-            Nenhum lote pago aguarda repasse. Marque um lote como pago em <strong>Faturamento</strong> para gerar repasses.
+            {/* Mês de Referência */}
+            <div>
+              <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-2">Mês de Referência</label>
+              <input
+                type="month"
+                value={filterMonth}
+                onChange={(e) => setFilterMonth(e.target.value)}
+                className="w-full rounded-xl border border-zinc-200 bg-zinc-50 text-sm px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-priori-navy/30 focus:border-priori-navy transition-all text-zinc-700"
+              />
+            </div>
+
+            {/* Status */}
+            <div>
+              <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-2">Status do Repasse</label>
+              <select
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+                className="w-full rounded-xl border border-zinc-200 bg-zinc-50 text-sm px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-priori-navy/30 focus:border-priori-navy transition-all"
+              >
+                <option value="">Todos os status</option>
+                <option value="READY">Pronto para Repasse (1ª Parcela)</option>
+                <option value="AWAITING_REPORT">Aguardando Laudo (2ª Parcela)</option>
+                <option value="PENDING">Repasse Pendente (Histórico)</option>
+                <option value="PAID">Repasse Pago (Histórico)</option>
+              </select>
+            </div>
           </div>
-        ) : (
-          <div className="bg-white rounded-2xl border border-zinc-100 shadow-sm overflow-hidden">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-zinc-50/50 border-b border-zinc-100">
-                  <th className="px-6 py-4 text-xs font-semibold text-priori-navy uppercase tracking-wider">Psicólogo(a)</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-priori-navy uppercase tracking-wider">Plano de Saúde</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-priori-navy uppercase tracking-wider">Lote</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-priori-navy uppercase tracking-wider">Data Pagamento Plano</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-priori-navy uppercase tracking-wider">Sessões</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-priori-navy uppercase tracking-wider">Total Repasse</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-priori-navy uppercase tracking-wider text-right">Ação</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-100">
-                {pendingGroups.map(group => {
-                  const psy = psychologists.find(p => p.id === group.psyId);
-                  const key = `${group.psyId}-${group.batch.id}`;
-                  return (
-                    <tr key={key} className="hover:bg-zinc-50/50 transition-colors">
-                      <td className="px-6 py-4 font-medium text-priori-navy">{psy?.name ?? '—'}</td>
-                      <td className="px-6 py-4 text-zinc-600">{group.batch.healthPlan}</td>
-                      <td className="px-6 py-4 text-zinc-600">#{group.batch.batchNumber}</td>
-                      <td className="px-6 py-4 text-zinc-600">
-                        {group.batch.paidAt ? format(new Date(group.batch.paidAt), 'dd/MM/yyyy') : '—'}
-                      </td>
-                      <td className="px-6 py-4 text-zinc-600">{group.appIds.length}</td>
-                      <td className="px-6 py-4 font-semibold text-priori-navy">
-                        <div className="flex items-center gap-1.5">
-                          {fmt.format(group.total)}
-                          {group.divergences.length > 0 && (
-                            <span
-                              className="text-amber-500 cursor-help"
-                              title={group.divergences.map(d =>
-                                `${d.customerName}: salvo R$ ${d.actual.toFixed(2)}, esperado R$ ${d.expected.toFixed(2)}`
-                              ).join('\n')}
+
+          {/* Botão de limpar filtros se algum filtro estiver ativo */}
+          {(filterMonth || filterPsyId || filterStatus) && (
+            <div className="flex justify-end pt-2">
+              <button
+                onClick={() => {
+                  setFilterMonth('');
+                  setFilterPsyId('');
+                  setFilterStatus('');
+                }}
+                className="text-xs font-semibold text-red-500 hover:text-red-700 flex items-center gap-1 bg-red-50 px-3 py-1.5 rounded-lg transition-colors border border-red-100"
+              >
+                <X size={12} />
+                Limpar Filtros
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Cards de Resumo */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Card 1: Prontos para Repasse */}
+        <div className="bg-white p-5 rounded-2xl border border-zinc-100 shadow-sm flex items-center justify-between">
+          <div>
+            <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">A Gerar (1ª Parcela)</p>
+            <h3 className="text-xl font-bold text-priori-navy mt-1">{fmt.format(summary.pendingGenerationAmount)}</h3>
+            <p className="text-xs text-zinc-500 mt-0.5">{summary.pendingGenerationCount} lote(s) pronto(s)</p>
+          </div>
+          <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-500 flex items-center justify-center">
+            <Clock size={20} />
+          </div>
+        </div>
+
+        {/* Card 2: Aguardando Laudo */}
+        <div className="bg-white p-5 rounded-2xl border border-zinc-100 shadow-sm flex items-center justify-between">
+          <div>
+            <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Aguardando Laudo (2ª)</p>
+            <h3 className="text-xl font-bold text-priori-navy mt-1">{fmt.format(summary.awaitingReportAmount)}</h3>
+            <p className="text-xs text-zinc-500 mt-0.5">{summary.awaitingReportCount} laudo(s) pendente(s)</p>
+          </div>
+          <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-500 flex items-center justify-center">
+            <Hourglass size={20} />
+          </div>
+        </div>
+
+        {/* Card 3: Gerados e Pendentes */}
+        <div className="bg-white p-5 rounded-2xl border border-zinc-100 shadow-sm flex items-center justify-between">
+          <div>
+            <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Repasses Pendentes</p>
+            <h3 className="text-xl font-bold text-priori-navy mt-1">{fmt.format(summary.repassesPendingAmount)}</h3>
+            <p className="text-xs text-zinc-500 mt-0.5">{summary.repassesPendingCount} pendente(s) de pgto</p>
+          </div>
+          <div className="w-10 h-10 rounded-xl bg-red-50 text-red-500 flex items-center justify-center">
+            <AlertTriangle size={20} />
+          </div>
+        </div>
+
+        {/* Card 4: Pagos */}
+        <div className="bg-white p-5 rounded-2xl border border-zinc-100 shadow-sm flex items-center justify-between">
+          <div>
+            <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Repasses Pagos</p>
+            <h3 className="text-xl font-bold text-priori-navy mt-1">{fmt.format(summary.repassesPaidAmount)}</h3>
+            <p className="text-xs text-zinc-500 mt-0.5">{summary.repassesPaidCount} pago(s)</p>
+          </div>
+          <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-500 flex items-center justify-center">
+            <CheckCircle2 size={20} />
+          </div>
+        </div>
+      </div>
+
+      {/* Pendentes de Geração */}
+      {(!filterStatus || filterStatus === 'READY') && (
+        <section className="space-y-3">
+          <h2 className="text-lg font-bold text-priori-navy flex items-center gap-2">
+            <Clock size={18} className="text-amber-500" />
+            Repasses Pendentes de Geração
+            <span className="text-xs font-normal text-zinc-400">({filteredPendingGroups.length} lote(s) pronto(s))</span>
+          </h2>
+
+          {filteredPendingGroups.length === 0 ? (
+            <div className="bg-white rounded-2xl border border-zinc-100 shadow-sm p-10 text-center text-zinc-400 text-sm">
+              {filterMonth || filterPsyId
+                ? 'Nenhum repasse a gerar corresponde aos filtros aplicados.'
+                : 'Nenhum lote pago aguarda repasse. Marque um lote como pago em Faturamento para gerar repasses.'}
+            </div>
+          ) : (
+            <div className="bg-white rounded-2xl border border-zinc-100 shadow-sm overflow-hidden">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-zinc-50/50 border-b border-zinc-100">
+                    <th className="px-6 py-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Psicólogo(a)</th>
+                    <th className="px-6 py-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Plano de Saúde</th>
+                    <th className="px-6 py-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Lote</th>
+                    <th className="px-6 py-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Data Pagamento Plano</th>
+                    <th className="px-6 py-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Sessões</th>
+                    <th className="px-6 py-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Total Repasse</th>
+                    <th className="px-6 py-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider text-right">Ação</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-100">
+                  {filteredPendingGroups.map(group => {
+                    const psy = psychologists.find(p => p.id === group.psyId);
+                    const key = `${group.psyId}-${group.batch.id}`;
+                    const isExpanded = !!expandedGroupKeys[key];
+                    const groupApps = appointments.filter(a => group.appIds.includes(a.id));
+
+                    return (
+                      <React.Fragment key={key}>
+                        <tr className="hover:bg-zinc-50/50 transition-colors">
+                          <td className="px-6 py-4 font-medium text-priori-navy">
+                            <button
+                              onClick={() => toggleGroupExpanded(key)}
+                              className="flex items-center gap-2 text-left hover:text-priori-navy/80 focus:outline-none font-semibold"
                             >
-                              <AlertTriangle size={14} />
-                            </span>
-                          )}
-                        </div>
-                        {group.divergences.length > 0 && (
-                          <div className="text-[10px] text-amber-600 font-normal mt-0.5">
-                            {group.divergences.length} valor(es) divergente(s)
-                          </div>
+                              {isExpanded ? <ChevronUp size={16} className="text-zinc-400" /> : <ChevronDown size={16} className="text-zinc-400" />}
+                              {psy?.name ?? '—'}
+                            </button>
+                          </td>
+                          <td className="px-6 py-4 text-sm text-zinc-600">{group.batch.healthPlan}</td>
+                          <td className="px-6 py-4 text-sm text-zinc-600">#{group.batch.batchNumber}</td>
+                          <td className="px-6 py-4 text-sm text-zinc-600">
+                            {group.batch.paidAt ? format(new Date(group.batch.paidAt), 'dd/MM/yyyy') : '—'}
+                          </td>
+                          <td className="px-6 py-4 text-sm text-zinc-600">{group.appIds.length}</td>
+                          <td className="px-6 py-4 font-semibold text-priori-navy">
+                            <div className="flex items-center gap-1.5">
+                              {fmt.format(group.total)}
+                              {group.divergences.length > 0 && (
+                                <span
+                                  className="text-amber-500 cursor-help"
+                                  title={group.divergences.map(d =>
+                                    `${d.customerName}: salvo R$ ${d.actual.toFixed(2)}, esperado R$ ${d.expected.toFixed(2)}`
+                                  ).join('\n')}
+                                >
+                                  <AlertTriangle size={14} />
+                                </span>
+                              )}
+                            </div>
+                            {group.divergences.length > 0 && (
+                              <div className="text-[10px] text-amber-600 font-normal mt-0.5">
+                                {group.divergences.length} valor(es) divergente(s)
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 text-right">
+                            <Button
+                              size="sm"
+                              className="bg-priori-navy hover:bg-priori-navy/90 text-white"
+                              onClick={() => handleGenerateRepasse(group)}
+                              disabled={isGenerating === key}
+                            >
+                              {isGenerating === key ? (
+                                <Loader2 size={14} className="animate-spin mr-1" />
+                              ) : (
+                                <Plus size={14} className="mr-1" />
+                              )}
+                              Gerar Repasse
+                            </Button>
+                          </td>
+                        </tr>
+                        {isExpanded && (
+                          <tr>
+                            <td colSpan={7} className="px-6 py-4 bg-zinc-50/50 border-t border-b border-zinc-100">
+                              <div className="space-y-3">
+                                <h4 className="text-xs font-semibold text-priori-navy uppercase tracking-wider">Atendimentos incluídos neste repasse planejado:</h4>
+                                <div className="overflow-hidden rounded-xl border border-zinc-100 bg-white shadow-sm">
+                                  <table className="w-full text-left border-collapse text-xs">
+                                    <thead>
+                                      <tr className="bg-zinc-50 border-b border-zinc-100 text-zinc-500 font-semibold">
+                                        <th className="px-4 py-2.5">Paciente</th>
+                                        <th className="px-4 py-2.5">Data da Sessão</th>
+                                        <th className="px-4 py-2.5">Tipo / Procedimento</th>
+                                        <th className="px-4 py-2.5 text-right">Valor Repasse</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-zinc-100 text-zinc-600">
+                                      {groupApps.map(app => {
+                                        const customer = customers.find(c => c.id === app.customerId);
+                                        const pricingCtx = { customers, plans, appointments };
+                                        const repassVal = getPhaseRepassValue(app, customers, plans, psy, pricingCtx, 1);
+                                        return (
+                                          <tr key={app.id} className="hover:bg-zinc-50/50">
+                                            <td className="px-4 py-2 font-medium text-priori-navy">{customer?.name ?? '—'}</td>
+                                            <td className="px-4 py-2">{format(new Date(app.date + 'T12:00:00'), 'dd/MM/yyyy')}</td>
+                                            <td className="px-4 py-2 capitalize">{app.type === AppointmentType.NEUROPSICOLOGICA ? 'Neuropsicologia' : 'Sessão Comum'}</td>
+                                            <td className="px-4 py-2 text-right font-medium text-priori-navy">{fmt.format(repassVal)}</td>
+                                          </tr>
+                                        );
+                                      })}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
                         )}
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        <Button
-                          size="sm"
-                          className="bg-priori-navy hover:bg-priori-navy/90 text-white"
-                          onClick={() => handleGenerateRepasse(group)}
-                          disabled={isGenerating === key}
-                        >
-                          {isGenerating === key ? (
-                            <Loader2 size={14} className="animate-spin mr-1" />
-                          ) : (
-                            <Plus size={14} className="mr-1" />
-                          )}
-                          Gerar Repasse
-                        </Button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
+                      </React.Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      )}
 
       {/* Aguardando Entrega de Laudo (2ª parcela — Avaliação Neuropsicológica) */}
-      <section>
-        <h2 className="text-base font-semibold text-priori-navy mb-3 flex items-center gap-2">
-          <Hourglass size={16} className="text-indigo-500" />
-          Aguardando Entrega de Laudo
-          <span className="text-xs font-normal text-zinc-400">(2ª parcela — 50% — Avaliação Neuropsicológica)</span>
-        </h2>
+      {(!filterStatus || filterStatus === 'AWAITING_REPORT') && (
+        <section className="space-y-3">
+          <h2 className="text-lg font-bold text-priori-navy flex items-center gap-2">
+            <Hourglass size={18} className="text-indigo-500" />
+            Aguardando Entrega de Laudo
+            <span className="text-xs font-normal text-zinc-400">(2ª parcela — 50% — Avaliação Neuropsicológica)</span>
+          </h2>
 
-        {reportQueue.length === 0 ? (
-          <div className="bg-white rounded-2xl border border-zinc-100 shadow-sm p-10 text-center text-zinc-400 text-sm">
-            Nenhuma avaliação neuropsicológica aguardando entrega de laudo.
-          </div>
-        ) : (
-          <div className="bg-white rounded-2xl border border-zinc-100 shadow-sm overflow-hidden">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-zinc-50/50 border-b border-zinc-100">
-                  <th className="px-6 py-4 text-xs font-semibold text-priori-navy uppercase tracking-wider">Psicólogo(a)</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-priori-navy uppercase tracking-wider">Paciente</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-priori-navy uppercase tracking-wider">Data da Sessão</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-priori-navy uppercase tracking-wider">Prazo</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-priori-navy uppercase tracking-wider">2ª Parcela</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-priori-navy uppercase tracking-wider text-right">Ação</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-100">
-                {reportQueue.map(item => {
-                  const overdue = !item.delivered && item.daysElapsed >= 75;
-                  return (
-                    <tr key={item.app.id} className="hover:bg-zinc-50/50 transition-colors">
-                      <td className="px-6 py-4 font-medium text-priori-navy">{item.psy?.name ?? '—'}</td>
-                      <td className="px-6 py-4 text-zinc-600">{item.customer?.name ?? '—'}</td>
-                      <td className="px-6 py-4 text-zinc-600">
-                        {format(new Date(item.app.date + 'T12:00:00'), 'dd/MM/yyyy')}
-                      </td>
-                      <td className="px-6 py-4">
-                        {item.delivered ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-600 border border-emerald-100">
-                            <CheckCircle2 size={11} />
-                            Laudo entregue
-                          </span>
-                        ) : (
-                          <span
-                            className={cn(
-                              'inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium border',
-                              overdue
-                                ? 'bg-red-50 text-red-600 border-red-100'
-                                : 'bg-zinc-50 text-zinc-500 border-zinc-100',
-                            )}
-                            title={`${item.daysElapsed} dia(s) desde a sessão`}
-                          >
-                            {overdue && <AlertTriangle size={11} />}
-                            {item.daysElapsed} dias
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 font-semibold text-priori-navy">{fmt.format(item.phase2)}</td>
-                      <td className="px-6 py-4 text-right">
-                        {item.delivered ? (
-                          <Button
-                            size="sm"
-                            className="bg-priori-navy hover:bg-priori-navy/90 text-white"
-                            onClick={() => handleGeneratePhase2(item)}
-                            disabled={isGenerating === `p2-${item.app.id}`}
-                          >
-                            {isGenerating === `p2-${item.app.id}` ? (
-                              <Loader2 size={14} className="animate-spin mr-1" />
+          {filteredReportQueue.length === 0 ? (
+            <div className="bg-white rounded-2xl border border-zinc-100 shadow-sm p-10 text-center text-zinc-400 text-sm">
+              {filterMonth || filterPsyId
+                ? 'Nenhuma avaliação aguardando laudo corresponde aos filtros aplicados.'
+                : 'Nenhuma avaliação neuropsicológica aguardando entrega de laudo.'}
+            </div>
+          ) : (
+            <div className="bg-white rounded-2xl border border-zinc-100 shadow-sm overflow-hidden">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-zinc-50/50 border-b border-zinc-100">
+                    <th className="px-6 py-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Psicólogo(a)</th>
+                    <th className="px-6 py-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Paciente</th>
+                    <th className="px-6 py-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Data da Sessão</th>
+                    <th className="px-6 py-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Prazo</th>
+                    <th className="px-6 py-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider">2ª Parcela</th>
+                    <th className="px-6 py-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider text-right">Ação</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-100">
+                  {filteredReportQueue.map(item => {
+                    const overdue = !item.delivered && item.daysElapsed >= 75;
+                    return (
+                      <tr key={item.app.id} className="hover:bg-zinc-50/50 transition-colors">
+                        <td className="px-6 py-4 font-semibold text-priori-navy">{item.psy?.name ?? '—'}</td>
+                        <td className="px-6 py-4 text-sm text-zinc-600">{item.customer?.name ?? '—'}</td>
+                        <td className="px-6 py-4 text-sm text-zinc-600">
+                          {format(new Date(item.app.date + 'T12:00:00'), 'dd/MM/yyyy')}
+                        </td>
+                        <td className="px-6 py-4">
+                          {item.delivered ? (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              <CheckCircle2 size={11} />
+                              Laudo entregue
+                            </span>
+                          ) : (
+                            <span
+                              className={cn(
+                                'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border',
+                                overdue
+                                  ? 'bg-red-50 text-red-700 border-red-200'
+                                  : 'bg-zinc-50 text-zinc-600 border-zinc-200',
+                              )}
+                              title={`${item.daysElapsed} dia(s) desde a sessão`}
+                            >
+                              {overdue && <AlertTriangle size={11} />}
+                              {item.daysElapsed} dias
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 font-semibold text-priori-navy">{fmt.format(item.phase2)}</td>
+                        <td className="px-6 py-4 text-right">
+                          {item.delivered ? (
+                            <Button
+                              size="sm"
+                              className="bg-priori-navy hover:bg-priori-navy/90 text-white"
+                              onClick={() => handleGeneratePhase2(item)}
+                              disabled={isGenerating === `p2-${item.app.id}`}
+                            >
+                              {isGenerating === `p2-${item.app.id}` ? (
+                                <Loader2 size={14} className="animate-spin mr-1" />
+                              ) : (
+                                <Plus size={14} className="mr-1" />
+                              )}
+                              Gerar 2ª Parcela
+                            </Button>
+                          ) : (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="text-indigo-600 border-indigo-200 hover:bg-indigo-50"
+                              onClick={() => handleMarkReportDelivered(item.app)}
+                            >
+                              <FileText size={14} className="mr-1" />
+                              Marcar Laudo Entregue
+                            </Button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* Histórico de Repasses */}
+      {(!filterStatus || filterStatus === 'PENDING' || filterStatus === 'PAID') && (
+        <section className="space-y-3">
+          <h2 className="text-lg font-bold text-priori-navy flex items-center gap-2">
+            <ArrowRightLeft size={18} className="text-priori-navy" />
+            Histórico de Repasses
+            <span className="text-xs font-normal text-zinc-400">({filteredRepasses.length} repasses listados)</span>
+          </h2>
+
+          {filteredRepasses.length === 0 ? (
+            <div className="bg-white rounded-2xl border border-zinc-100 shadow-sm p-10 text-center text-zinc-400 text-sm">
+              {filterMonth || filterPsyId || filterStatus
+                ? 'Nenhum repasse do histórico corresponde aos filtros aplicados.'
+                : 'Nenhum repasse gerado ainda.'}
+            </div>
+          ) : (
+            <div className="bg-white rounded-2xl border border-zinc-100 shadow-sm overflow-hidden">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-zinc-50/50 border-b border-zinc-100">
+                    <th className="px-6 py-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Psicólogo(a)</th>
+                    <th className="px-6 py-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Plano</th>
+                    <th className="px-6 py-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Lote</th>
+                    <th className="px-6 py-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Data Envio Lote</th>
+                    <th className="px-6 py-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Total Repasse</th>
+                    <th className="px-6 py-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Status</th>
+                    <th className="px-6 py-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider text-right">Ações</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-100">
+                  {filteredRepasses.map(repasse => {
+                    const psy = psychologists.find(p => p.id === repasse.psychologistId);
+                    const batch = batches.find(b => b.id === repasse.billingBatchId);
+                    const isExpanded = !!expandedRepasseIds[repasse.id];
+                    const repasseApps = appointments.filter(a => repasse.appointmentIds.includes(a.id));
+
+                    return (
+                      <React.Fragment key={repasse.id}>
+                        <tr className="hover:bg-zinc-50/50 transition-colors">
+                          <td className="px-6 py-4 font-medium text-priori-navy">
+                            <button
+                              onClick={() => toggleRepasseExpanded(repasse.id)}
+                              className="flex items-center gap-2 text-left hover:text-priori-navy/80 focus:outline-none font-semibold"
+                            >
+                              {isExpanded ? <ChevronUp size={16} className="text-zinc-400" /> : <ChevronDown size={16} className="text-zinc-400" />}
+                              {psy?.name ?? '—'}
+                            </button>
+                          </td>
+                          <td className="px-6 py-4 text-sm text-zinc-600">{batch?.healthPlan ?? '—'}</td>
+                          <td className="px-6 py-4 text-sm text-zinc-600">#{batch?.batchNumber ?? '—'}</td>
+                          <td className="px-6 py-4 text-sm text-zinc-600">
+                            {batch?.sentAt ? format(new Date(batch.sentAt), 'dd/MM/yyyy') : '—'}
+                          </td>
+                          <td className="px-6 py-4 font-semibold text-priori-navy">{fmt.format(repasse.totalAmount)}</td>
+                          <td className="px-6 py-4">
+                            {repasse.status === RepasseStatus.PAID ? (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                <CheckCircle2 size={11} />
+                                Pago em {repasse.paidAt ? format(new Date(repasse.paidAt), 'dd/MM/yyyy') : '—'}
+                              </span>
                             ) : (
-                              <Plus size={14} className="mr-1" />
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                                <Clock size={11} />
+                                Pendente
+                              </span>
                             )}
-                            Gerar 2ª Parcela
-                          </Button>
-                        ) : (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="text-indigo-600 border-indigo-200 hover:bg-indigo-50"
-                            onClick={() => handleMarkReportDelivered(item.app)}
-                          >
-                            <FileText size={14} className="mr-1" />
-                            Marcar Laudo Entregue
-                          </Button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
+                          </td>
+                          <td className="px-6 py-4 text-right space-x-2 whitespace-nowrap">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handlePDF(repasse)}
+                              className="text-priori-navy border-zinc-200 shadow-sm"
+                              title="Exportar PDF"
+                            >
+                              <FileText size={14} />
+                            </Button>
+                            {repasse.status === RepasseStatus.PENDING && (
+                              <Button
+                                size="sm"
+                                onClick={() => handleMarkAsPaid(repasse)}
+                                className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm font-semibold"
+                              >
+                                <CheckCircle2 size={14} className="mr-1" />
+                                Marcar Pago
+                              </Button>
+                            )}
+                            <button
+                              onClick={() => handleDelete(repasse.id)}
+                              className="p-2 text-zinc-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all inline-block align-middle"
+                              title="Excluir"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </td>
+                        </tr>
+                        {isExpanded && (
+                          <tr>
+                            <td colSpan={7} className="px-6 py-4 bg-zinc-50/50 border-t border-b border-zinc-100">
+                              <div className="space-y-3">
+                                <h4 className="text-xs font-semibold text-priori-navy uppercase tracking-wider">Atendimentos incluídos neste repasse:</h4>
+                                <div className="overflow-hidden rounded-xl border border-zinc-100 bg-white shadow-sm">
+                                  <table className="w-full text-left border-collapse text-xs">
+                                    <thead>
+                                      <tr className="bg-zinc-50 border-b border-zinc-100 text-zinc-500 font-semibold">
+                                        <th className="px-4 py-2.5">Paciente</th>
+                                        <th className="px-4 py-2.5">Data da Sessão</th>
+                                        <th className="px-4 py-2.5">Tipo / Procedimento</th>
+                                        <th className="px-4 py-2.5 text-right">Valor Repassado</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-zinc-100 text-zinc-600">
+                                      {repasseApps.map(app => {
+                                        const customer = customers.find(c => c.id === app.customerId);
+                                        const pricingCtx = { customers, plans, appointments };
+                                        
+                                        let repassVal = 0;
+                                        if (app.repassPhase1RepasseId === repasse.id) {
+                                          repassVal = getPhaseRepassValue(app, customers, plans, psy, pricingCtx, 1);
+                                        } else if (app.repassPhase2RepasseId === repasse.id) {
+                                          repassVal = getPhaseRepassValue(app, customers, plans, psy, pricingCtx, 2);
+                                        } else {
+                                          repassVal = getRepassValue(app, customers, plans, psy, pricingCtx);
+                                        }
 
-      {/* Histórico */}
-      <section>
-        <h2 className="text-base font-semibold text-priori-navy mb-3 flex items-center gap-2">
-          <ArrowRightLeft size={16} className="text-priori-navy" />
-          Histórico de Repasses
-        </h2>
-
-
-        {repasses.length === 0 ? (
-          <div className="bg-white rounded-2xl border border-zinc-100 shadow-sm p-10 text-center text-zinc-400 text-sm">
-            Nenhum repasse gerado ainda.
-          </div>
-        ) : (
-          <div className="bg-white rounded-2xl border border-zinc-100 shadow-sm overflow-hidden">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-zinc-50/50 border-b border-zinc-100">
-                  <th className="px-6 py-4 text-xs font-semibold text-priori-navy uppercase tracking-wider">Psicólogo(a)</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-priori-navy uppercase tracking-wider">Plano</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-priori-navy uppercase tracking-wider">Lote</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-priori-navy uppercase tracking-wider">Data Envio Lote</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-priori-navy uppercase tracking-wider">Total Repasse</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-priori-navy uppercase tracking-wider">Status</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-priori-navy uppercase tracking-wider text-right">Ações</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-100">
-                {repasses.map(repasse => {
-                  const psy = psychologists.find(p => p.id === repasse.psychologistId);
-                  const batch = batches.find(b => b.id === repasse.billingBatchId);
-                  return (
-                    <tr key={repasse.id} className="hover:bg-zinc-50/50 transition-colors">
-                      <td className="px-6 py-4 font-medium text-priori-navy">{psy?.name ?? '—'}</td>
-                      <td className="px-6 py-4 text-zinc-600">{batch?.healthPlan ?? '—'}</td>
-                      <td className="px-6 py-4 text-zinc-600">#{batch?.batchNumber ?? '—'}</td>
-                      <td className="px-6 py-4 text-zinc-600">
-                        {batch?.sentAt ? format(new Date(batch.sentAt), 'dd/MM/yyyy') : '—'}
-                      </td>
-                      <td className="px-6 py-4 font-semibold text-priori-navy">{fmt.format(repasse.totalAmount)}</td>
-                      <td className="px-6 py-4">
-                        {repasse.status === RepasseStatus.PAID ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-600 border border-emerald-100">
-                            <CheckCircle2 size={11} />
-                            Pago em {repasse.paidAt ? format(new Date(repasse.paidAt), 'dd/MM/yyyy') : '—'}
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-600 border border-amber-100">
-                            <Clock size={11} />
-                            Pendente
-                          </span>
+                                        return (
+                                          <tr key={app.id} className="hover:bg-zinc-50/50">
+                                            <td className="px-4 py-2 font-medium text-priori-navy">{customer?.name ?? '—'}</td>
+                                            <td className="px-4 py-2">{format(new Date(app.date + 'T12:00:00'), 'dd/MM/yyyy')}</td>
+                                            <td className="px-4 py-2 capitalize">{app.type === AppointmentType.NEUROPSICOLOGICA ? 'Neuropsicologia' : 'Sessão Comum'}</td>
+                                            <td className="px-4 py-2 text-right font-medium text-priori-navy">{fmt.format(repassVal)}</td>
+                                          </tr>
+                                        );
+                                      })}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
                         )}
-                      </td>
-                      <td className="px-6 py-4 text-right space-x-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handlePDF(repasse)}
-                          className="text-priori-navy border-zinc-200"
-                          title="Exportar PDF"
-                        >
-                          <FileText size={14} />
-                        </Button>
-                        {repasse.status === RepasseStatus.PENDING && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleMarkAsPaid(repasse)}
-                            className="text-emerald-600 border-emerald-200 hover:bg-emerald-50"
-                          >
-                            <CheckCircle2 size={14} className="mr-1" />
-                            Marcar Pago
-                          </Button>
-                        )}
-                        <button
-                          onClick={() => handleDelete(repasse.id)}
-                          className="p-2 text-zinc-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
-                          title="Excluir"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
+                      </React.Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      )}
     </div>
   );
 };
