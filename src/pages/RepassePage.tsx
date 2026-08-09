@@ -364,7 +364,7 @@ function generateRepassePDF(
 
 
       // Valor phase-aware: se este atendimento entra no split neuropsicológico,
-      // o comprovante mostra apenas a parcela correspondente a ESTE repasse
+      // o comprovante mostra apenas o valor correspondente a ESTA etapa de repasse
       // (1/2 na sessão, 2/2 na entrega do laudo), não o valor cheio.
       let repassVal = getRepassValue(app, customers, plans, psy, pricingCtx);
       let parcelaLabel = '';
@@ -372,7 +372,7 @@ function generateRepassePDF(
         const isPhase2 = app.repassPhase2RepasseId === repasse.id;
         const phase: 1 | 2 = isPhase2 ? 2 : 1;
         repassVal = getPhaseRepassValue(app, customers, plans, psy, pricingCtx, phase);
-        parcelaLabel = isPhase2 ? ' (Parcela 2/2 — Laudo)' : ' (Parcela 1/2 — Sessão)';
+        parcelaLabel = isPhase2 ? ' (Etapa 2/2 — Laudo)' : ' (Etapa 1/2 — Sessão)';
       }
       return { app, customer, procedure, repassVal, parcelaLabel };
     })
@@ -704,10 +704,10 @@ export const RepassePage = () => {
     return groups;
   }, [batches, repasses, appointments, customers, plans, psychologists]);
 
-  // ── Fila de 2ª Parcela (Avaliação Neuropsicológica) ──────────────────────
-  // Sessões neuropsicológicas cuja FASE 1 (50%) já foi repassada e a FASE 2
+  // ── Fila de 2ª Etapa - Neuropsicologia (Aguardando Laudo) ─────────────────
+  // Sessões neuropsicológicas cuja 1ª Etapa (50%) já foi repassada e a 2ª Etapa
   // ainda não. Enquanto o laudo não é entregue, a linha exibe o botão de
-  // registro de entrega; após entregue, libera a geração da 2ª parcela.
+  // registro de entrega; após entregue, libera a geração da 2ª etapa de repasse.
   // Sessões antigas (grandfathering) têm phase2 já preenchida e não aparecem.
   const reportQueue = useMemo(() => {
     const pricingCtx: PricingContext = { customers, plans, appointments };
@@ -792,9 +792,9 @@ export const RepassePage = () => {
     };
   }, [pendingGroups, reportQueue, repasses]);
 
-  // Registra a entrega do laudo (habilita a 2ª parcela).
+  // Registra a entrega do laudo (habilita a 2ª etapa de repasse - Neuropsicologia).
   const handleMarkReportDelivered = async (app: Appointment) => {
-    if (!confirm('Confirmar que o laudo desta avaliação foi ENTREGUE? Isso liberará a 2ª parcela (50%) do repasse.')) return;
+    if (!confirm('Confirmar que o laudo desta avaliação foi ENTREGUE? Isso liberará a 2ª etapa (50%) do repasse para Neuropsicologia.')) return;
     let deliveredBy: string | undefined;
     try {
       const stored = localStorage.getItem('nucleo_user_v2');
@@ -807,7 +807,7 @@ export const RepassePage = () => {
     await loadData();
   };
 
-  // Gera o repasse da 2ª parcela (50%) para uma sessão com laudo entregue.
+  // Gera o repasse da 2ª etapa (50%) para uma sessão de Neuropsicologia com laudo entregue.
   const handleGeneratePhase2 = async (item: typeof reportQueue[0]) => {
     setIsGenerating(`p2-${item.app.id}`);
     try {
@@ -898,9 +898,9 @@ export const RepassePage = () => {
         status: RepasseStatus.PENDING,
       });
 
-      // Vincula a FASE 1 nas Avaliações Neuropsicológicas elegíveis ao split.
-      // Isso as move para a fila "Aguardando Entrega de Laudo" (2ª parcela)
-      // e evita que a 1ª parcela seja recalculada/reofertada futuramente.
+      // Vincula a 1ª ETAPA nas Avaliações Neuropsicológicas elegíveis ao split de laudo.
+      // Isso as move para a fila "Aguardando Entrega de Laudo" (2ª etapa - Neuropsicologia)
+      // e evita que a 1ª etapa seja recalculada/reofertada futuramente.
       {
         const pricingCtx: PricingContext = { customers, plans, appointments };
         const splitApps = group.appIds
@@ -1014,8 +1014,8 @@ export const RepassePage = () => {
                 className="w-full rounded-xl border border-zinc-200 bg-zinc-50 text-sm px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-priori-navy/30 focus:border-priori-navy transition-all"
               >
                 <option value="">Todos os status</option>
-                <option value="READY">Pronto para Repasse (1ª Parcela)</option>
-                <option value="AWAITING_REPORT">Aguardando Laudo (2ª Parcela)</option>
+                <option value="READY">Repasses Disponíveis (Geral / 1ª Etapa)</option>
+                <option value="AWAITING_REPORT">Aguardando Laudo (Neuropsicologia - 2ª Etapa)</option>
                 <option value="PENDING">Repasse Pendente (Histórico)</option>
                 <option value="PAID">Repasse Pago (Histórico)</option>
               </select>
@@ -1046,7 +1046,7 @@ export const RepassePage = () => {
         {/* Card 1: Prontos para Repasse */}
         <div className="bg-white p-5 rounded-2xl border border-zinc-100 shadow-sm flex items-center justify-between">
           <div>
-            <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">A Gerar (1ª Parcela)</p>
+            <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Repasses Disponíveis (Geral / 1ª Etapa)</p>
             <h3 className="text-xl font-bold text-priori-navy mt-1">{fmt.format(summary.pendingGenerationAmount)}</h3>
             <p className="text-xs text-zinc-500 mt-0.5">{summary.pendingGenerationCount} lote(s) pronto(s)</p>
           </div>
@@ -1058,7 +1058,7 @@ export const RepassePage = () => {
         {/* Card 2: Aguardando Laudo */}
         <div className="bg-white p-5 rounded-2xl border border-zinc-100 shadow-sm flex items-center justify-between">
           <div>
-            <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Aguardando Laudo (2ª)</p>
+            <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Aguardando Laudo (Neuro)</p>
             <h3 className="text-xl font-bold text-priori-navy mt-1">{fmt.format(summary.awaitingReportAmount)}</h3>
             <p className="text-xs text-zinc-500 mt-0.5">{summary.awaitingReportCount} laudo(s) pendente(s)</p>
           </div>
@@ -1228,13 +1228,13 @@ export const RepassePage = () => {
         </section>
       )}
 
-      {/* Aguardando Entrega de Laudo (2ª parcela — Avaliação Neuropsicológica) */}
+      {/* Aguardando Entrega de Laudo (2ª etapa — Neuropsicologia) */}
       {(!filterStatus || filterStatus === 'AWAITING_REPORT') && (
         <section className="space-y-3">
           <h2 className="text-lg font-bold text-priori-navy flex items-center gap-2">
             <Hourglass size={18} className="text-indigo-500" />
             Aguardando Entrega de Laudo
-            <span className="text-xs font-normal text-zinc-400">(2ª parcela — 50% — Avaliação Neuropsicológica)</span>
+            <span className="text-xs font-normal text-zinc-400">(2ª etapa de repasse — 50% condicionada à entrega do laudo)</span>
           </h2>
 
           {filteredReportQueue.length === 0 ? (
@@ -1252,7 +1252,7 @@ export const RepassePage = () => {
                     <th className="px-6 py-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Paciente</th>
                     <th className="px-6 py-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Data da Sessão</th>
                     <th className="px-6 py-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Prazo</th>
-                    <th className="px-6 py-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider">2ª Parcela</th>
+                    <th className="px-6 py-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider">2ª Etapa (50%)</th>
                     <th className="px-6 py-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider text-right">Ação</th>
                   </tr>
                 </thead>
@@ -1301,7 +1301,7 @@ export const RepassePage = () => {
                               ) : (
                                 <Plus size={14} className="mr-1" />
                               )}
-                              Gerar 2ª Parcela
+                              Gerar 2ª Etapa
                             </Button>
                           ) : (
                             <Button
