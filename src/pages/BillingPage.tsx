@@ -59,7 +59,7 @@ export const BillingPage = () => {
         onEditDraft={(batch) => billing.openCreateModal(batch)}
       />
 
-      {/* Modal: Novo Lote / Editar Rascunho */}
+      {/* Modal: Novo Lote / Editar Lote Previsto */}
       <CreateBatchModal
         isOpen={billing.isCreateModalOpen}
         selectedPlan={billing.selectedPlan}

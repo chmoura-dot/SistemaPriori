@@ -122,7 +122,7 @@ export const RegisterPaymentModal: React.FC<Props> = ({
             Cancelar
           </Button>
           <Button onClick={onSubmit} className="bg-priori-navy">
-            Confirmar Recebimento do Lote
+            Registrar Pagamento do Plano
           </Button>
         </div>
       </div>

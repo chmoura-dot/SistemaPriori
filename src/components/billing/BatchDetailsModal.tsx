@@ -135,19 +135,23 @@ export const BatchDetailsModal: React.FC<Props> = ({
               <span className="font-medium text-priori-navy">{batch.healthPlan}</span>
             </div>
             <div>
-              <span className="text-zinc-500 block">Data de Envio</span>
+              <span className="text-zinc-500 block">Data de Protocolo</span>
               <span className="font-medium text-priori-navy">
-                {format(new Date(batch.sentAt), 'dd/MM/yyyy')}
+                {batch.status === BillingBatchStatus.DRAFT
+                  ? format(new Date(batch.sentAt), 'MM/yyyy')
+                  : format(new Date(batch.sentAt), 'dd/MM/yyyy')}
               </span>
             </div>
             <div>
               <span className="text-zinc-500 block">Status</span>
               <span className="font-medium text-priori-navy">
                 {batch.status === BillingBatchStatus.PAID
-                  ? 'Pago'
+                  ? 'Pago pelo Plano'
                   : batch.status === BillingBatchStatus.PARTIALLY_PAID
                     ? 'Parcialmente Pago'
-                    : 'Enviado'}
+                    : batch.status === BillingBatchStatus.DRAFT
+                      ? 'Lote Previsto'
+                      : 'Faturamento Confirmado'}
               </span>
             </div>
 

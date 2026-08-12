@@ -40,10 +40,10 @@ export const ConfirmBatchStep: React.FC<Props> = ({
   onConfirm,
 }) => {
   const isFinalize = mode === 'finalize';
-  const title = isFinalize ? 'Finalizar e Enviar Rascunho' : 'Confirmar Criação do Lote';
+  const title = isFinalize ? 'Confirmar Faturamento do Lote Previsto' : 'Confirmar Criação do Lote';
   const confirmLabel = sessionWarnings.length > 0
-    ? isFinalize ? 'Finalizar Assim Mesmo' : 'Criar Assim Mesmo'
-    : isFinalize ? '🚀 Finalizar e Enviar' : 'Confirmar e Criar';
+    ? isFinalize ? 'Confirmar Faturamento Assim Mesmo' : 'Criar Assim Mesmo'
+    : isFinalize ? '🚀 Confirmar Faturamento' : 'Confirmar e Criar';
 
   return (
     <Modal isOpen={isOpen} onClose={onBack} title={title} className="max-w-lg">
@@ -70,8 +70,8 @@ export const ConfirmBatchStep: React.FC<Props> = ({
           <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 flex items-start gap-2">
             <Info className="text-blue-500 flex-shrink-0 mt-0.5" size={15} />
             <p className="text-xs text-blue-700">
-              Ao finalizar, o rascunho será convertido em um lote oficial enviado à operadora.
-              O número do lote será gerado automaticamente.
+              Ao confirmar, o lote previsto será convertido em um faturamento confirmado para a operadora.
+              A data de protocolo será gerada automaticamente.
             </p>
           </div>
         )}
@@ -100,7 +100,7 @@ export const ConfirmBatchStep: React.FC<Props> = ({
           {sessionWarnings.length > 0
             ? 'Deseja prosseguir mesmo com as advertências acima?'
             : isFinalize
-              ? 'Tudo certo! Confirmar finalização e envio do lote?'
+              ? 'Tudo certo! Confirmar faturamento do lote previsto?'
               : 'Tudo certo! Confirmar criação do lote?'}
         </p>
 

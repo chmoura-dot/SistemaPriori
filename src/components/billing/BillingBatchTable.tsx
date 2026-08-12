@@ -28,7 +28,7 @@ type StatusTheme = {
 
 const STATUS_THEME: Record<BillingBatchStatus, StatusTheme> = {
   [BillingBatchStatus.DRAFT]: {
-    label: 'Rascunhos',
+    label: 'Lotes Previstos',
     icon: <Edit2 size={16} />,
     badgeCls: 'bg-amber-50 text-amber-700 border-amber-200',
     headerBg: 'bg-amber-50/60 hover:bg-amber-50',
@@ -37,7 +37,7 @@ const STATUS_THEME: Record<BillingBatchStatus, StatusTheme> = {
     iconWrap: 'bg-amber-100 text-amber-600',
   },
   [BillingBatchStatus.SENT]: {
-    label: 'Enviados — Aguardando pagamento',
+    label: 'Faturamento Confirmado',
     icon: <Clock size={16} />,
     badgeCls: 'bg-blue-50 text-blue-700 border-blue-200',
     headerBg: 'bg-blue-50/60 hover:bg-blue-50',
@@ -55,7 +55,7 @@ const STATUS_THEME: Record<BillingBatchStatus, StatusTheme> = {
     iconWrap: 'bg-orange-100 text-orange-600',
   },
   [BillingBatchStatus.PAID]: {
-    label: 'Pagos',
+    label: 'Pagos pelo Plano',
     icon: <CheckCircle2 size={16} />,
     badgeCls: 'bg-emerald-50 text-emerald-700 border-emerald-200',
     headerBg: 'bg-emerald-50/60 hover:bg-emerald-50',
@@ -76,10 +76,10 @@ const STATUS_ORDER: BillingBatchStatus[] = [
 const StatusBadge: React.FC<{ status: BillingBatchStatus }> = ({ status }) => {
   const theme = STATUS_THEME[status];
   const shortLabel =
-    status === BillingBatchStatus.SENT ? 'Enviado'
-    : status === BillingBatchStatus.DRAFT ? 'Rascunho'
+    status === BillingBatchStatus.SENT ? 'Faturamento Confirmado'
+    : status === BillingBatchStatus.DRAFT ? 'Lote Previsto'
     : status === BillingBatchStatus.PARTIALLY_PAID ? 'Parcialmente Pago'
-    : 'Pago';
+    : 'Pago pelo Plano';
   return (
     <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full border ${theme.badgeCls}`}>
       {React.cloneElement(theme.icon as React.ReactElement<{ size?: number }>, { size: 10 })}
@@ -153,7 +153,7 @@ export const BillingBatchTable: React.FC<Props> = ({
             #{batch.batchNumber}
           </span>
           {isDraft && (
-            <p className="text-[10px] text-amber-600 mt-0.5">Em construção</p>
+            <p className="text-[10px] text-amber-600 mt-0.5">Lote Previsto</p>
           )}
         </td>
         <td className="px-6 py-4">
@@ -210,7 +210,7 @@ export const BillingBatchTable: React.FC<Props> = ({
                 <button
                   onClick={() => onDelete(batch.id)}
                   className="p-1.5 text-zinc-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
-                  title="Excluir rascunho"
+                  title="Excluir lote previsto"
                 >
                   <Trash2 size={15} />
                 </button>
@@ -267,7 +267,7 @@ export const BillingBatchTable: React.FC<Props> = ({
           <FileText size={32} className="mx-auto opacity-40" />
         </div>
         <p className="text-sm text-zinc-500 font-medium">Nenhum lote criado ainda.</p>
-        <p className="text-xs text-zinc-400 mt-1">Clique em "Novo Lote" para começar a faturar.</p>
+        <p className="text-xs text-zinc-400 mt-1">Clique em "Novo Lote" para criar um Lote Previsto.</p>
       </div>
     );
   }

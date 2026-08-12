@@ -38,8 +38,6 @@ import {
   getAppPrice,
   getAmsNeuropsicoSessionIndex,
   isRepassBlocked,
-  isNeuropsicoReportSplit,
-  NEUROPSICO_REPORT_SPLIT_RATE,
   PricingContext,
 } from '../lib/pricing';
 
@@ -51,6 +49,7 @@ import { logger } from '../lib/logger';
 const fmt = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 
 // ─── Repasse Value ───────────────────────────────────────────────────────────
+
 
 /**
  * Calcula o valor de repasse para um atendimento respeitando a hierarquia:
@@ -129,41 +128,6 @@ function getRepassValue(
 
   // 5. Último fallback: 50% padrão (psicólogo sem regra + plano sem repassAmount)
   return calcRepass(gross, psy);
-}
-
-/**
- * Valor de repasse de um atendimento para uma FASE específica.
- *
- * - Atendimentos comuns: 100% na fase 1 (fase 2 = R$0, nunca gerada).
- * - Avaliação Neuropsicológica elegível ao split: 50% na fase 1 (sessão paga)
- *   e 50% na fase 2 (entrega do laudo). Arredondado em centavos; a fase 2
- *   recebe o RESÍDUO para garantir que fase1 + fase2 === valor cheio.
- */
-function getPhaseRepassValue(
-  app: Appointment,
-  customers: Customer[],
-  plans: Plan[],
-  psy: Psychologist | undefined,
-  pricingCtx: PricingContext,
-  phase: 1 | 2,
-): number {
-  const full = getRepassValue(app, customers, plans, psy, pricingCtx);
-  if (!isNeuropsicoReportSplit(app, pricingCtx)) {
-    return phase === 1 ? full : 0;
-  }
-  const fullCents = Math.round(full * 100);
-  const phase1Cents = Math.round(fullCents * NEUROPSICO_REPORT_SPLIT_RATE);
-  const phase2Cents = fullCents - phase1Cents; // resíduo evita perda de 1 centavo
-  return (phase === 1 ? phase1Cents : phase2Cents) / 100;
-}
-
-/**
- * Indica se a 1ª parcela (50%) do split neuropsicológico já foi repassada.
- * Fonte dupla p/ robustez: coluna de fase (fluxo novo + backfill) OU presença
- * em repasse legado (fluxo antigo de convênios comuns).
- */
-function isPhase1Done(app: Appointment, legacyRepassed: Set<string>): boolean {
-  return app.repassPhase1RepasseId != null || legacyRepassed.has(app.id);
 }
 
 /**
@@ -369,11 +333,12 @@ function generateRepassePDF(
       // (1/2 na sessão, 2/2 na entrega do laudo), não o valor cheio.
       let repassVal = getRepassValue(app, customers, plans, psy, pricingCtx);
       let parcelaLabel = '';
-      if (isNeuropsicoReportSplit(app, pricingCtx)) {
-        const isPhase2 = app.repassPhase2RepasseId === repasse.id;
-        const phase: 1 | 2 = isPhase2 ? 2 : 1;
-        repassVal = getPhaseRepassValue(app, customers, plans, psy, pricingCtx, phase);
-        parcelaLabel = isPhase2 ? ' (Etapa 2/2 — Laudo)' : ' (Etapa 1/2 — Sessão)';
+      if (app.repassPhase1RepasseId === repasse.id) {
+        repassVal = Math.round(repassVal * 100 * 0.5) / 100;
+        parcelaLabel = ' (Etapa 1/2 — Sessão)';
+      } else if (app.repassPhase2RepasseId === repasse.id) {
+        repassVal = Math.round(repassVal * 100 * 0.5) / 100;
+        parcelaLabel = ' (Etapa 2/2 — Laudo)';
       }
       return { app, customer, procedure, repassVal, parcelaLabel };
     })
@@ -689,9 +654,8 @@ export const RepassePage = () => {
         paidAppIds.forEach(appId => {
           const app = appointments.find(a => a.id === appId);
           if (!app) return;
-          // FASE 1: sessão paga. Neuropsico elegível ao split libera só 50% aqui;
-          // os demais atendimentos liberam 100%.
-          totalCents += Math.round(getPhaseRepassValue(app, customers, plans, psy, pricingCtx, 1) * 100);
+          // Repasse integral da sessão realizada/faturada (sem split)
+          totalCents += Math.round(getRepassValue(app, customers, plans, psy, pricingCtx) * 100);
           // Detectar divergências entre override manual e valor calculado
           const div = checkDivergence(app, customers, plans, psy, pricingCtx);
           if (div) divergences.push(div);
@@ -705,31 +669,6 @@ export const RepassePage = () => {
     return groups;
   }, [batches, repasses, appointments, customers, plans, psychologists]);
 
-  // ── Fila de 2ª Etapa - Neuropsicologia (Aguardando Laudo) ─────────────────
-  // Sessões neuropsicológicas cuja 1ª Etapa (50%) já foi repassada e a 2ª Etapa
-  // ainda não. Enquanto o laudo não é entregue, a linha exibe o botão de
-  // registro de entrega; após entregue, libera a geração da 2ª etapa de repasse.
-  // Sessões antigas (grandfathering) têm phase2 já preenchida e não aparecem.
-  const reportQueue = useMemo(() => {
-    const pricingCtx: PricingContext = { customers, plans, appointments };
-    // Fallback legado: atendimentos presentes em qualquer repasse (fluxo antigo).
-    const legacyRepassed = new Set(repasses.flatMap(r => r.appointmentIds));
-
-    return appointments
-      .filter(a => isNeuropsicoReportSplit(a, pricingCtx))
-      .filter(a => isPhase1Done(a, legacyRepassed))
-      .filter(a => a.repassPhase2RepasseId == null)
-      .map(a => {
-        const psy = psychologists.find(p => p.id === a.psychologistId);
-        const customer = customers.find(c => c.id === a.customerId);
-        const phase2 = getPhaseRepassValue(a, customers, plans, psy, pricingCtx, 2);
-        const daysElapsed = differenceInDays(new Date(), new Date(a.date + 'T12:00:00'));
-        return { app: a, psy, customer, phase2, daysElapsed, delivered: a.reportDeliveredAt != null };
-      })
-      .filter(i => i.phase2 > 0)
-      .sort((a, b) => b.daysElapsed - a.daysElapsed);
-  }, [appointments, repasses, customers, plans, psychologists]);
-
   // ── Filtragem Client-Side Reativa (Zero Supabase Calls) ──────────────────────
   const filteredPendingGroups = useMemo(() => {
     if (filterStatus && filterStatus !== 'READY') return [];
@@ -742,18 +681,6 @@ export const RepassePage = () => {
       return true;
     });
   }, [pendingGroups, filterPsyId, filterMonth, filterStatus, appointments]);
-
-  const filteredReportQueue = useMemo(() => {
-    if (filterStatus && filterStatus !== 'AWAITING_REPORT') return [];
-    return reportQueue.filter(item => {
-      if (filterPsyId && item.app.psychologistId !== filterPsyId) return false;
-      if (filterMonth) {
-        const appMonth = item.app.date ? item.app.date.substring(0, 7) : '';
-        if (appMonth !== filterMonth) return false;
-      }
-      return true;
-    });
-  }, [reportQueue, filterPsyId, filterMonth, filterStatus]);
 
   const filteredRepasses = useMemo(() => {
     return repasses.filter(repasse => {
@@ -773,7 +700,6 @@ export const RepassePage = () => {
   // ── Métricas Consolidadas para os Cards de Resumo ────────────────────────────
   const summary = useMemo(() => {
     const totalPendingGeneration = pendingGroups.reduce((acc, g) => acc + g.total, 0);
-    const totalAwaitingReport = reportQueue.reduce((acc, r) => acc + r.phase2, 0);
     
     const repassesPending = repasses.filter(r => r.status === RepasseStatus.PENDING);
     const totalRepassesPending = repassesPending.reduce((acc, r) => acc + r.totalAmount, 0);
@@ -784,49 +710,14 @@ export const RepassePage = () => {
     return {
       pendingGenerationCount: pendingGroups.length,
       pendingGenerationAmount: totalPendingGeneration,
-      awaitingReportCount: reportQueue.length,
-      awaitingReportAmount: totalAwaitingReport,
+      awaitingReportCount: 0,
+      awaitingReportAmount: 0,
       repassesPendingCount: repassesPending.length,
       repassesPendingAmount: totalRepassesPending,
       repassesPaidCount: repassesPaid.length,
       repassesPaidAmount: totalRepassesPaid,
     };
-  }, [pendingGroups, reportQueue, repasses]);
-
-  // Registra a entrega do laudo (habilita a 2ª etapa de repasse - Neuropsicologia).
-  const handleMarkReportDelivered = async (app: Appointment) => {
-    if (!confirm('Confirmar que o laudo desta avaliação foi ENTREGUE? Isso liberará a 2ª etapa (50%) do repasse para Neuropsicologia.')) return;
-    let deliveredBy: string | undefined;
-    try {
-      const stored = localStorage.getItem('nucleo_user_v2');
-      if (stored) deliveredBy = JSON.parse(stored)?.email ?? undefined;
-    } catch { /* ignore */ }
-    await api.updateAppointment(app.id, {
-      reportDeliveredAt: new Date().toISOString(),
-      reportDeliveredBy: deliveredBy,
-    });
-    await loadData();
-  };
-
-  // Gera o repasse da 2ª etapa (50%) para uma sessão de Neuropsicologia com laudo entregue.
-  const handleGeneratePhase2 = async (item: typeof reportQueue[0]) => {
-    setIsGenerating(`p2-${item.app.id}`);
-    try {
-      const created = await api.createRepasse({
-        psychologistId: item.app.psychologistId,
-        billingBatchId: item.app.billingBatchId ?? '',
-        appointmentIds: [item.app.id],
-        totalAmount: item.phase2,
-        status: RepasseStatus.PENDING,
-      });
-      await api.updateAppointment(item.app.id, { repassPhase2RepasseId: created.id });
-      await loadData();
-      const batch = batches.find(b => b.id === item.app.billingBatchId);
-      generateRepassePDF(created, item.psy, batch, appointments, customers, plans);
-    } finally {
-      setIsGenerating(null);
-    }
-  };
+  }, [pendingGroups, repasses]);
 
   const handleGenerateRepasse = async (group: typeof pendingGroups[0]) => {
 
@@ -898,21 +789,6 @@ export const RepassePage = () => {
         totalAmount: group.total,
         status: RepasseStatus.PENDING,
       });
-
-      // Vincula a 1ª ETAPA nas Avaliações Neuropsicológicas elegíveis ao split de laudo.
-      // Isso as move para a fila "Aguardando Entrega de Laudo" (2ª etapa - Neuropsicologia)
-      // e evita que a 1ª etapa seja recalculada/reofertada futuramente.
-      {
-        const pricingCtx: PricingContext = { customers, plans, appointments };
-        const splitApps = group.appIds
-          .map(id => appointments.find(a => a.id === id))
-          .filter((a): a is Appointment => !!a && isNeuropsicoReportSplit(a, pricingCtx));
-        await Promise.all(
-          splitApps.map(a =>
-            api.updateAppointment(a.id, { repassPhase1RepasseId: created.id }),
-          ),
-        );
-      }
 
       await loadData();
 
@@ -1013,8 +889,7 @@ export const RepassePage = () => {
                 className="w-full rounded-xl border border-zinc-200 bg-zinc-50 text-sm px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-priori-navy/30 focus:border-priori-navy transition-all"
               >
                 <option value="">Todos os status</option>
-                <option value="READY">Repasses Disponíveis (Geral / 1ª Etapa)</option>
-                <option value="AWAITING_REPORT">Aguardando Laudo (Neuropsicologia - 2ª Etapa)</option>
+                <option value="READY">Repasses Disponíveis</option>
                 <option value="PENDING">Repasse Pendente (Histórico)</option>
                 <option value="PAID">Repasse Pago (Histórico)</option>
               </select>
@@ -1041,11 +916,11 @@ export const RepassePage = () => {
       )}
 
       {/* Cards de Resumo */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Card 1: Prontos para Repasse */}
         <div className="bg-white p-5 rounded-2xl border border-zinc-100 shadow-sm flex items-center justify-between">
           <div>
-            <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Repasses Disponíveis (Geral / 1ª Etapa)</p>
+            <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Repasses Disponíveis</p>
             <h3 className="text-xl font-bold text-priori-navy mt-1">{fmt.format(summary.pendingGenerationAmount)}</h3>
             <p className="text-xs text-zinc-500 mt-0.5">{summary.pendingGenerationCount} lote(s) pronto(s)</p>
           </div>
@@ -1054,19 +929,7 @@ export const RepassePage = () => {
           </div>
         </div>
 
-        {/* Card 2: Aguardando Laudo */}
-        <div className="bg-white p-5 rounded-2xl border border-zinc-100 shadow-sm flex items-center justify-between">
-          <div>
-            <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Aguardando Laudo (Neuro)</p>
-            <h3 className="text-xl font-bold text-priori-navy mt-1">{fmt.format(summary.awaitingReportAmount)}</h3>
-            <p className="text-xs text-zinc-500 mt-0.5">{summary.awaitingReportCount} laudo(s) pendente(s)</p>
-          </div>
-          <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-500 flex items-center justify-center">
-            <Hourglass size={20} />
-          </div>
-        </div>
-
-        {/* Card 3: Gerados e Pendentes */}
+        {/* Card 2: Gerados e Pendentes */}
         <div className="bg-white p-5 rounded-2xl border border-zinc-100 shadow-sm flex items-center justify-between">
           <div>
             <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Repasses Pendentes</p>
@@ -1078,7 +941,7 @@ export const RepassePage = () => {
           </div>
         </div>
 
-        {/* Card 4: Pagos */}
+        {/* Card 3: Pagos */}
         <div className="bg-white p-5 rounded-2xl border border-zinc-100 shadow-sm flex items-center justify-between">
           <div>
             <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Repasses Pagos</p>
@@ -1227,102 +1090,6 @@ export const RepassePage = () => {
         </section>
       )}
 
-      {/* Aguardando Entrega de Laudo (2ª etapa — Neuropsicologia) */}
-      {(!filterStatus || filterStatus === 'AWAITING_REPORT') && (
-        <section className="space-y-3">
-          <h2 className="text-lg font-bold text-priori-navy flex items-center gap-2">
-            <Hourglass size={18} className="text-indigo-500" />
-            Aguardando Entrega de Laudo
-            <span className="text-xs font-normal text-zinc-400">(2ª etapa de repasse — 50% condicionada à entrega do laudo)</span>
-          </h2>
-
-          {filteredReportQueue.length === 0 ? (
-            <div className="bg-white rounded-2xl border border-zinc-100 shadow-sm p-10 text-center text-zinc-400 text-sm">
-              {filterMonth || filterPsyId
-                ? 'Nenhuma avaliação aguardando laudo corresponde aos filtros aplicados.'
-                : 'Nenhuma avaliação neuropsicológica aguardando entrega de laudo.'}
-            </div>
-          ) : (
-            <div className="bg-white rounded-2xl border border-zinc-100 shadow-sm overflow-hidden">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-zinc-50/50 border-b border-zinc-100">
-                    <th className="px-6 py-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Psicólogo(a)</th>
-                    <th className="px-6 py-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Paciente</th>
-                    <th className="px-6 py-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Data da Sessão</th>
-                    <th className="px-6 py-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Prazo</th>
-                    <th className="px-6 py-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider">2ª Etapa (50%)</th>
-                    <th className="px-6 py-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider text-right">Ação</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-zinc-100">
-                  {filteredReportQueue.map(item => {
-                    const overdue = !item.delivered && item.daysElapsed >= 75;
-                    return (
-                      <tr key={item.app.id} className="hover:bg-zinc-50/50 transition-colors">
-                        <td className="px-6 py-4 font-semibold text-priori-navy">{item.psy?.name ?? '—'}</td>
-                        <td className="px-6 py-4 text-sm text-zinc-600">{item.customer?.name ?? '—'}</td>
-                        <td className="px-6 py-4 text-sm text-zinc-600">
-                          {format(new Date(item.app.date + 'T12:00:00'), 'dd/MM/yyyy')}
-                        </td>
-                        <td className="px-6 py-4">
-                          {item.delivered ? (
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                              <CheckCircle2 size={11} />
-                              Laudo entregue
-                            </span>
-                          ) : (
-                            <span
-                              className={cn(
-                                'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border',
-                                overdue
-                                  ? 'bg-red-50 text-red-700 border-red-200'
-                                  : 'bg-zinc-50 text-zinc-600 border-zinc-200',
-                              )}
-                              title={`${item.daysElapsed} dia(s) desde a sessão`}
-                            >
-                              {overdue && <AlertTriangle size={11} />}
-                              {item.daysElapsed} dias
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-6 py-4 font-semibold text-priori-navy">{fmt.format(item.phase2)}</td>
-                        <td className="px-6 py-4 text-right">
-                          {item.delivered ? (
-                            <Button
-                              size="sm"
-                              className="bg-priori-navy hover:bg-priori-navy/90 text-white"
-                              onClick={() => handleGeneratePhase2(item)}
-                              disabled={isGenerating === `p2-${item.app.id}`}
-                            >
-                              {isGenerating === `p2-${item.app.id}` ? (
-                                <Loader2 size={14} className="animate-spin mr-1" />
-                              ) : (
-                                <Plus size={14} className="mr-1" />
-                              )}
-                              Gerar 2ª Etapa
-                            </Button>
-                          ) : (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="text-indigo-600 border-indigo-200 hover:bg-indigo-50"
-                              onClick={() => handleMarkReportDelivered(item.app)}
-                            >
-                              <FileText size={14} className="mr-1" />
-                              Marcar Laudo Entregue
-                            </Button>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
-      )}
 
       {/* Histórico de Repasses */}
       {(!filterStatus || filterStatus === 'PENDING' || filterStatus === 'PAID') && (
@@ -1440,13 +1207,9 @@ export const RepassePage = () => {
                                         const customer = customers.find(c => c.id === app.customerId);
                                         const pricingCtx = { customers, plans, appointments };
                                         
-                                        let repassVal = 0;
-                                        if (app.repassPhase1RepasseId === repasse.id) {
-                                          repassVal = getPhaseRepassValue(app, customers, plans, psy, pricingCtx, 1);
-                                        } else if (app.repassPhase2RepasseId === repasse.id) {
-                                          repassVal = getPhaseRepassValue(app, customers, plans, psy, pricingCtx, 2);
-                                        } else {
-                                          repassVal = getRepassValue(app, customers, plans, psy, pricingCtx);
+                                        let repassVal = getRepassValue(app, customers, plans, psy, pricingCtx);
+                                        if (app.repassPhase1RepasseId === repasse.id || app.repassPhase2RepasseId === repasse.id) {
+                                          repassVal = Math.round(repassVal * 100 * 0.5) / 100;
                                         }
 
                                         return (

@@ -169,7 +169,7 @@ export const CreateBatchModal: React.FC<Props> = ({
     return new Set(eligibleAppointments.filter(a => ss.has(a.id)).map(a => a.customerId)).size;
   }, [eligibleAppointments, selectedAppointmentIds]);
 
-  const modalTitle = isDraftMode ? `✏️ Editar Rascunho — ${editingDraftBatch!.healthPlan}` : 'Novo Lote de Faturamento';
+  const modalTitle = isDraftMode ? `✏️ Editar Lote Previsto — ${editingDraftBatch!.healthPlan}` : 'Novo Lote de Faturamento';
 
   // ── Confirmation Step ────────────────────────────────────────────────────
   if (showConfirm) {
@@ -262,7 +262,7 @@ export const CreateBatchModal: React.FC<Props> = ({
                 className="border-amber-300 text-amber-700 hover:bg-amber-50 hover:border-amber-400 flex items-center gap-1.5"
               >
                 <Save size={15} />
-                {isDraftMode ? 'Atualizar Rascunho' : 'Salvar Rascunho'}
+                {isDraftMode ? 'Atualizar Lote Previsto' : 'Salvar Lote Previsto'}
               </Button>
               {isDraftMode ? (
                 <Button
@@ -270,7 +270,7 @@ export const CreateBatchModal: React.FC<Props> = ({
                   disabled={!batchNumber || selectedAppointmentIds.length === 0}
                   className="bg-priori-navy hover:bg-priori-navy/90 flex items-center gap-2"
                 >
-                  <Send size={15} /> Finalizar e Enviar <ChevronRight size={16} />
+                  <Send size={15} /> Confirmar Faturamento <ChevronRight size={16} />
                 </Button>
               ) : (
                 <Button
@@ -278,7 +278,7 @@ export const CreateBatchModal: React.FC<Props> = ({
                   disabled={!batchNumber || selectedAppointmentIds.length === 0}
                   className="bg-priori-navy hover:bg-priori-navy/90 flex items-center gap-2"
                 >
-                  Revisar e Gerar Lote <ChevronRight size={16} />
+                  Revisar e Confirmar Faturamento <ChevronRight size={16} />
                 </Button>
               )}
             </div>

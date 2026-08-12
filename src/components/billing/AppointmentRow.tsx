@@ -195,11 +195,11 @@ export const AppointmentRow: React.FC<Props> = memo(({
           )}
           {isAlreadyInDraft && (
             <span
-              title="Já estava neste rascunho"
+              title="Já estava neste lote previsto"
               className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 border border-blue-200 flex items-center gap-0.5"
             >
               <CheckCircle2 size={9} />
-              Rascunho
+              Lote Previsto
             </span>
           )}
           {isDuplicate && isSelected && (

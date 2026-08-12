@@ -67,7 +67,7 @@ export function createBillingHelpers({
     if (!month || !/^\d{4}-\d{2}$/.test(month)) return '';
     const sigla = { [HealthPlan.AMS_PETROBRAS]: 'AMS', [HealthPlan.PAE]: 'PAE', [HealthPlan.PORTO_SAUDE]: 'PORTO', [HealthPlan.MEDSENIOR]: 'MEDSN', [HealthPlan.REAL_GRANDEZA]: 'RG', [HealthPlan.SAUDE_BLUE]: 'SBLUE', [HealthPlan.GAMA]: 'GAMA', [HealthPlan.SAUDE_CAIXA]: 'SCAIXA', [HealthPlan.FUNDACAO_SAUDE]: 'FSI', [HealthPlan.PARTICULAR]: 'PART' }[plan] || 'LOTE';
     const monthFormatted = month.replace('-', '');
-    if (isDraft) return `RASCUNHO-${sigla}-${monthFormatted}`;
+    if (isDraft) return `PREVISTO-${sigla}-${monthFormatted}`;
     const existing = batches.filter(b => b.healthPlan === plan && b.sentAt.startsWith(month) && b.status !== BillingBatchStatus.DRAFT);
     return `${sigla}-${monthFormatted}-${String(existing.length + 1).padStart(3, '0')}`;
   };

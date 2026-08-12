@@ -20,44 +20,45 @@ export const BillingSummaryCards: React.FC<Props> = ({
   totalDraftAmount,
 }) => (
   <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6">
-    {/* Rascunhos em aberto */}
+    {/* Lotes Previstos */}
     <div className="bg-white rounded-2xl border border-amber-100 p-6 shadow-sm flex items-start gap-4">
       <div className="p-3 bg-amber-50 text-amber-600 rounded-xl">
         <Edit2 size={24} />
       </div>
       <div>
         <p className="text-sm font-medium text-zinc-500 mb-1">
-          Rascunhos ({draftCount} {draftCount === 1 ? 'lote' : 'lotes'})
+          Lotes Previstos ({draftCount} {draftCount === 1 ? 'lote' : 'lotes'})
         </p>
         <h3 className="text-2xl font-bold text-priori-navy">
           {formatCurrency(totalDraftAmount)}
         </h3>
-        <p className="text-xs text-amber-600 mt-0.5">Previsão de faturamento</p>
+        <p className="text-xs text-amber-600 mt-0.5">Em edição</p>
       </div>
     </div>
 
-    {/* A Receber */}
+    {/* Faturamento Confirmado */}
     <div className="bg-white rounded-2xl border border-zinc-100 p-6 shadow-sm flex items-start gap-4">
       <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
         <Clock size={24} />
       </div>
       <div>
         <p className="text-sm font-medium text-zinc-500 mb-1">
-          A Receber ({pendingCount} lotes)
+          Faturamento Confirmado ({pendingCount} lotes)
         </p>
         <h3 className="text-2xl font-bold text-priori-navy">
           {formatCurrency(totalPendingAmount)}
         </h3>
+        <p className="text-xs text-blue-600 mt-0.5">Previsão de Receita</p>
       </div>
     </div>
 
-    {/* Total Recebido */}
+    {/* Pago pelo Plano */}
     <div className="bg-white rounded-2xl border border-zinc-100 p-6 shadow-sm flex items-start gap-4">
       <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl">
         <CheckCircle2 size={24} />
       </div>
       <div>
-        <p className="text-sm font-medium text-zinc-500 mb-1">Total Recebido</p>
+        <p className="text-sm font-medium text-zinc-500 mb-1">Pago pelo Plano</p>
         <h3 className="text-2xl font-bold text-priori-navy">
           {formatCurrency(totalPaidAmount)}
         </h3>

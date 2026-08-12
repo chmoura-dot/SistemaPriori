@@ -136,7 +136,7 @@ export function createBillingActions({
         setEditingDraftBatch(prev =>
           prev ? { ...prev, appointmentIds: [...selectedAppointmentIds], totalAmount } : prev
         );
-        toastSuccess('Rascunho atualizado!');
+        toastSuccess('Lote Previsto atualizado!');
         fetchData();
       } else {
         const existingDraft = batches.find(
@@ -148,7 +148,7 @@ export function createBillingActions({
           await releaseFromOtherDrafts(selectedAppointmentIds, existingDraft.id);
           await syncAppointmentsBatch(existingDraft.id, existingDraft.appointmentIds, mergedIds);
           await api.updateBillingBatch(existingDraft.id, { appointmentIds: mergedIds, totalAmount: mergedTotal });
-          toastSuccess('Atendimentos adicionados ao rascunho existente!');
+          toastSuccess('Atendimentos adicionados ao lote previsto existente!');
         } else {
           const draftBatchNumber = generateBatchNumber(selectedPlan, monthFilter, true);
           const batch = await api.createBillingBatch({
@@ -159,7 +159,7 @@ export function createBillingActions({
           });
           await releaseFromOtherDrafts(selectedAppointmentIds, batch.id);
           await syncAppointmentsBatch(batch.id, [], selectedAppointmentIds);
-          toastSuccess('Rascunho salvo!');
+          toastSuccess('Lote Previsto salvo!');
         }
         setIsCreateModalOpen(false);
         setSelectedAppointmentIds([]);
@@ -168,7 +168,7 @@ export function createBillingActions({
       }
     } catch (error) {
       console.error('Error saving draft:', error);
-      toastError('Erro ao salvar rascunho.');
+      toastError('Erro ao salvar lote previsto.');
     }
   };
 
@@ -182,11 +182,11 @@ export function createBillingActions({
     );
     try {
       if (existingDraft) {
-        if (existingDraft.appointmentIds.includes(appId)) { toastError('Este atendimento já está no rascunho!'); return; }
+        if (existingDraft.appointmentIds.includes(appId)) { toastError('Este atendimento já está no lote previsto!'); return; }
         const newIds = [...existingDraft.appointmentIds, appId];
         await api.updateBillingBatch(existingDraft.id, { appointmentIds: newIds, totalAmount: existingDraft.totalAmount + appPrice });
         await api.updateAppointment(appId, { billingBatchId: existingDraft.id });
-        toastSuccess('Adicionado ao rascunho!');
+        toastSuccess('Adicionado ao lote previsto!');
       } else {
         const draftBatchNumber = generateBatchNumber(selectedPlan, monthFilter, true);
         const batch = await api.createBillingBatch({
@@ -195,7 +195,7 @@ export function createBillingActions({
           totalAmount: appPrice, appointmentIds: [appId],
         });
         await api.updateAppointment(appId, { billingBatchId: batch.id });
-        toastSuccess('Rascunho criado!');
+        toastSuccess('Lote Previsto criado!');
       }
       setAppointments(prev =>
         prev.map(a => a.id === appId ? { ...a, billingBatchId: existingDraft?.id || 'pending-refresh' } : a)
@@ -203,14 +203,14 @@ export function createBillingActions({
       fetchData();
     } catch (error) {
       console.error('Error quick-adding to draft:', error);
-      toastError('Erro ao adicionar ao rascunho.');
+      toastError('Erro ao adicionar ao lote previsto.');
     }
   };
 
   const handleFinalizeBatch = async () => {
     if (!editingDraftBatch || !batchNumber || selectedAppointmentIds.length === 0) return;
     const totalAmount      = appointments.filter(a => selectedAppointmentIds.includes(a.id)).reduce((sum, a) => sum + Math.round(getAppPrice(a) * 100), 0) / 100;
-    const finalBatchNumber = batchNumber.startsWith('RASCUNHO-')
+    const finalBatchNumber = batchNumber.startsWith('PREVISTO-')
       ? generateBatchNumber(selectedPlan, monthFilter, false) : batchNumber;
     try {
       await snapshotParticularPrices(selectedAppointmentIds);
@@ -595,7 +595,7 @@ export function createBillingActions({
   const handleDeleteBatch = async (id: string) => {
     const batch   = batches.find(b => b.id === id);
     const isDraft = batch?.status === BillingBatchStatus.DRAFT;
-    const msg     = isDraft ? 'Deseja excluir este rascunho?' : 'Deseja realmente excluir este lote?';
+    const msg     = isDraft ? 'Deseja excluir este lote previsto?' : 'Deseja realmente excluir este lote?';
     if (!confirm(msg)) return;
     try {
       await api.deleteBillingBatch(id);
