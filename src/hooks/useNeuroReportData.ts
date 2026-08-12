@@ -105,10 +105,17 @@ export function useNeuroReportData() {
       const firstAppDate = sortedApps[0].date;
       const lastAppDate = sortedApps[sortedApps.length - 1].date;
 
-      // Cálculo de Tempo de Ciclo: dias decorridos desde a primeira consulta até hoje
+      // Cálculo de Tempo de Ciclo:
+      // Se a última consulta for no passado (antes de hoje), o ciclo é fechado (Última Consulta - Primeira Consulta).
+      // Se for hoje ou no futuro (em aberto), calcula-se o tempo decorrido até hoje (Hoje - Primeira Consulta).
       const firstAppMs = new Date(firstAppDate + 'T00:00:00').getTime();
-      const diffMs = todayMs - firstAppMs;
-      const cycleTimeDays = diffMs > 0 ? Math.floor(diffMs / (1000 * 60 * 60 * 24)) : 0;
+      const endMs = lastAppDate < todayStr 
+        ? new Date(lastAppDate + 'T00:00:00').getTime() 
+        : todayMs;
+
+      const diffMs = endMs - firstAppMs;
+      const rawDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+      const cycleTimeDays = Math.max(1, rawDays);
 
       // Métricas de contagem
       let sessionsPerformedCount = 0;
