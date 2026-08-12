@@ -7,6 +7,7 @@ export interface NeuroReportItem {
   psychologistName: string;
   customerId: string;
   customerName: string;
+  healthPlan: string;
   firstAppointmentDate: string;
   lastAppointmentDate: string;
   cycleTimeDays: number;
@@ -157,6 +158,7 @@ export function useNeuroReportData() {
         psychologistName: psychologist.name,
         customerId,
         customerName: customer.name,
+        healthPlan: customer.healthPlan || 'Particular',
         firstAppointmentDate: firstAppDate,
         lastAppointmentDate: lastAppDate,
         cycleTimeDays,

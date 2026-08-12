@@ -15,7 +15,7 @@ import {
 import { useNeuroReportData, NeuroReportItem } from '../hooks/useNeuroReportData';
 import { cn } from '../lib/utils';
 
-type SortKey = 'psychologistName' | 'customerName' | 'firstAppointmentDate' | 'lastAppointmentDate' | 'cycleTimeDays' | 'sessionsPerformedCount' | 'patientAbsencesCount' | 'psychologistAbsencesCount' | 'status';
+type SortKey = 'psychologistName' | 'customerName' | 'healthPlan' | 'firstAppointmentDate' | 'lastAppointmentDate' | 'cycleTimeDays' | 'sessionsPerformedCount' | 'patientAbsencesCount' | 'psychologistAbsencesCount' | 'status';
 
 function formatDate(dateStr: string): string {
   if (!dateStr) return '—';
@@ -26,7 +26,8 @@ function formatDate(dateStr: string): string {
 export const NeuroReportPage = () => {
   const { reportItems, isLoading, error, refetch } = useNeuroReportData();
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'todos' | 'Em andamento' | 'Finalizado'>('todos');
+  const [statusFilter, setStatusFilter] = useState<'todos' | 'Em andamento' | 'Finalizado'>('Em andamento');
+  const [planFilter, setPlanFilter] = useState<string>('todos');
   const [sortField, setSortField] = useState<SortKey>('cycleTimeDays');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
@@ -40,12 +41,25 @@ export const NeuroReportPage = () => {
     }
   };
 
-  // Filtragem dos dados baseado na busca (nome do paciente ou psicólogo) e no status
+  // Lista de convênios únicos para o filtro dropdown
+  const uniqueHealthPlans = useMemo(() => {
+    const plans = new Set<string>();
+    reportItems.forEach(item => {
+      if (item.healthPlan) plans.add(item.healthPlan);
+    });
+    return Array.from(plans).sort();
+  }, [reportItems]);
+
+  // Filtragem dos dados baseado na busca (nome do paciente ou psicólogo), status e convênio
   const filteredAndSortedItems = useMemo(() => {
     let result = [...reportItems];
 
     if (statusFilter !== 'todos') {
       result = result.filter(item => item.status === statusFilter);
+    }
+
+    if (planFilter !== 'todos') {
+      result = result.filter(item => item.healthPlan === planFilter);
     }
 
     if (searchTerm.trim() !== '') {
@@ -75,7 +89,22 @@ export const NeuroReportPage = () => {
     });
 
     return result;
-  }, [reportItems, searchTerm, statusFilter, sortField, sortDirection]);
+  }, [reportItems, searchTerm, statusFilter, planFilter, sortField, sortDirection]);
+
+  // Contagens para os botões das abas
+  const counts = useMemo(() => {
+    let emAndamento = 0;
+    let finalizado = 0;
+    reportItems.forEach(item => {
+      if (item.status === 'Em andamento') emAndamento++;
+      else if (item.status === 'Finalizado') finalizado++;
+    });
+    return {
+      emAndamento,
+      finalizado,
+      todos: reportItems.length,
+    };
+  }, [reportItems]);
 
   // Ícone indicador de ordenação
   const renderSortIcon = (field: SortKey) => {
@@ -141,6 +170,61 @@ export const NeuroReportPage = () => {
         </button>
       </div>
 
+      {/* Abas de Filtragem Rápida */}
+      <div className="flex border-b border-zinc-200 gap-1 print:hidden">
+        <button
+          onClick={() => setStatusFilter('Em andamento')}
+          className={cn(
+            "px-5 py-3 text-sm font-semibold border-b-2 transition-all flex items-center gap-2",
+            statusFilter === 'Em andamento'
+              ? "border-priori-navy text-priori-navy"
+              : "border-transparent text-zinc-400 hover:text-zinc-600"
+          )}
+        >
+          Em Andamento (Ativos)
+          <span className={cn(
+            "px-2 py-0.5 text-xs rounded-full font-bold",
+            statusFilter === 'Em andamento' ? "bg-priori-navy text-white" : "bg-zinc-100 text-zinc-500"
+          )}>
+            {counts.emAndamento}
+          </span>
+        </button>
+        <button
+          onClick={() => setStatusFilter('Finalizado')}
+          className={cn(
+            "px-5 py-3 text-sm font-semibold border-b-2 transition-all flex items-center gap-2",
+            statusFilter === 'Finalizado'
+              ? "border-priori-navy text-priori-navy"
+              : "border-transparent text-zinc-400 hover:text-zinc-600"
+          )}
+        >
+          Finalizados
+          <span className={cn(
+            "px-2 py-0.5 text-xs rounded-full font-bold",
+            statusFilter === 'Finalizado' ? "bg-priori-navy text-white" : "bg-zinc-100 text-zinc-500"
+          )}>
+            {counts.finalizado}
+          </span>
+        </button>
+        <button
+          onClick={() => setStatusFilter('todos')}
+          className={cn(
+            "px-5 py-3 text-sm font-semibold border-b-2 transition-all flex items-center gap-2",
+            statusFilter === 'todos'
+              ? "border-priori-navy text-priori-navy"
+              : "border-transparent text-zinc-400 hover:text-zinc-600"
+          )}
+        >
+          Todos
+          <span className={cn(
+            "px-2 py-0.5 text-xs rounded-full font-bold",
+            statusFilter === 'todos' ? "bg-priori-navy text-white" : "bg-zinc-100 text-zinc-500"
+          )}>
+            {counts.todos}
+          </span>
+        </button>
+      </div>
+
       {/* Controles de busca e filtros */}
       <div className="flex flex-col sm:flex-row items-center gap-4 bg-white p-4 rounded-2xl border border-zinc-100 shadow-sm print:hidden">
         <div className="relative flex-1 w-full">
@@ -154,15 +238,16 @@ export const NeuroReportPage = () => {
           />
         </div>
 
-        {/* Filtro de Status */}
+        {/* Filtro de Convênio */}
         <select
-          value={statusFilter}
-          onChange={e => setStatusFilter(e.target.value as any)}
-          className="w-full sm:w-48 bg-zinc-50/50 hover:bg-zinc-50 focus:bg-white border border-zinc-200 rounded-xl px-4 py-2.5 text-sm text-zinc-800 focus:ring-2 focus:ring-priori-navy/10 focus:border-priori-navy transition-all outline-none"
+          value={planFilter}
+          onChange={e => setPlanFilter(e.target.value)}
+          className="w-full sm:w-56 bg-zinc-50/50 hover:bg-zinc-50 focus:bg-white border border-zinc-200 rounded-xl px-4 py-2.5 text-sm text-zinc-800 focus:ring-2 focus:ring-priori-navy/10 focus:border-priori-navy transition-all outline-none font-medium"
         >
-          <option value="todos">Todos os Status</option>
-          <option value="Em andamento">Em andamento</option>
-          <option value="Finalizado">Finalizado</option>
+          <option value="todos">Todos os Convênios</option>
+          {uniqueHealthPlans.map(plan => (
+            <option key={plan} value={plan}>{plan}</option>
+          ))}
         </select>
         
         <div className="text-xs text-zinc-400 font-medium sm:ml-auto whitespace-nowrap">
@@ -187,6 +272,12 @@ export const NeuroReportPage = () => {
                   className="px-6 py-4 text-left text-xs font-bold text-zinc-500 uppercase tracking-wider cursor-pointer select-none hover:bg-zinc-100/30 transition-colors whitespace-nowrap"
                 >
                   Paciente {renderSortIcon('customerName')}
+                </th>
+                <th 
+                  onClick={() => handleSort('healthPlan')}
+                  className="px-6 py-4 text-left text-xs font-bold text-zinc-500 uppercase tracking-wider cursor-pointer select-none hover:bg-zinc-100/30 transition-colors whitespace-nowrap"
+                >
+                  Convênio {renderSortIcon('healthPlan')}
                 </th>
                 <th 
                   onClick={() => handleSort('status')}
@@ -237,7 +328,10 @@ export const NeuroReportPage = () => {
                 filteredAndSortedItems.map((item) => (
                   <tr 
                     key={`${item.psychologistId}-${item.customerId}`} 
-                    className="hover:bg-zinc-50/40 transition-colors group"
+                    className={cn(
+                      "hover:bg-zinc-50/40 transition-all group",
+                      item.status === 'Finalizado' && "opacity-60 bg-zinc-50/30"
+                    )}
                   >
                     {/* Psicólogo */}
                     <td className="px-6 py-4 whitespace-nowrap font-medium text-zinc-800">
@@ -251,7 +345,14 @@ export const NeuroReportPage = () => {
 
                     {/* Paciente */}
                     <td className="px-6 py-4 whitespace-nowrap text-zinc-700">
-                      <span className="font-medium">{item.customerName}</span>
+                      <span className="font-semibold text-zinc-900">{item.customerName}</span>
+                    </td>
+
+                    {/* Convênio */}
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-semibold bg-zinc-100 text-zinc-700 border border-zinc-200/50">
+                        {item.healthPlan}
+                      </span>
                     </td>
 
                     {/* Status */}
@@ -262,7 +363,7 @@ export const NeuroReportPage = () => {
                           Em andamento
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-zinc-100 text-zinc-600 border border-zinc-200">
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-zinc-150 text-zinc-500 border border-zinc-250">
                           <span className="w-1.5 h-1.5 rounded-full bg-zinc-400"></span>
                           Finalizado
                         </span>
@@ -330,7 +431,7 @@ export const NeuroReportPage = () => {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={9} className="px-6 py-12 text-center text-zinc-400">
+                  <td colSpan={10} className="px-6 py-12 text-center text-zinc-400">
                     Nenhum registro de Avaliação Neuropsicológica encontrado.
                   </td>
                 </tr>
