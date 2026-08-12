@@ -45,15 +45,6 @@ const STATUS_THEME: Record<BillingBatchStatus, StatusTheme> = {
     headerText: 'text-blue-800',
     iconWrap: 'bg-blue-100 text-blue-600',
   },
-  [BillingBatchStatus.PARTIALLY_PAID]: {
-    label: 'Parcialmente Pagos',
-    icon: <AlertCircle size={16} />,
-    badgeCls: 'bg-orange-50 text-orange-700 border-orange-200',
-    headerBg: 'bg-orange-50/60 hover:bg-orange-50',
-    headerBorder: 'border-l-orange-400',
-    headerText: 'text-orange-800',
-    iconWrap: 'bg-orange-100 text-orange-600',
-  },
   [BillingBatchStatus.PAID]: {
     label: 'Pagos pelo Plano',
     icon: <CheckCircle2 size={16} />,
@@ -69,7 +60,6 @@ const STATUS_THEME: Record<BillingBatchStatus, StatusTheme> = {
 const STATUS_ORDER: BillingBatchStatus[] = [
   BillingBatchStatus.DRAFT,
   BillingBatchStatus.SENT,
-  BillingBatchStatus.PARTIALLY_PAID,
   BillingBatchStatus.PAID,
 ];
 
@@ -78,7 +68,6 @@ const StatusBadge: React.FC<{ status: BillingBatchStatus }> = ({ status }) => {
   const shortLabel =
     status === BillingBatchStatus.SENT ? 'Faturamento Confirmado'
     : status === BillingBatchStatus.DRAFT ? 'Lote Previsto'
-    : status === BillingBatchStatus.PARTIALLY_PAID ? 'Parcialmente Pago'
     : 'Pago pelo Plano';
   return (
     <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full border ${theme.badgeCls}`}>
@@ -223,7 +212,7 @@ export const BillingBatchTable: React.FC<Props> = ({
                   onClick={() => onDetails(batch)}
                   className="text-xs"
                 >
-                  {batch.status === BillingBatchStatus.SENT || batch.status === BillingBatchStatus.PARTIALLY_PAID
+                  {batch.status === BillingBatchStatus.SENT
                     ? 'Detalhes / Editar'
                     : 'Detalhes'}
                 </Button>

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { format } from 'date-fns';
 import { BillingBatch, Appointment, Customer } from '../../services/types';
 import { AppointmentPaymentStatus } from '../../hooks/useBillingData';
@@ -16,7 +16,7 @@ interface Props {
   getAppPrice: (app: Appointment) => number;
   onUpdateStatus: (id: string, update: Partial<AppointmentPaymentStatus>) => void;
   onClose: () => void;
-  onSubmit: () => void;
+  onSubmit: (paymentDate: string) => void;
 }
 
 export const RegisterPaymentModal: React.FC<Props> = ({
@@ -29,20 +29,42 @@ export const RegisterPaymentModal: React.FC<Props> = ({
   onUpdateStatus,
   onClose,
   onSubmit,
-}) => (
-  <Modal
-    isOpen={isOpen}
-    onClose={onClose}
-    title={`Registrar Pagamento - Lote #${batch?.batchNumber}`}
-    className="max-w-4xl"
-  >
-    {batch && (
-      <div className="space-y-6">
-        <p className="text-sm text-zinc-500">
-          Indique o status de cada atendimento deste lote. Para glosas, informe o motivo e a resolução.
-        </p>
+}) => {
+  const [paymentDate, setPaymentDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
 
-        <div className="space-y-3 max-h-96 overflow-y-auto pr-2">
+  return (
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title={`Registrar Pagamento - Lote #${batch?.batchNumber}`}
+      className="max-w-4xl"
+    >
+      {batch && (
+        <div className="space-y-6">
+          <p className="text-sm text-zinc-500">
+            Indique o status de cada atendimento deste lote. Para glosas, informe o motivo e a resolução.
+          </p>
+
+          <div className="p-4 bg-blue-50/50 rounded-2xl border border-blue-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <label className="block text-sm font-semibold text-priori-navy mb-1">
+                Data de Recebimento da Operadora
+              </label>
+              <p className="text-xs text-zinc-500">
+                Esta data será gravada como a data de liquidação oficial do lote e servirá de base para o repasse.
+              </p>
+            </div>
+            <div className="w-full sm:w-48">
+              <Input
+                type="date"
+                value={paymentDate}
+                onChange={(e) => setPaymentDate(e.target.value)}
+                className="w-full"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-3 max-h-96 overflow-y-auto pr-2">
           {batch.appointmentIds.map(id => {
             const app = appointments.find(a => a.id === id);
             const customer = customers.find(c => c.id === app?.customerId);
@@ -121,11 +143,12 @@ export const RegisterPaymentModal: React.FC<Props> = ({
           <Button variant="outline" onClick={onClose}>
             Cancelar
           </Button>
-          <Button onClick={onSubmit} className="bg-priori-navy">
+          <Button onClick={() => onSubmit(paymentDate)} className="bg-priori-navy">
             Registrar Pagamento do Plano
           </Button>
         </div>
       </div>
     )}
   </Modal>
-);
+  );
+};

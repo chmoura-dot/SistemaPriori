@@ -272,9 +272,8 @@ export function createBillingActions({
     const resolvedCount = batchApps.filter(a => a.billingStatus === 'paid' || a.billingStatus === 'denied').length;
 
     let newStatus: BillingBatchStatus;
-    if (resolvedCount === 0) newStatus = BillingBatchStatus.SENT;
-    else if (resolvedCount < batchApps.length) newStatus = BillingBatchStatus.PARTIALLY_PAID;
-    else newStatus = BillingBatchStatus.PAID;
+    if (resolvedCount === batchApps.length) newStatus = BillingBatchStatus.PAID;
+    else newStatus = BillingBatchStatus.SENT;
 
     // Se o status não mudou (e não é PAID, que sempre reescreve paidAt), evita
     // um UPDATE redundante — mas ainda devolve o status atual para que o
@@ -423,9 +422,8 @@ export function createBillingActions({
       const resolvedCount = remainingApps.filter(a => a.billingStatus === 'paid' || a.billingStatus === 'denied').length;
 
       let newStatus: BillingBatchStatus;
-      if (resolvedCount === 0) newStatus = BillingBatchStatus.SENT;
-      else if (resolvedCount < remainingApps.length) newStatus = BillingBatchStatus.PARTIALLY_PAID;
-      else newStatus = BillingBatchStatus.PAID;
+      if (resolvedCount === remainingApps.length) newStatus = BillingBatchStatus.PAID;
+      else newStatus = BillingBatchStatus.SENT;
 
       const batchUpdates: Partial<BillingBatch> = {
         appointmentIds: remainingIds,
@@ -537,9 +535,8 @@ export function createBillingActions({
         .filter((a): a is Appointment => !!a && getAppPrice(a) > 0);
       const resolvedCount = newApps.filter(a => a.billingStatus === 'paid' || a.billingStatus === 'denied').length;
       let newStatus: BillingBatchStatus;
-      if (resolvedCount === 0) newStatus = BillingBatchStatus.SENT;
-      else if (resolvedCount < newApps.length) newStatus = BillingBatchStatus.PARTIALLY_PAID;
-      else newStatus = BillingBatchStatus.PAID;
+      if (resolvedCount === newApps.length) newStatus = BillingBatchStatus.PAID;
+      else newStatus = BillingBatchStatus.SENT;
 
       const batchUpdates: Partial<BillingBatch> = {
         appointmentIds: newIds,
@@ -570,17 +567,20 @@ export function createBillingActions({
   };
 
 
-  const submitPayment = async () => {
-
+  const submitPayment = async (paymentDate: string) => {
     if (!batchToPay) return;
     try {
+      const isoPaidAt = paymentDate ? paymentDate + 'T12:00:00.000Z' : new Date().toISOString();
       await Promise.all(batchToPay.appointmentIds.map(id => {
-        const statusData = appointmentStatuses[id];
+        const statusData = appointmentStatuses[id] || { status: 'paid' };
         return api.updateAppointment(id, {
-          billingStatus: statusData.status, denialReason: statusData.reason, denialResolution: statusData.resolution
+          billingStatus: statusData.status,
+          denialReason: statusData.reason,
+          denialResolution: statusData.resolution,
+          paidAt: statusData.status === 'paid' ? isoPaidAt : null as any
         });
       }));
-      await api.updateBillingBatch(batchToPay.id, { status: BillingBatchStatus.PAID, paidAt: new Date().toISOString() });
+      await api.updateBillingBatch(batchToPay.id, { status: BillingBatchStatus.PAID, paidAt: isoPaidAt });
       setIsPaymentModalOpen(false);
       setBatchToPay(null);
       fetchData();

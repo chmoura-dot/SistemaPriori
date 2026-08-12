@@ -599,13 +599,13 @@ export const RepassePage = () => {
     setExpandedRepasseIds(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
-  // Lotes pagos (total ou parcialmente) com atendimentos ainda não repassados.
+  // Lotes pagos com atendimentos ainda não repassados.
   // Com pagamento individual, um mesmo lote pode gerar vários repasses ao longo
   // do tempo — por isso rastreamos os atendimentos JÁ repassados (por atendimento),
   // e não mais bloqueamos o par psicólogo+lote inteiro.
   const pendingGroups = useMemo(() => {
     const eligibleBatches = batches.filter(
-      b => b.status === BillingBatchStatus.PAID || b.status === BillingBatchStatus.PARTIALLY_PAID
+      b => b.status === BillingBatchStatus.PAID
     );
     const groups: { psyId: string; batch: BillingBatch; appIds: string[]; total: number; divergences: RepassDivergence[] }[] = [];
 
