@@ -47,7 +47,13 @@ export function useNeuroReportData() {
   }, []);
 
   const reportItems = useMemo<NeuroReportItem[]>(() => {
+    console.log('[useNeuroReportData] Iniciando processamento useMemo...');
+    console.log('[useNeuroReportData] Bruto appointments:', appointments);
+    console.log('[useNeuroReportData] Bruto customers:', customers);
+    console.log('[useNeuroReportData] Bruto psychologists:', psychologists);
+
     if (appointments.length === 0 || customers.length === 0 || psychologists.length === 0) {
+      console.log('[useNeuroReportData] Um ou mais arrays estão vazios, retornando []');
       return [];
     }
 
@@ -59,9 +65,12 @@ export function useNeuroReportData() {
 
     for (const app of appointments) {
       if (app.isInternal) continue; // Desconsiderar compromissos internos
-      if (!app.customerId || !app.psychologistId) continue;
+      if (!app.customerId || !app.psychologistId) {
+        console.warn('[useNeuroReportData] Agendamento sem customerId ou psychologistId:', app);
+        continue;
+      }
 
-      const key = `${app.psychologistId}-${app.customerId}`;
+      const key = `${app.psychologistId}|${app.customerId}`;
       let list = groups.get(key);
       if (!list) {
         list = [];
@@ -70,19 +79,24 @@ export function useNeuroReportData() {
       list.push(app);
     }
 
+    console.log('[useNeuroReportData] Grupos formados:', groups.size, Array.from(groups.keys()));
+
     const todayStr = new Date().toISOString().split('T')[0];
     const todayMs = new Date(todayStr + 'T00:00:00').getTime();
 
     const items: NeuroReportItem[] = [];
 
     for (const [key, groupApps] of groups.entries()) {
-      const [psychologistId, customerId] = key.split('-');
+      const [psychologistId, customerId] = key.split('|');
       
       const customer = customerMap.get(customerId);
       const psychologist = psychMap.get(psychologistId);
 
       // Só exibe se encontrar ambos para manter a consistência relacional
-      if (!customer || !psychologist) continue;
+      if (!customer || !psychologist) {
+        console.warn(`[useNeuroReportData] Órfão encontrado. Paciente encontrado: ${!!customer}, Psicólogo encontrado: ${!!psychologist} para a chave: ${key}`);
+        continue;
+      }
 
       // Ordenar agendamentos por data crescente
       const sortedApps = [...groupApps].sort((a, b) => a.date.localeCompare(b.date));
@@ -139,6 +153,8 @@ export function useNeuroReportData() {
         psychologistAbsencesCount,
       });
     }
+
+    console.log('[useNeuroReportData] Itens finais gerados para o relatório:', items);
 
     // Ordenação padrão decrescente por Tempo de Ciclo
     return items.sort((a, b) => b.cycleTimeDays - a.cycleTimeDays);

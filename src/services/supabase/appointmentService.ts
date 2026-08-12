@@ -1,6 +1,6 @@
 // Métodos de leitura e exclusão de agendamentos
 import { supabase, toAppointment, APPOINTMENT_COLUMNS } from './helpers';
-import { Appointment } from '../types';
+import { Appointment, AppointmentType } from '../types';
 
 export const appointmentReadService = {
   getAppointments: async (date?: string): Promise<Appointment[]> => {
@@ -156,7 +156,7 @@ export const appointmentReadService = {
     const { data, error } = await supabase
       .from('appointments')
       .select(APPOINTMENT_COLUMNS)
-      .eq('type', 'Avaliação Neuropsicológica')
+      .eq('type', AppointmentType.NEUROPSICOLOGICA)
       .order('date', { ascending: true })
       .limit(10000);
     if (error) throw new Error(error.message);
