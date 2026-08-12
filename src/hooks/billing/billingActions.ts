@@ -238,7 +238,16 @@ export function createBillingActions({
   const handleMarkAsPaid = (batch: BillingBatch) => {
     setBatchToPay(batch);
     const initialStatuses: Record<string, AppointmentPaymentStatus> = {};
-    batch.appointmentIds.forEach(id => { initialStatuses[id] = { status: 'paid' }; });
+    batch.appointmentIds.forEach(id => {
+      const app = appointments.find(a => a.id === id);
+      if (app?.billingStatus === 'paid') {
+        initialStatuses[id] = { status: 'paid' };
+      } else if (app?.billingStatus === 'denied') {
+        initialStatuses[id] = { status: 'denied', reason: app.denialReason || undefined, resolution: (app.denialResolution as any) || undefined };
+      } else {
+        initialStatuses[id] = { status: 'paid' };
+      }
+    });
     setAppointmentStatuses(initialStatuses);
     setIsPaymentModalOpen(true);
   };
@@ -255,6 +264,7 @@ export function createBillingActions({
   const recalcBatchStatus = async (
     batchId: string,
     appsOverride?: Appointment[],
+    customPaidAt?: string,
   ): Promise<{ status: BillingBatchStatus; paidAt?: string } | undefined> => {
     const batch = batches.find(b => b.id === batchId);
     if (!batch || batch.status === BillingBatchStatus.DRAFT) return;
@@ -272,8 +282,13 @@ export function createBillingActions({
     const resolvedCount = batchApps.filter(a => a.billingStatus === 'paid' || a.billingStatus === 'denied').length;
 
     let newStatus: BillingBatchStatus;
-    if (resolvedCount === batchApps.length) newStatus = BillingBatchStatus.PAID;
-    else newStatus = BillingBatchStatus.SENT;
+    if (resolvedCount === batchApps.length) {
+      newStatus = BillingBatchStatus.PAID;
+    } else if (resolvedCount > 0) {
+      newStatus = BillingBatchStatus.PARTIALLY_PAID;
+    } else {
+      newStatus = BillingBatchStatus.SENT;
+    }
 
     // Se o status não mudou (e não é PAID, que sempre reescreve paidAt), evita
     // um UPDATE redundante — mas ainda devolve o status atual para que o
@@ -282,7 +297,7 @@ export function createBillingActions({
       return { status: newStatus, paidAt: batch.paidAt };
     }
 
-    const paidAt = newStatus === BillingBatchStatus.PAID ? new Date().toISOString() : undefined;
+    const paidAt = newStatus === BillingBatchStatus.PAID ? (customPaidAt || batch.paidAt || new Date().toISOString()) : null as any;
     const updates: Partial<BillingBatch> = { status: newStatus, paidAt };
     await api.updateBillingBatch(batchId, updates);
     return { status: newStatus, paidAt };
@@ -573,14 +588,33 @@ export function createBillingActions({
       const isoPaidAt = paymentDate ? paymentDate + 'T12:00:00.000Z' : new Date().toISOString();
       await Promise.all(batchToPay.appointmentIds.map(id => {
         const statusData = appointmentStatuses[id] || { status: 'paid' };
+        const isPaid = statusData.status === 'paid';
+        const isDenied = statusData.status === 'denied';
         return api.updateAppointment(id, {
-          billingStatus: statusData.status,
-          denialReason: statusData.reason,
-          denialResolution: statusData.resolution,
-          paidAt: statusData.status === 'paid' ? isoPaidAt : null as any
+          billingStatus: isPaid ? 'paid' : (isDenied ? 'denied' : null as any),
+          denialReason: isDenied ? statusData.reason : null as any,
+          denialResolution: isDenied ? statusData.resolution : null as any,
+          paidAt: isPaid ? isoPaidAt : null as any
         });
       }));
-      await api.updateBillingBatch(batchToPay.id, { status: BillingBatchStatus.PAID, paidAt: isoPaidAt });
+
+      // Reconstruct updated appointments list to feed to recalcBatchStatus
+      const updatedApps = appointments.map(a => {
+        if (!batchToPay.appointmentIds.includes(a.id)) return a;
+        const statusData = appointmentStatuses[a.id] || { status: 'paid' };
+        const isPaid = statusData.status === 'paid';
+        const isDenied = statusData.status === 'denied';
+        return {
+          ...a,
+          billingStatus: isPaid ? ('paid' as const) : (isDenied ? ('denied' as const) : null),
+          denialReason: isDenied ? statusData.reason : undefined,
+          denialResolution: isDenied ? statusData.resolution : undefined,
+          paidAt: isPaid ? isoPaidAt : undefined
+        };
+      });
+
+      await recalcBatchStatus(batchToPay.id, updatedApps, isoPaidAt);
+
       setIsPaymentModalOpen(false);
       setBatchToPay(null);
       fetchData();

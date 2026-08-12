@@ -63,6 +63,7 @@ export enum AppointmentStatus {
 export enum BillingBatchStatus {
   DRAFT = 'draft',
   SENT = 'sent',
+  PARTIALLY_PAID = 'partially_paid',
   PAID = 'paid'
 }
 

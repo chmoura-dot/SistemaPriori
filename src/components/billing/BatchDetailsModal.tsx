@@ -84,9 +84,9 @@ export const BatchDetailsModal: React.FC<Props> = ({
     setEditValue('');
     setAddSearch('');
     setRemoveTargetId(null);
-    // Lotes editáveis (enviados) já abrem com a seção de
+    // Lotes editáveis (enviados e parcialmente pagos) já abrem com a seção de
     // "Adicionar atendimento ao lote" expandida, deixando a edição à mão.
-    const editable = batch?.status === BillingBatchStatus.SENT;
+    const editable = batch?.status === BillingBatchStatus.SENT || batch?.status === BillingBatchStatus.PARTIALLY_PAID;
     setIsAddOpen(!!editable);
   }, [batch?.id]);
 
@@ -146,9 +146,11 @@ export const BatchDetailsModal: React.FC<Props> = ({
               <span className="font-medium text-priori-navy">
                 {batch.status === BillingBatchStatus.PAID
                   ? 'Pago pelo Plano'
-                  : batch.status === BillingBatchStatus.DRAFT
-                    ? 'Lote Previsto'
-                    : 'Faturamento Confirmado'}
+                  : batch.status === BillingBatchStatus.PARTIALLY_PAID
+                    ? 'Parcialmente Pago'
+                    : batch.status === BillingBatchStatus.DRAFT
+                      ? 'Lote Previsto'
+                      : 'Faturamento Confirmado'}
               </span>
             </div>
 

@@ -605,7 +605,7 @@ export const RepassePage = () => {
   // e não mais bloqueamos o par psicólogo+lote inteiro.
   const pendingGroups = useMemo(() => {
     const eligibleBatches = batches.filter(
-      b => b.status === BillingBatchStatus.PAID
+      b => b.status === BillingBatchStatus.PAID || b.status === BillingBatchStatus.PARTIALLY_PAID
     );
     const groups: { psyId: string; batch: BillingBatch; appIds: string[]; total: number; divergences: RepassDivergence[] }[] = [];
 

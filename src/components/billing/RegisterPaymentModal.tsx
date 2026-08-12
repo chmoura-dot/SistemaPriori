@@ -64,6 +64,37 @@ export const RegisterPaymentModal: React.FC<Props> = ({
             </div>
           </div>
 
+          {/* Resumo Financeiro do Pagamento */}
+          {(() => {
+            const batchApps = batch.appointmentIds.map(id => {
+              const app = appointments.find(a => a.id === id);
+              const statusData = appointmentStatuses[id] || { status: 'paid' };
+              const price = app ? getAppPrice(app) : 0;
+              return { price, status: statusData.status };
+            });
+
+            const totalPaid = batchApps.filter(x => x.status === 'paid').reduce((sum, x) => sum + x.price, 0);
+            const totalDenied = batchApps.filter(x => x.status === 'denied').reduce((sum, x) => sum + x.price, 0);
+            const totalPending = batchApps.filter(x => x.status === 'pending').reduce((sum, x) => sum + x.price, 0);
+
+            return (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 p-4 bg-zinc-50 border border-zinc-100 rounded-2xl">
+                <div className="text-center sm:text-left">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Total Recebido (Pago)</span>
+                  <p className="text-lg font-bold text-emerald-600">{formatCurrency(totalPaid)}</p>
+                </div>
+                <div className="text-center sm:text-left border-y sm:border-y-0 sm:border-x border-zinc-200/60 py-2 sm:py-0 sm:px-4">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Glosado</span>
+                  <p className="text-lg font-bold text-red-600">{formatCurrency(totalDenied)}</p>
+                </div>
+                <div className="text-center sm:text-left">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Restante (Pendente)</span>
+                  <p className="text-lg font-bold text-amber-600">{formatCurrency(totalPending)}</p>
+                </div>
+              </div>
+            );
+          })()}
+
           <div className="space-y-3 max-h-96 overflow-y-auto pr-2">
           {batch.appointmentIds.map(id => {
             const app = appointments.find(a => a.id === id);
@@ -82,6 +113,7 @@ export const RegisterPaymentModal: React.FC<Props> = ({
                   </div>
                   <div className="flex bg-white rounded-xl border border-zinc-200 p-1">
                     <button
+                      type="button"
                       onClick={() => onUpdateStatus(id, { status: 'paid' })}
                       className={cn(
                         'px-3 py-1.5 text-xs font-semibold rounded-lg transition-all',
@@ -93,6 +125,19 @@ export const RegisterPaymentModal: React.FC<Props> = ({
                       Pago
                     </button>
                     <button
+                      type="button"
+                      onClick={() => onUpdateStatus(id, { status: 'pending' })}
+                      className={cn(
+                        'px-3 py-1.5 text-xs font-semibold rounded-lg transition-all',
+                        statusData.status === 'pending'
+                          ? 'bg-amber-500 text-white shadow-sm'
+                          : 'text-zinc-500 hover:bg-zinc-50'
+                      )}
+                    >
+                      Pendente
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => onUpdateStatus(id, { status: 'denied', resolution: 'accepted' })}
                       className={cn(
                         'px-3 py-1.5 text-xs font-semibold rounded-lg transition-all',

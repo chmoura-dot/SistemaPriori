@@ -45,6 +45,15 @@ const STATUS_THEME: Record<BillingBatchStatus, StatusTheme> = {
     headerText: 'text-blue-800',
     iconWrap: 'bg-blue-100 text-blue-600',
   },
+  [BillingBatchStatus.PARTIALLY_PAID]: {
+    label: 'Parcialmente Pagos',
+    icon: <Clock size={16} />,
+    badgeCls: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+    headerBg: 'bg-indigo-50/60 hover:bg-indigo-50',
+    headerBorder: 'border-l-indigo-400',
+    headerText: 'text-indigo-800',
+    iconWrap: 'bg-indigo-100 text-indigo-600',
+  },
   [BillingBatchStatus.PAID]: {
     label: 'Pagos pelo Plano',
     icon: <CheckCircle2 size={16} />,
@@ -60,6 +69,7 @@ const STATUS_THEME: Record<BillingBatchStatus, StatusTheme> = {
 const STATUS_ORDER: BillingBatchStatus[] = [
   BillingBatchStatus.DRAFT,
   BillingBatchStatus.SENT,
+  BillingBatchStatus.PARTIALLY_PAID,
   BillingBatchStatus.PAID,
 ];
 
@@ -68,6 +78,7 @@ const StatusBadge: React.FC<{ status: BillingBatchStatus }> = ({ status }) => {
   const shortLabel =
     status === BillingBatchStatus.SENT ? 'Faturamento Confirmado'
     : status === BillingBatchStatus.DRAFT ? 'Lote Previsto'
+    : status === BillingBatchStatus.PARTIALLY_PAID ? 'Parcialmente Pago'
     : 'Pago pelo Plano';
   return (
     <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full border ${theme.badgeCls}`}>
@@ -212,12 +223,12 @@ export const BillingBatchTable: React.FC<Props> = ({
                   onClick={() => onDetails(batch)}
                   className="text-xs"
                 >
-                  {batch.status === BillingBatchStatus.SENT
+                  {batch.status === BillingBatchStatus.SENT || batch.status === BillingBatchStatus.PARTIALLY_PAID
                     ? 'Detalhes / Editar'
                     : 'Detalhes'}
                 </Button>
 
-                {batch.status === BillingBatchStatus.SENT && (
+                {(batch.status === BillingBatchStatus.SENT || batch.status === BillingBatchStatus.PARTIALLY_PAID) && (
                   <Button
                     size="sm"
                     onClick={() => onMarkAsPaid(batch)}

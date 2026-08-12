@@ -130,6 +130,7 @@ export const FinancialPage = () => {
 
       let status: 'pending' | 'partial' | 'paid' = 'pending';
       if (batch.status === BillingBatchStatus.PAID) status = 'paid';
+      else if (batch.status === BillingBatchStatus.PARTIALLY_PAID) status = 'partial';
 
       transactions.push({
         id: `batch-${batch.id}`,

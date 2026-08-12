@@ -19,7 +19,7 @@ export interface PlanProcedureInfo {
 }
 
 export interface AppointmentPaymentStatus {
-  status: 'paid' | 'denied';
+  status: 'paid' | 'denied' | 'pending';
   reason?: string;
   resolution?: 'accepted' | 'appealed';
 }

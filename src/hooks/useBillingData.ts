@@ -203,13 +203,37 @@ export function useBillingData() {
 
   // ─── Valores derivados ────────────────────────────────────────────────────
   const draftBatches = batches.filter(b => b.status === BillingBatchStatus.DRAFT);
-  // Lotes ainda não quitados totalmente (enviados)
+  // Lotes ainda não quitados totalmente (enviados ou parcialmente pagos)
   const pendingBatches = batches.filter(
-    b => b.status === BillingBatchStatus.SENT
+    b => b.status === BillingBatchStatus.SENT || b.status === BillingBatchStatus.PARTIALLY_PAID
   );
-  const totalPendingAmount = pendingBatches.reduce((acc, b) => acc + b.totalAmount, 0);
+  const totalPendingAmount = pendingBatches.reduce((acc, b) => {
+    if (b.status === BillingBatchStatus.SENT) {
+      return acc + b.totalAmount;
+    } else if (b.status === BillingBatchStatus.PARTIALLY_PAID) {
+      const batchApps = appointments.filter(a => b.appointmentIds.includes(a.id) && !a.isInternal && !a.billingIgnored);
+      const paidSum = batchApps
+        .filter(a => a.billingStatus === 'paid')
+        .reduce((sum, a) => sum + helpers.getAppPrice(a), 0);
+      const remaining = Math.max(0, b.totalAmount - paidSum);
+      return acc + remaining;
+    }
+    return acc;
+  }, 0);
+
   const paidBatches = batches.filter(b => b.status === BillingBatchStatus.PAID);
-  const totalPaidAmount = paidBatches.reduce((acc, b) => acc + b.totalAmount, 0);
+  const totalPaidAmount = batches.reduce((acc, b) => {
+    if (b.status === BillingBatchStatus.PAID) {
+      return acc + b.totalAmount;
+    } else if (b.status === BillingBatchStatus.PARTIALLY_PAID) {
+      const batchApps = appointments.filter(a => b.appointmentIds.includes(a.id) && !a.isInternal && !a.billingIgnored);
+      const paidSum = batchApps
+        .filter(a => a.billingStatus === 'paid')
+        .reduce((sum, a) => sum + helpers.getAppPrice(a), 0);
+      return acc + paidSum;
+    }
+    return acc;
+  }, 0);
 
   const totalDenied = appointments.filter(a => a.billingStatus === 'denied').length;
   const totalDraftAmount = draftBatches.reduce((acc, b) => acc + b.totalAmount, 0);
