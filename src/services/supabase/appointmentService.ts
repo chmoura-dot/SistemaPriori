@@ -152,6 +152,17 @@ export const appointmentReadService = {
     return validCandidates;
   },
 
+  getNeuroAppointments: async (): Promise<Appointment[]> => {
+    const { data, error } = await supabase
+      .from('appointments')
+      .select(APPOINTMENT_COLUMNS)
+      .eq('type', 'Avaliação Neuropsicológica')
+      .order('date', { ascending: true })
+      .limit(10000);
+    if (error) throw new Error(error.message);
+    return (data ?? []).map(toAppointment);
+  },
+
   deleteAppointment: async (id: string): Promise<void> => {
     const { error } = await supabase.from('appointments').delete().eq('id', id);
     if (error) throw new Error(error.message);

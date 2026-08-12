@@ -94,6 +94,9 @@ const cachedReads = {
 
   getAppointmentsNeedingRenewal: () =>
     apiCache.get('appointments:needingRenewal', CACHE_TTL.SHORT, supabaseService.getAppointmentsNeedingRenewal),
+
+  getNeuroAppointments: () =>
+    apiCache.get('appointments:neuro', CACHE_TTL.SHORT, supabaseService.getNeuroAppointments),
 };
 
 // ── Escritas com invalidação automática ──────────────────────────────────────

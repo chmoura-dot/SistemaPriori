@@ -65,6 +65,7 @@ export interface AppService {
   getAppointmentsByRange: (startDate: string, endDate: string) => Promise<Appointment[]>;
   getAppointmentsByCustomer: (customerId: string) => Promise<Appointment[]>;
   getAppointmentsNeedingRenewal: () => Promise<Appointment[]>;
+  getNeuroAppointments: () => Promise<Appointment[]>;
   createAppointment: (appointment: Omit<Appointment, 'id' | 'createdAt' | 'confirmedPatient' | 'confirmedPsychologist'>) => Promise<Appointment>;
   updateAppointment: (id: string, appointment: Partial<Appointment>) => Promise<Appointment>;
   /**
