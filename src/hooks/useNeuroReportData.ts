@@ -13,6 +13,7 @@ export interface NeuroReportItem {
   sessionsPerformedCount: number;
   patientAbsencesCount: number;
   psychologistAbsencesCount: number;
+  status: 'Em andamento' | 'Finalizado';
 }
 
 export function useNeuroReportData() {
@@ -147,6 +148,10 @@ export function useNeuroReportData() {
         }
       }
 
+      // Status do ciclo: se houver pelo menos um agendamento não cancelado com data >= hoje, está em andamento.
+      const hasActiveFutureOrToday = sortedApps.some(app => app.status !== 'canceled' && app.date >= todayStr);
+      const status: 'Em andamento' | 'Finalizado' = hasActiveFutureOrToday ? 'Em andamento' : 'Finalizado';
+
       items.push({
         psychologistId,
         psychologistName: psychologist.name,
@@ -158,6 +163,7 @@ export function useNeuroReportData() {
         sessionsPerformedCount,
         patientAbsencesCount,
         psychologistAbsencesCount,
+        status,
       });
     }
 

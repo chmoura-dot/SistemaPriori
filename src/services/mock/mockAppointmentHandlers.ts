@@ -1,6 +1,6 @@
 import {
   Appointment, AppointmentStatus, AttendanceMode,
-  BillingBatch, Customer, Plan,
+  BillingBatch, Customer, Plan, AppointmentType,
 } from '../types';
 import { STORAGE_KEYS, delay, getFromStorage, saveToStorage } from './mockData';
 
@@ -146,6 +146,12 @@ export const mockAppointmentHandlers = {
     await delay(300);
     const list = getFromStorage<Appointment>(STORAGE_KEYS.APPOINTMENTS);
     return list.filter(a => a.customerId === customerId);
+  },
+
+  getNeuroAppointments: async (): Promise<Appointment[]> => {
+    await delay(300);
+    const list = getFromStorage<Appointment>(STORAGE_KEYS.APPOINTMENTS);
+    return list.filter(a => a.type === AppointmentType.NEUROPSICOLOGICA);
   },
 
   getAppointmentsNeedingRenewal: async (): Promise<Appointment[]> => {

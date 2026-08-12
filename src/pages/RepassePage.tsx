@@ -1063,7 +1063,10 @@ export const RepassePage = () => {
                                       {groupApps.map(app => {
                                         const customer = customers.find(c => c.id === app.customerId);
                                         const pricingCtx = { customers, plans, appointments };
-                                        const repassVal = getPhaseRepassValue(app, customers, plans, psy, pricingCtx, 1);
+                                        let repassVal = getRepassValue(app, customers, plans, psy, pricingCtx);
+                                        if (app.repassPhase1RepasseId || app.repassPhase2RepasseId) {
+                                          repassVal = Math.round(repassVal * 100 * 0.5) / 100;
+                                        }
                                         return (
                                           <tr key={app.id} className="hover:bg-zinc-50/50">
                                             <td className="px-4 py-2 font-medium text-priori-navy">{customer?.name ?? '—'}</td>
