@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
   AlertTriangle,
   ArrowRightLeft,
+  Calendar,
   CheckCircle2,
   Clock,
   FileText,
@@ -10,6 +11,7 @@ import {
   Plus,
   Trash2,
   Filter,
+  User,
   X,
   ChevronDown,
   ChevronUp,
@@ -851,63 +853,61 @@ export const RepassePage = () => {
 
       {/* Barra de Filtros */}
       {isFiltersOpen && (
-        <div className="bg-white rounded-2xl border border-zinc-100 p-6 shadow-sm space-y-4 animate-in fade-in slide-in-from-top-2 duration-200">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* Psicólogo */}
-            <div>
-              <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-2">Psicólogo(a)</label>
-              <select
-                value={filterPsyId}
-                onChange={(e) => setFilterPsyId(e.target.value)}
-                className="w-full rounded-xl border border-zinc-200 bg-zinc-50 text-sm px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-priori-navy/30 focus:border-priori-navy transition-all"
-              >
-                <option value="">Todos os psicólogos</option>
-                {psychologists
-                  .filter(p => p.active)
-                  .map(psy => (
-                    <option key={psy.id} value={psy.id}>{psy.name}</option>
-                  ))
-                }
-              </select>
-            </div>
+        <div className="flex flex-col md:flex-row items-end gap-4 bg-white p-5 rounded-2xl border border-zinc-100 shadow-sm animate-in fade-in slide-in-from-top-2 duration-200">
+          {/* Psicólogo */}
+          <div className="flex-1 w-full">
+            <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5 ml-1">Psicólogo(a)</label>
+            <select
+              value={filterPsyId}
+              onChange={(e) => setFilterPsyId(e.target.value)}
+              className="w-full bg-zinc-50/50 hover:bg-zinc-50 focus:bg-white border border-zinc-200 rounded-xl px-3.5 py-2.5 text-sm text-zinc-800 focus:ring-2 focus:ring-priori-navy/10 focus:border-priori-navy transition-all outline-none font-medium"
+            >
+              <option value="">Todos os psicólogos</option>
+              {psychologists
+                .filter(p => p.active)
+                .map(psy => (
+                  <option key={psy.id} value={psy.id}>{psy.name}</option>
+                ))
+              }
+            </select>
+          </div>
 
-            {/* Mês de Referência */}
-            <div>
-              <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-2">Mês de Referência</label>
-              <MonthSelector
-                value={filterMonth}
-                onChange={setFilterMonth}
-              />
-            </div>
+          {/* Mês de Referência */}
+          <div className="flex-1 w-full">
+            <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5 ml-1">Mês de Referência</label>
+            <MonthSelector
+              value={filterMonth}
+              onChange={setFilterMonth}
+            />
+          </div>
 
-            {/* Status */}
-            <div>
-              <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-2">Status do Repasse</label>
-              <select
-                value={filterStatus}
-                onChange={(e) => setFilterStatus(e.target.value)}
-                className="w-full rounded-xl border border-zinc-200 bg-zinc-50 text-sm px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-priori-navy/30 focus:border-priori-navy transition-all"
-              >
-                <option value="">Todos os status</option>
-                <option value="READY">Repasses Disponíveis</option>
-                <option value="PENDING">Repasse Pendente (Histórico)</option>
-                <option value="PAID">Repasse Pago (Histórico)</option>
-              </select>
-            </div>
+          {/* Status */}
+          <div className="flex-1 w-full">
+            <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5 ml-1">Status do Repasse</label>
+            <select
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value)}
+              className="w-full bg-zinc-50/50 hover:bg-zinc-50 focus:bg-white border border-zinc-200 rounded-xl px-3.5 py-2.5 text-sm text-zinc-800 focus:ring-2 focus:ring-priori-navy/10 focus:border-priori-navy transition-all outline-none font-medium"
+            >
+              <option value="">Todos os status</option>
+              <option value="READY">Repasses Disponíveis</option>
+              <option value="PENDING">Repasse Pendente (Histórico)</option>
+              <option value="PAID">Repasse Pago (Histórico)</option>
+            </select>
           </div>
 
           {/* Botão de limpar filtros se algum filtro estiver ativo */}
           {(filterMonth || filterPsyId || filterStatus) && (
-            <div className="flex justify-end pt-2">
+            <div className="w-full md:w-auto">
               <button
                 onClick={() => {
                   setFilterMonth('');
                   setFilterPsyId('');
                   setFilterStatus('');
                 }}
-                className="text-xs font-semibold text-red-500 hover:text-red-700 flex items-center gap-1 bg-red-50 px-3 py-1.5 rounded-lg transition-colors border border-red-100"
+                className="w-full md:w-auto text-xs font-semibold text-red-500 hover:text-red-700 flex items-center justify-center gap-1.5 bg-red-50 hover:bg-red-100 px-4 py-3 rounded-xl transition-all border border-red-100 shadow-sm whitespace-nowrap"
               >
-                <X size={12} />
+                <X size={14} />
                 Limpar Filtros
               </button>
             </div>
@@ -916,40 +916,40 @@ export const RepassePage = () => {
       )}
 
       {/* Cards de Resumo */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {/* Card 1: Prontos para Repasse */}
-        <div className="bg-white p-5 rounded-2xl border border-zinc-100 shadow-sm flex items-center justify-between">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* Card 1: Total a Liberar */}
+        <div className="bg-white p-5 rounded-2xl border border-zinc-100 shadow-sm hover:shadow-md hover:border-zinc-200/80 transition-all flex items-center justify-between group">
           <div>
-            <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Repasses Disponíveis</p>
-            <h3 className="text-xl font-bold text-priori-navy mt-1">{fmt.format(summary.pendingGenerationAmount)}</h3>
-            <p className="text-xs text-zinc-500 mt-0.5">{summary.pendingGenerationCount} lote(s) pronto(s)</p>
+            <p className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Total a Liberar</p>
+            <h3 className="text-2xl font-bold text-priori-navy mt-1">{fmt.format(summary.pendingGenerationAmount)}</h3>
+            <p className="text-xs text-zinc-500 mt-1 font-medium">{summary.pendingGenerationCount} lote(s) pronto(s)</p>
           </div>
-          <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-500 flex items-center justify-center">
-            <Clock size={20} />
+          <div className="w-12 h-12 rounded-xl bg-amber-50 text-amber-500 flex items-center justify-center group-hover:scale-105 transition-transform shadow-sm border border-amber-100/50">
+            <Clock size={22} />
           </div>
         </div>
 
-        {/* Card 2: Gerados e Pendentes */}
-        <div className="bg-white p-5 rounded-2xl border border-zinc-100 shadow-sm flex items-center justify-between">
+        {/* Card 2: Liberado para Pagamento */}
+        <div className="bg-white p-5 rounded-2xl border border-zinc-100 shadow-sm hover:shadow-md hover:border-zinc-200/80 transition-all flex items-center justify-between group">
           <div>
-            <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Repasses Pendentes</p>
-            <h3 className="text-xl font-bold text-priori-navy mt-1">{fmt.format(summary.repassesPendingAmount)}</h3>
-            <p className="text-xs text-zinc-500 mt-0.5">{summary.repassesPendingCount} pendente(s) de pgto</p>
+            <p className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Liberado para Pagamento</p>
+            <h3 className="text-2xl font-bold text-priori-navy mt-1">{fmt.format(summary.repassesPendingAmount)}</h3>
+            <p className="text-xs text-zinc-500 mt-1 font-medium">{summary.repassesPendingCount} pendente(s) de pgto</p>
           </div>
-          <div className="w-10 h-10 rounded-xl bg-red-50 text-red-500 flex items-center justify-center">
-            <AlertTriangle size={20} />
+          <div className="w-12 h-12 rounded-xl bg-red-50 text-red-500 flex items-center justify-center group-hover:scale-105 transition-transform shadow-sm border border-red-100/50">
+            <AlertTriangle size={22} />
           </div>
         </div>
 
-        {/* Card 3: Pagos */}
-        <div className="bg-white p-5 rounded-2xl border border-zinc-100 shadow-sm flex items-center justify-between">
+        {/* Card 3: Total Pago */}
+        <div className="bg-white p-5 rounded-2xl border border-zinc-100 shadow-sm hover:shadow-md hover:border-zinc-200/80 transition-all flex items-center justify-between group">
           <div>
-            <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Repasses Pagos</p>
-            <h3 className="text-xl font-bold text-priori-navy mt-1">{fmt.format(summary.repassesPaidAmount)}</h3>
-            <p className="text-xs text-zinc-500 mt-0.5">{summary.repassesPaidCount} pago(s)</p>
+            <p className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Total Pago</p>
+            <h3 className="text-2xl font-bold text-priori-navy mt-1">{fmt.format(summary.repassesPaidAmount)}</h3>
+            <p className="text-xs text-zinc-500 mt-1 font-medium">{summary.repassesPaidCount} pago(s)</p>
           </div>
-          <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-500 flex items-center justify-center">
-            <CheckCircle2 size={20} />
+          <div className="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-500 flex items-center justify-center group-hover:scale-105 transition-transform shadow-sm border border-emerald-100/50">
+            <CheckCircle2 size={22} />
           </div>
         </div>
       </div>
@@ -971,44 +971,57 @@ export const RepassePage = () => {
             </div>
           ) : (
             <div className="bg-white rounded-2xl border border-zinc-100 shadow-sm overflow-hidden">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-zinc-50/50 border-b border-zinc-100">
-                    <th className="px-6 py-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Psicólogo(a)</th>
-                    <th className="px-6 py-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Plano de Saúde</th>
-                    <th className="px-6 py-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Lote</th>
-                    <th className="px-6 py-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Data Pagamento Plano</th>
-                    <th className="px-6 py-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Sessões</th>
-                    <th className="px-6 py-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Total Repasse</th>
-                    <th className="px-6 py-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider text-right">Ação</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-zinc-100">
-                  {filteredPendingGroups.map(group => {
-                    const psy = psychologists.find(p => p.id === group.psyId);
-                    const key = `${group.psyId}-${group.batch.id}`;
-                    const isExpanded = !!expandedGroupKeys[key];
-                    const groupApps = appointments.filter(a => group.appIds.includes(a.id));
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-zinc-50/50 border-b border-zinc-100">
+                      <th className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase tracking-wider">Psicólogo(a)</th>
+                      <th className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase tracking-wider">Plano de Saúde</th>
+                      <th className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase tracking-wider">Lote</th>
+                      <th className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase tracking-wider">Data Pagamento Plano</th>
+                      <th className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase tracking-wider">Sessões</th>
+                      <th className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase tracking-wider">Total Repasse</th>
+                      <th className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase tracking-wider text-right">Ação</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-100">
+                    {filteredPendingGroups.map(group => {
+                      const psy = psychologists.find(p => p.id === group.psyId);
+                      const key = `${group.psyId}-${group.batch.id}`;
+                      const isExpanded = !!expandedGroupKeys[key];
+                      const groupApps = appointments.filter(a => group.appIds.includes(a.id));
 
-                    return (
-                      <React.Fragment key={key}>
-                        <tr className="hover:bg-zinc-50/50 transition-colors">
-                          <td className="px-6 py-4 font-medium text-priori-navy">
-                            <button
-                              onClick={() => toggleGroupExpanded(key)}
-                              className="flex items-center gap-2 text-left hover:text-priori-navy/80 focus:outline-none font-semibold"
-                            >
-                              {isExpanded ? <ChevronUp size={16} className="text-zinc-400" /> : <ChevronDown size={16} className="text-zinc-400" />}
-                              {psy?.name ?? '—'}
-                            </button>
-                          </td>
-                          <td className="px-6 py-4 text-sm text-zinc-600">{group.batch.healthPlan}</td>
-                          <td className="px-6 py-4 text-sm text-zinc-600">#{group.batch.batchNumber}</td>
-                          <td className="px-6 py-4 text-sm text-zinc-600">
-                            {group.batch.paidAt ? format(new Date(group.batch.paidAt), 'dd/MM/yyyy') : '—'}
-                          </td>
-                          <td className="px-6 py-4 text-sm text-zinc-600">{group.appIds.length}</td>
-                          <td className="px-6 py-4 font-semibold text-priori-navy">
+                      return (
+                        <React.Fragment key={key}>
+                          <tr className="hover:bg-zinc-50/40 transition-colors">
+                            <td className="px-6 py-4 font-medium text-priori-navy">
+                              <button
+                                onClick={() => toggleGroupExpanded(key)}
+                                className="flex items-center gap-2.5 text-left text-priori-navy hover:text-priori-navy/80 focus:outline-none transition-colors"
+                              >
+                                <div className="w-8 h-8 rounded-xl bg-priori-navy/10 flex items-center justify-center flex-shrink-0 transition-transform">
+                                  <User size={14} className="text-priori-navy" />
+                                </div>
+                                <span className="font-semibold text-zinc-950">{psy?.name ?? '—'}</span>
+                                {isExpanded ? <ChevronUp size={16} className="text-zinc-400" /> : <ChevronDown size={16} className="text-zinc-400" />}
+                              </button>
+                            </td>
+                            <td className="px-6 py-4 text-sm text-zinc-600 font-medium">{group.batch.healthPlan}</td>
+                            <td className="px-6 py-4 text-sm text-zinc-600">
+                              <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-semibold bg-zinc-100 text-zinc-700 border border-zinc-200/50">
+                                #{group.batch.batchNumber}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 text-sm text-zinc-600">
+                              {group.batch.paidAt ? (
+                                <div className="flex items-center gap-1.5 text-zinc-600">
+                                  <Calendar size={13} className="text-zinc-400" />
+                                  <span>{format(new Date(group.batch.paidAt), 'dd/MM/yyyy')}</span>
+                                </div>
+                              ) : '—'}
+                            </td>
+                            <td className="px-6 py-4 text-sm text-zinc-600 font-medium">{group.appIds.length}</td>
+                            <td className="px-6 py-4 font-semibold text-priori-navy">
                             <div className="flex items-center gap-1.5">
                               {fmt.format(group.total)}
                               {group.divergences.length > 0 && (
@@ -1031,7 +1044,7 @@ export const RepassePage = () => {
                           <td className="px-6 py-4 text-right">
                             <Button
                               size="sm"
-                              className="bg-priori-navy hover:bg-priori-navy/90 text-white"
+                              className="bg-priori-navy hover:bg-priori-navy/90 text-white shadow-sm font-semibold"
                               onClick={() => handleGenerateRepasse(group)}
                               disabled={isGenerating === key}
                             >
@@ -1048,15 +1061,15 @@ export const RepassePage = () => {
                           <tr>
                             <td colSpan={7} className="px-6 py-4 bg-zinc-50/50 border-t border-b border-zinc-100">
                               <div className="space-y-3">
-                                <h4 className="text-xs font-semibold text-priori-navy uppercase tracking-wider">Atendimentos incluídos neste repasse planejado:</h4>
+                                <h4 className="text-xs font-bold text-priori-navy uppercase tracking-wider">Atendimentos incluídos neste repasse planejado:</h4>
                                 <div className="overflow-hidden rounded-xl border border-zinc-100 bg-white shadow-sm">
                                   <table className="w-full text-left border-collapse text-xs">
                                     <thead>
-                                      <tr className="bg-zinc-50 border-b border-zinc-100 text-zinc-500 font-semibold">
-                                        <th className="px-4 py-2.5">Paciente</th>
-                                        <th className="px-4 py-2.5">Data da Sessão</th>
-                                        <th className="px-4 py-2.5">Tipo / Procedimento</th>
-                                        <th className="px-4 py-2.5 text-right">Valor Repasse</th>
+                                      <tr className="bg-zinc-50 border-b border-zinc-100 text-zinc-500 font-bold text-[10px] uppercase tracking-wider">
+                                        <th className="px-4 py-3">Paciente</th>
+                                        <th className="px-4 py-3">Data da Sessão</th>
+                                        <th className="px-4 py-3">Tipo / Procedimento</th>
+                                        <th className="px-4 py-3 text-right">Valor Repasse</th>
                                       </tr>
                                     </thead>
                                     <tbody className="divide-y divide-zinc-100 text-zinc-600">
@@ -1069,10 +1082,15 @@ export const RepassePage = () => {
                                         }
                                         return (
                                           <tr key={app.id} className="hover:bg-zinc-50/50">
-                                            <td className="px-4 py-2 font-medium text-priori-navy">{customer?.name ?? '—'}</td>
-                                            <td className="px-4 py-2">{format(new Date(app.date + 'T12:00:00'), 'dd/MM/yyyy')}</td>
-                                            <td className="px-4 py-2 capitalize">{app.type === AppointmentType.NEUROPSICOLOGICA ? 'Neuropsicologia' : 'Sessão Comum'}</td>
-                                            <td className="px-4 py-2 text-right font-medium text-priori-navy">{fmt.format(repassVal)}</td>
+                                            <td className="px-4 py-2.5 font-semibold text-priori-navy">{customer?.name ?? '—'}</td>
+                                            <td className="px-4 py-2.5">
+                                              <div className="flex items-center gap-1.5 text-zinc-600">
+                                                <Calendar size={12} className="text-zinc-300" />
+                                                <span>{format(new Date(app.date + 'T12:00:00'), 'dd/MM/yyyy')}</span>
+                                              </div>
+                                            </td>
+                                            <td className="px-4 py-2.5 capitalize text-zinc-600">{app.type === AppointmentType.NEUROPSICOLOGICA ? 'Neuropsicologia' : 'Sessão Comum'}</td>
+                                            <td className="px-4 py-2.5 text-right font-bold text-priori-navy">{fmt.format(repassVal)}</td>
                                           </tr>
                                         );
                                       })}
@@ -1088,6 +1106,7 @@ export const RepassePage = () => {
                   })}
                 </tbody>
               </table>
+              </div>
             </div>
           )}
         </section>
@@ -1111,52 +1130,65 @@ export const RepassePage = () => {
             </div>
           ) : (
             <div className="bg-white rounded-2xl border border-zinc-100 shadow-sm overflow-hidden">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-zinc-50/50 border-b border-zinc-100">
-                    <th className="px-6 py-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Psicólogo(a)</th>
-                    <th className="px-6 py-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Plano</th>
-                    <th className="px-6 py-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Lote</th>
-                    <th className="px-6 py-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Data Envio Lote</th>
-                    <th className="px-6 py-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Total Repasse</th>
-                    <th className="px-6 py-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Status</th>
-                    <th className="px-6 py-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider text-right">Ações</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-zinc-100">
-                  {filteredRepasses.map(repasse => {
-                    const psy = psychologists.find(p => p.id === repasse.psychologistId);
-                    const batch = batches.find(b => b.id === repasse.billingBatchId);
-                    const isExpanded = !!expandedRepasseIds[repasse.id];
-                    const repasseApps = appointments.filter(a => repasse.appointmentIds.includes(a.id));
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-zinc-50/50 border-b border-zinc-100">
+                      <th className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase tracking-wider">Psicólogo(a)</th>
+                      <th className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase tracking-wider">Plano</th>
+                      <th className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase tracking-wider">Lote</th>
+                      <th className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase tracking-wider">Data Envio Lote</th>
+                      <th className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase tracking-wider">Total Repasse</th>
+                      <th className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase tracking-wider">Status</th>
+                      <th className="px-6 py-4 text-xs font-bold text-zinc-500 uppercase tracking-wider text-right">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-100">
+                    {filteredRepasses.map(repasse => {
+                      const psy = psychologists.find(p => p.id === repasse.psychologistId);
+                      const batch = batches.find(b => b.id === repasse.billingBatchId);
+                      const isExpanded = !!expandedRepasseIds[repasse.id];
+                      const repasseApps = appointments.filter(a => repasse.appointmentIds.includes(a.id));
 
-                    return (
-                      <React.Fragment key={repasse.id}>
-                        <tr className="hover:bg-zinc-50/50 transition-colors">
-                          <td className="px-6 py-4 font-medium text-priori-navy">
+                      return (
+                        <React.Fragment key={repasse.id}>
+                          <tr className="hover:bg-zinc-50/40 transition-colors">
+                            <td className="px-6 py-4 font-medium text-priori-navy">
                             <button
                               onClick={() => toggleRepasseExpanded(repasse.id)}
-                              className="flex items-center gap-2 text-left hover:text-priori-navy/80 focus:outline-none font-semibold"
+                              className="flex items-center gap-2.5 text-left text-priori-navy hover:text-priori-navy/80 focus:outline-none transition-colors font-semibold"
                             >
+                              <div className="w-8 h-8 rounded-xl bg-priori-navy/10 flex items-center justify-center flex-shrink-0 transition-transform">
+                                <User size={14} className="text-priori-navy" />
+                              </div>
+                              <span className="font-semibold text-zinc-950">{psy?.name ?? '—'}</span>
                               {isExpanded ? <ChevronUp size={16} className="text-zinc-400" /> : <ChevronDown size={16} className="text-zinc-400" />}
-                              {psy?.name ?? '—'}
                             </button>
                           </td>
-                          <td className="px-6 py-4 text-sm text-zinc-600">{batch?.healthPlan ?? '—'}</td>
-                          <td className="px-6 py-4 text-sm text-zinc-600">#{batch?.batchNumber ?? '—'}</td>
+                          <td className="px-6 py-4 text-sm text-zinc-600 font-medium">{batch?.healthPlan ?? '—'}</td>
                           <td className="px-6 py-4 text-sm text-zinc-600">
-                            {batch?.sentAt ? format(new Date(batch.sentAt), 'dd/MM/yyyy') : '—'}
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-semibold bg-zinc-100 text-zinc-700 border border-zinc-200/50">
+                              #{batch?.batchNumber ?? '—'}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-sm text-zinc-600">
+                            {batch?.sentAt ? (
+                              <div className="flex items-center gap-1.5 text-zinc-600">
+                                <Calendar size={13} className="text-zinc-400" />
+                                <span>{format(new Date(batch.sentAt), 'dd/MM/yyyy')}</span>
+                              </div>
+                            ) : '—'}
                           </td>
                           <td className="px-6 py-4 font-semibold text-priori-navy">{fmt.format(repasse.totalAmount)}</td>
                           <td className="px-6 py-4">
                             {repasse.status === RepasseStatus.PAID ? (
-                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                <CheckCircle2 size={11} />
+                              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100/80 shadow-sm">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
                                 Pago em {repasse.paidAt ? format(new Date(repasse.paidAt), 'dd/MM/yyyy') : '—'}
                               </span>
                             ) : (
-                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
-                                <Clock size={11} />
+                              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-100/80 shadow-sm">
+                                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
                                 Pendente
                               </span>
                             )}
@@ -1166,7 +1198,7 @@ export const RepassePage = () => {
                               variant="outline"
                               size="sm"
                               onClick={() => handlePDF(repasse)}
-                              className="text-priori-navy border-zinc-200 shadow-sm"
+                              className="text-priori-navy border-zinc-200 shadow-sm hover:bg-zinc-50"
                               title="Exportar PDF"
                             >
                               <FileText size={14} />
@@ -1194,15 +1226,15 @@ export const RepassePage = () => {
                           <tr>
                             <td colSpan={7} className="px-6 py-4 bg-zinc-50/50 border-t border-b border-zinc-100">
                               <div className="space-y-3">
-                                <h4 className="text-xs font-semibold text-priori-navy uppercase tracking-wider">Atendimentos incluídos neste repasse:</h4>
+                                <h4 className="text-xs font-bold text-priori-navy uppercase tracking-wider">Atendimentos incluídos neste repasse:</h4>
                                 <div className="overflow-hidden rounded-xl border border-zinc-100 bg-white shadow-sm">
                                   <table className="w-full text-left border-collapse text-xs">
                                     <thead>
-                                      <tr className="bg-zinc-50 border-b border-zinc-100 text-zinc-500 font-semibold">
-                                        <th className="px-4 py-2.5">Paciente</th>
-                                        <th className="px-4 py-2.5">Data da Sessão</th>
-                                        <th className="px-4 py-2.5">Tipo / Procedimento</th>
-                                        <th className="px-4 py-2.5 text-right">Valor Repassado</th>
+                                      <tr className="bg-zinc-50 border-b border-zinc-100 text-zinc-500 font-bold text-[10px] uppercase tracking-wider">
+                                        <th className="px-4 py-3">Paciente</th>
+                                        <th className="px-4 py-3">Data da Sessão</th>
+                                        <th className="px-4 py-3">Tipo / Procedimento</th>
+                                        <th className="px-4 py-3 text-right">Valor Repassado</th>
                                       </tr>
                                     </thead>
                                     <tbody className="divide-y divide-zinc-100 text-zinc-600">
@@ -1217,10 +1249,15 @@ export const RepassePage = () => {
 
                                         return (
                                           <tr key={app.id} className="hover:bg-zinc-50/50">
-                                            <td className="px-4 py-2 font-medium text-priori-navy">{customer?.name ?? '—'}</td>
-                                            <td className="px-4 py-2">{format(new Date(app.date + 'T12:00:00'), 'dd/MM/yyyy')}</td>
-                                            <td className="px-4 py-2 capitalize">{app.type === AppointmentType.NEUROPSICOLOGICA ? 'Neuropsicologia' : 'Sessão Comum'}</td>
-                                            <td className="px-4 py-2 text-right font-medium text-priori-navy">{fmt.format(repassVal)}</td>
+                                            <td className="px-4 py-2.5 font-semibold text-priori-navy">{customer?.name ?? '—'}</td>
+                                            <td className="px-4 py-2.5">
+                                              <div className="flex items-center gap-1.5 text-zinc-600">
+                                                <Calendar size={12} className="text-zinc-300" />
+                                                <span>{format(new Date(app.date + 'T12:00:00'), 'dd/MM/yyyy')}</span>
+                                              </div>
+                                            </td>
+                                            <td className="px-4 py-2.5 capitalize text-zinc-600">{app.type === AppointmentType.NEUROPSICOLOGICA ? 'Neuropsicologia' : 'Sessão Comum'}</td>
+                                            <td className="px-4 py-2.5 text-right font-bold text-priori-navy">{fmt.format(repassVal)}</td>
                                           </tr>
                                         );
                                       })}
@@ -1236,6 +1273,7 @@ export const RepassePage = () => {
                   })}
                 </tbody>
               </table>
+              </div>
             </div>
           )}
         </section>
