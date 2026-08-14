@@ -18,6 +18,15 @@ Deno.serve(async (req) => {
 
     if (settingsError || !settings?.zapi_url) {
       console.error("Configurações da Z-API não encontradas ou incompletas.");
+      try {
+        await supabase.rpc('log_operation_failure', {
+          p_context: 'whatsapp-reminder.config',
+          p_message: 'Configurações da Z-API não encontradas ou incompletas.',
+          p_severity: 'critical'
+        });
+      } catch (dbErr) {
+        console.error("Falha ao registrar log no banco:", dbErr);
+      }
       return new Response(JSON.stringify({ error: "Z-API settings not configured" }), { status: 400 });
     }
 
@@ -136,11 +145,35 @@ Deno.serve(async (req) => {
       }
     }
 
+    const failedCount = results.filter(r => r.status === "error" || r.status === "fetch_error").length;
+    if (failedCount > 0) {
+      try {
+        await supabase.rpc('log_operation_failure', {
+          p_context: 'whatsapp-reminder.execution',
+          p_message: `Falha ao enviar ${failedCount} lembretes de WhatsApp para hoje.`,
+          p_details: { failures: results.filter(r => r.status === "error" || r.status === "fetch_error") },
+          p_severity: 'critical'
+        });
+      } catch (dbErr) {
+        console.error("Falha ao registrar log no banco:", dbErr);
+      }
+    }
+
     return new Response(JSON.stringify({ success: true, processed: results }), {
       headers: { "Content-Type": "application/json" }
     });
 
   } catch (err: any) {
+    try {
+      const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
+      await supabase.rpc('log_operation_failure', {
+        p_context: 'whatsapp-reminder.unhandled',
+        p_message: `Erro não tratado: ${err.message}`,
+        p_severity: 'critical'
+      });
+    } catch (dbErr) {
+      console.error("Falha ao registrar log no banco:", dbErr);
+    }
     return new Response(JSON.stringify({ error: err.message }), { status: 500 });
   }
 });

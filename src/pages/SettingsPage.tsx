@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Save, Loader2, Link2, MessageSquare, AlertCircle, KeyRound, ShieldCheck } from 'lucide-react';
+import { Save, Loader2, Link2, MessageSquare, AlertCircle, KeyRound, ShieldCheck, Play, RefreshCw, CheckCircle, Check, Mail } from 'lucide-react';
 import { api } from '../services/api';
 import { Settings } from '../services/types';
 import { Button } from '../components/Button';
@@ -18,10 +18,21 @@ export const SettingsPage = () => {
     confirmPassword: ''
   });
   const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
+  const [failures, setFailures] = useState<any[]>([]);
+  const [isTriggering, setIsTriggering] = useState<{ [key: string]: boolean }>({});
 
   useEffect(() => {
     loadSettings();
   }, []);
+
+  const loadFailures = async () => {
+    try {
+      const data = await api.getOperationFailures();
+      setFailures(data || []);
+    } catch (error) {
+      console.error('Erro ao buscar logs de falhas:', error);
+    }
+  };
 
   const loadSettings = async () => {
     try {
@@ -31,10 +42,51 @@ export const SettingsPage = () => {
         zapiUrl: data.zapiUrl || '',
         zapiToken: data.zapiToken || ''
       });
+      await loadFailures();
     } catch (error) {
       console.error('Erro ao buscar configurações:', error);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleTrigger = async (type: 'whatsapp' | 'agenda' | 'summary') => {
+    setIsTriggering(prev => ({ ...prev, [type]: true }));
+    try {
+      let result;
+      if (type === 'whatsapp') {
+        result = await api.triggerWhatsappReminders();
+      } else if (type === 'agenda') {
+        result = await api.triggerDailyAgendaEmails();
+      } else {
+        result = await api.triggerClinicDailySummary();
+      }
+      
+      console.log('Resultado do disparo:', result);
+      
+      const failuresCount = result?.processed?.filter((r: any) => r.status === 'error' || r.status === 'fetch_error' || r.status === 'mail_error')?.length || 0;
+      const successCount = result?.processed?.filter((r: any) => r.status === 'sent')?.length || 0;
+      
+      if (failuresCount > 0) {
+        alert(`Disparo concluído com falhas: ${successCount} enviados, ${failuresCount} falharam. Verifique o painel de diagnósticos abaixo.`);
+      } else {
+        alert('Disparo executado com sucesso!');
+      }
+      
+      await loadFailures();
+    } catch (error: any) {
+      alert(`Falha ao acionar a rotina: ${error.message}`);
+    } finally {
+      setIsTriggering(prev => ({ ...prev, [type]: false }));
+    }
+  };
+
+  const handleAckFailure = async (id: string) => {
+    try {
+      await api.acknowledgeOperationFailure(id);
+      await loadFailures();
+    } catch (error: any) {
+      alert(`Erro ao marcar como resolvido: ${error.message}`);
     }
   };
 
@@ -144,6 +196,136 @@ export const SettingsPage = () => {
             >
               {isSaving ? <Loader2 size={18} className="animate-spin mr-2" /> : <Save size={18} className="mr-2" />}
             </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* Seção de Diagnóstico e Reenvio Manual */}
+      <div className="bg-white rounded-2xl border border-zinc-100 p-6 shadow-sm">
+        <div className="flex items-start gap-4 mb-6 pb-6 border-b border-zinc-100">
+          <div className="p-3 bg-amber-500/10 rounded-xl text-amber-600">
+            <RefreshCw size={24} className={Object.values(isTriggering).some(Boolean) ? "animate-spin" : ""} />
+          </div>
+          <div className="flex-1">
+            <h2 className="text-lg font-bold text-priori-navy">Rotinas Diárias e Envio Manual</h2>
+            <p className="text-zinc-600 text-sm mt-1">
+              Monitore a execução automática das rotinas e execute-as manualmente em caso de emergência ou falha externa.
+            </p>
+          </div>
+        </div>
+
+        <div className="space-y-6">
+          {/* Ações de Disparo */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="border border-zinc-100 rounded-xl p-4 flex flex-col justify-between space-y-3">
+              <div>
+                <div className="flex items-center gap-2 text-zinc-800 font-bold text-sm">
+                  <MessageSquare size={16} className="text-[#25D366]" />
+                  <span>Lembretes de WhatsApp</span>
+                </div>
+                <p className="text-xs text-zinc-500 mt-1">
+                  Envia lembretes diários para pacientes via WhatsApp (Z-API). Cron padrão: 06h BRT.
+                </p>
+              </div>
+              <Button
+                onClick={() => handleTrigger('whatsapp')}
+                disabled={isTriggering['whatsapp']}
+                className="w-full text-xs py-2 bg-zinc-100 text-zinc-800 hover:bg-zinc-200"
+              >
+                {isTriggering['whatsapp'] ? <Loader2 size={14} className="animate-spin mr-1" /> : <Play size={14} className="mr-1" />}
+                Disparar WhatsApps
+              </Button>
+            </div>
+
+            <div className="border border-zinc-100 rounded-xl p-4 flex flex-col justify-between space-y-3">
+              <div>
+                <div className="flex items-center gap-2 text-zinc-800 font-bold text-sm">
+                  <Mail size={16} className="text-blue-500" />
+                  <span>Agenda de Psicólogos</span>
+                </div>
+                <p className="text-xs text-zinc-500 mt-1">
+                  Envia a agenda do dia por e-mail para cada psicólogo com atendimentos ativos. Cron padrão: 06h BRT.
+                </p>
+              </div>
+              <Button
+                onClick={() => handleTrigger('agenda')}
+                disabled={isTriggering['agenda']}
+                className="w-full text-xs py-2 bg-zinc-100 text-zinc-800 hover:bg-zinc-200"
+              >
+                {isTriggering['agenda'] ? <Loader2 size={14} className="animate-spin mr-1" /> : <Play size={14} className="mr-1" />}
+                Disparar Agendas (Email)
+              </Button>
+            </div>
+
+            <div className="border border-zinc-100 rounded-xl p-4 flex flex-col justify-between space-y-3">
+              <div>
+                <div className="flex items-center gap-2 text-zinc-800 font-bold text-sm">
+                  <Mail size={16} className="text-purple-500" />
+                  <span>Resumo da Clínica</span>
+                </div>
+                <p className="text-xs text-zinc-500 mt-1">
+                  Envia o resumo geral de agendamentos e salas do dia para a coordenação. Cron padrão: 07h BRT.
+                </p>
+              </div>
+              <Button
+                onClick={() => handleTrigger('summary')}
+                disabled={isTriggering['summary']}
+                className="w-full text-xs py-2 bg-zinc-100 text-zinc-800 hover:bg-zinc-200"
+              >
+                {isTriggering['summary'] ? <Loader2 size={14} className="animate-spin mr-1" /> : <Play size={14} className="mr-1" />}
+                Disparar Resumo Geral
+              </Button>
+            </div>
+          </div>
+
+          {/* Histórico de Falhas */}
+          <div className="border-t border-zinc-100 pt-6" id="diagnostics-panel">
+            <h3 className="font-bold text-sm text-priori-navy mb-3 flex items-center gap-2">
+              <AlertCircle size={16} className="text-amber-500" />
+              <span>Painel de Diagnóstico de Falhas Recentes</span>
+            </h3>
+
+            {failures.length === 0 ? (
+              <div className="bg-emerald-50 text-emerald-800 border border-emerald-100 p-4 rounded-xl text-xs flex items-center gap-2">
+                <CheckCircle size={16} className="text-emerald-500" />
+                <span>Excelente! Nenhuma falha recente foi registrada no monitor de execução.</span>
+              </div>
+            ) : (
+              <div className="space-y-3 max-h-60 overflow-y-auto pr-2">
+                {failures.map((f) => (
+                  <div key={f.id} className={`p-3.5 rounded-xl border text-xs flex flex-col md:flex-row justify-between items-start md:items-center gap-3 ${f.acknowledged ? 'bg-zinc-50/50 border-zinc-100 text-zinc-500' : 'bg-red-50/40 border-red-100 text-zinc-800'}`}>
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className={`px-2 py-0.5 rounded-full font-bold text-[9px] ${f.severity === 'critical' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
+                          {f.severity.toUpperCase()}
+                        </span>
+                        <strong className="text-priori-navy font-bold">{f.context}</strong>
+                        <span className="text-[10px] text-zinc-400">
+                          {new Date(f.created_at).toLocaleString('pt-BR')}
+                        </span>
+                      </div>
+                      <p className="text-xs">{f.message}</p>
+                      {f.details && (
+                        <details className="mt-1">
+                          <summary className="text-[10px] text-zinc-400 cursor-pointer hover:underline">Ver detalhes técnicos</summary>
+                          <pre className="mt-1 p-2 bg-zinc-900 text-zinc-100 rounded text-[10px] overflow-x-auto max-w-full">
+                            {JSON.stringify(f.details, null, 2)}
+                          </pre>
+                        </details>
+                      )}
+                    </div>
+                    {!f.acknowledged && (
+                      <Button
+                        onClick={() => handleAckFailure(f.id)}
+                        className="text-[10px] py-1 px-2.5 bg-white border border-zinc-200 text-zinc-700 hover:bg-zinc-50 font-medium"
+                      >
+                        <Check size={12} className="mr-1" /> Marcar como Resolvido
+                      </Button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>

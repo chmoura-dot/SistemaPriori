@@ -150,11 +150,34 @@ Deno.serve(async (req) => {
       html: emailHtml,
     });
 
+    if (mailResponse.error) {
+      try {
+        await supabase.rpc('log_operation_failure', {
+          p_context: 'clinic-daily-summary.send',
+          p_message: `Falha ao enviar e-mail de resumo diário da clínica: ${mailResponse.error.message}`,
+          p_severity: 'critical'
+        });
+      } catch (dbErr) {
+        console.error("Falha ao registrar log no banco:", dbErr);
+      }
+      throw new Error(`Resend: ${mailResponse.error.message}`);
+    }
+
     return new Response(JSON.stringify({ success: true, message: "E-mail enviado com sucesso", id: mailResponse.data?.id }), {
       headers: { 'Content-Type': 'application/json' }
     });
 
-  } catch (err) {
+  } catch (err: any) {
+    try {
+      const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
+      await supabase.rpc('log_operation_failure', {
+        p_context: 'clinic-daily-summary.unhandled',
+        p_message: `Erro não tratado: ${err.message}`,
+        p_severity: 'critical'
+      });
+    } catch (dbErr) {
+      console.error("Falha ao registrar log no banco:", dbErr);
+    }
     return new Response(JSON.stringify({ error: err.message }), { status: 500 });
   }
 });

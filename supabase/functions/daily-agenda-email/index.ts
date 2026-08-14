@@ -161,11 +161,35 @@ Deno.serve(async (req) => {
       }
     }
 
+    const failedCount = results.filter(r => r.status === "mail_error").length;
+    if (failedCount > 0) {
+      try {
+        await supabase.rpc('log_operation_failure', {
+          p_context: 'daily-agenda-email.execution',
+          p_message: `Falha ao enviar e-mail de agenda diária para ${failedCount} psicólogo(s).`,
+          p_details: { failures: results.filter(r => r.status === "mail_error") },
+          p_severity: 'critical'
+        });
+      } catch (dbErr) {
+        console.error("Falha ao registrar log no banco:", dbErr);
+      }
+    }
+
     return new Response(JSON.stringify({ success: true, processed: results }), {
       headers: { 'Content-Type': 'application/json' }
     });
 
   } catch (err: any) {
+    try {
+      const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
+      await supabase.rpc('log_operation_failure', {
+        p_context: 'daily-agenda-email.unhandled',
+        p_message: `Erro não tratado: ${err.message}`,
+        p_severity: 'critical'
+      });
+    } catch (dbErr) {
+      console.error("Falha ao registrar log no banco:", dbErr);
+    }
     return new Response(JSON.stringify({ error: err.message }), { status: 500 });
   }
 });

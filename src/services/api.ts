@@ -180,4 +180,35 @@ export const api = {
     const { error } = await supabase.auth.updateUser({ password: newPassword });
     if (error) throw new Error(error.message);
   },
+  triggerWhatsappReminders: async () => {
+    const { data, error } = await supabase.functions.invoke('whatsapp-reminder');
+    if (error) throw new Error(error.message);
+    return data;
+  },
+  triggerDailyAgendaEmails: async () => {
+    const { data, error } = await supabase.functions.invoke('daily-agenda-email');
+    if (error) throw new Error(error.message);
+    return data;
+  },
+  triggerClinicDailySummary: async () => {
+    const { data, error } = await supabase.functions.invoke('clinic-daily-summary');
+    if (error) throw new Error(error.message);
+    return data;
+  },
+  getOperationFailures: async () => {
+    const { data, error } = await supabase
+      .from('operation_failures')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(50);
+    if (error) throw new Error(error.message);
+    return data;
+  },
+  acknowledgeOperationFailure: async (id: string) => {
+    const { error } = await supabase
+      .from('operation_failures')
+      .update({ acknowledged: true })
+      .eq('id', id);
+    if (error) throw new Error(error.message);
+  },
 };
