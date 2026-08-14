@@ -149,8 +149,9 @@ export function getAppPrice(app: Appointment, ctx: PricingContext): number {
   // O override é intencional (usuário selecionou código no dropdown de faturamento),
   // e pode legitimamente apontar para um tipo diferente de app.type (ex: plano que
   // não tem código de "Avaliação Neuropsicológica" e usa código de "Psicoterapia").
-  const procedureByCode = app.procedureCode
-    ? plan?.procedures?.find(proc => proc.code === app.procedureCode)
+  const overrideCode = app.procedureCode?.trim();
+  const procedureByCode = overrideCode
+    ? plan?.procedures?.find(proc => proc.code?.trim() === overrideCode)
     : undefined;
   const procedure = procedureByCode ?? plan?.procedures?.find(proc => proc.type === app.type);
 

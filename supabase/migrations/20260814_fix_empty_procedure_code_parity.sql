@@ -1,10 +1,11 @@
 -- ============================================================
--- FASE 4 — get_appointment_price + validate_price_parity (Shadow Calculation)
+-- Correção de Paridade: Tratamento de strings vazias no override de procedimento
+-- Data: 14/08/2026
 -- ============================================================
--- Rode este script no SQL Editor do Supabase (produção).
--- É idempotente (CREATE OR REPLACE) — seguro reexecutar.
--- Conteúdo idêntico à migration 20260717_get_appointment_price.sql.
--- ============================================================
+-- Corrige a divergência onde v_app.procedure_code = '' (string vazia)
+-- era tratado como override válido pelo banco (IS NOT NULL) mas ignorado
+-- como falsy pelo frontend (JS). Agora, o banco de dados desconsidera
+-- o override de código de procedimento se for uma string vazia ou apenas espaços.
 
 CREATE OR REPLACE FUNCTION get_appointment_price(
   p_appointment_id  uuid,
@@ -139,6 +140,7 @@ BEGIN
   END IF;
 
   v_proc_by_code := NULL;
+  -- Correção cirúrgica: verifica se o código não é apenas vazio ou espaços em branco
   IF v_app.procedure_code IS NOT NULL AND TRIM(v_app.procedure_code) <> '' THEN
     SELECT elem INTO v_proc_by_code
       FROM jsonb_array_elements(v_procedures) elem
@@ -168,64 +170,3 @@ END;
 $$;
 
 GRANT EXECUTE ON FUNCTION get_appointment_price(uuid, uuid, uuid, date, text) TO authenticated;
-
-
--- ⚠️ Necessário: uma versão anterior pode existir com nome de parâmetro diferente
--- (o Postgres não permite renomear parâmetros de entrada via CREATE OR REPLACE).
-DROP FUNCTION IF EXISTS validate_price_parity(uuid, uuid, uuid, date, text, numeric);
-
-CREATE OR REPLACE FUNCTION validate_price_parity(
-  p_appointment_id      uuid,
-  p_psychologist_id     uuid,
-  p_plan_id             uuid,
-  p_date                date,
-  p_session_type        text,
-  p_price_from_frontend numeric
-)
-RETURNS jsonb
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE
-  v_result  record;
-  v_diff    numeric;
-  v_matched boolean;
-BEGIN
-  SELECT * INTO v_result
-    FROM get_appointment_price(p_appointment_id, p_psychologist_id, p_plan_id, p_date, p_session_type);
-
-  v_diff    := ABS(COALESCE(v_result.final_price, 0) - COALESCE(p_price_from_frontend, 0));
-  v_matched := v_diff < 1;
-
-  IF NOT v_matched THEN
-    PERFORM log_operation_failure(
-      'pricing.parityMismatch',
-      format('Divergência de preço: frontend=%s servidor=%s (appointment=%s)',
-             p_price_from_frontend, v_result.final_price, p_appointment_id),
-      jsonb_build_object(
-        'appointment_id', p_appointment_id,
-        'frontend_price', p_price_from_frontend,
-        'server_price', v_result.final_price,
-        'base_price', v_result.base_price,
-        'applied_rules', v_result.applied_rules
-      ),
-      'critical'
-    );
-  END IF;
-
-  RETURN jsonb_build_object(
-    'matched', v_matched,
-    'base_price', v_result.base_price,
-    'final_price', v_result.final_price,
-    'applied_rules', v_result.applied_rules
-  );
-END;
-$$;
-
-GRANT EXECUTE ON FUNCTION validate_price_parity(uuid, uuid, uuid, date, text, numeric) TO authenticated;
-
--- Verificação
-SELECT proname FROM pg_proc
- WHERE proname IN ('get_appointment_price', 'validate_price_parity')
- ORDER BY proname;
