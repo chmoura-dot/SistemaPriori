@@ -36,6 +36,7 @@ interface BillingActionsContext {
   setSelectedAppointmentIds: React.Dispatch<React.SetStateAction<string[]>>;
   setEditingDraftBatch: React.Dispatch<React.SetStateAction<BillingBatch | null>>;
   setAppointments: React.Dispatch<React.SetStateAction<Appointment[]>>;
+  setBatches: React.Dispatch<React.SetStateAction<BillingBatch[]>>;
   setBatchToPay: React.Dispatch<React.SetStateAction<BillingBatch | null>>;
   setIsPaymentModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setAppointmentStatuses: React.Dispatch<React.SetStateAction<Record<string, AppointmentPaymentStatus>>>;
@@ -48,7 +49,7 @@ export function createBillingActions({
   editingDraftBatch, appointmentStatuses, batchToPay,
   getAppPrice, getTussCode, generateBatchNumber, fetchData,
   setIsCreateModalOpen, setSelectedAppointmentIds, setEditingDraftBatch,
-  setAppointments, setBatchToPay, setIsPaymentModalOpen, setAppointmentStatuses,
+  setAppointments, setBatches, setBatchToPay, setIsPaymentModalOpen, setAppointmentStatuses,
   setSelectedBatch,
 }: BillingActionsContext) {
 
@@ -300,6 +301,7 @@ export function createBillingActions({
     const paidAt = newStatus === BillingBatchStatus.PAID ? (customPaidAt || batch.paidAt || new Date().toISOString()) : null as any;
     const updates: Partial<BillingBatch> = { status: newStatus, paidAt };
     await api.updateBillingBatch(batchId, updates);
+    setBatches(prev => prev.map(b => b.id === batchId ? { ...b, ...updates } : b));
     return { status: newStatus, paidAt };
   };
 
@@ -325,7 +327,6 @@ export function createBillingActions({
         );
       }
       toastSuccess('Atendimento marcado como pago!');
-      fetchData();
     } catch (error) {
       logger.critical('billing.handleMarkAppointmentPaid', error, { appointmentId: appId });
       toastError('Erro ao marcar atendimento como pago.');
@@ -352,7 +353,6 @@ export function createBillingActions({
         );
       }
       toastSuccess('Pagamento do atendimento desfeito.');
-      fetchData();
     } catch (error) {
       logger.critical('billing.handleUnmarkAppointmentPaid', error, { appointmentId: appId });
       toastError('Erro ao desfazer pagamento.');

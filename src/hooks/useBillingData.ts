@@ -120,7 +120,7 @@ export function useBillingData() {
     generateBatchNumber: helpers.generateBatchNumber,
     fetchData,
     setIsCreateModalOpen, setSelectedAppointmentIds, setEditingDraftBatch,
-    setAppointments, setBatchToPay, setIsPaymentModalOpen, setAppointmentStatuses,
+    setAppointments, setBatches, setBatchToPay, setIsPaymentModalOpen, setAppointmentStatuses,
     setSelectedBatch,
   });
 
