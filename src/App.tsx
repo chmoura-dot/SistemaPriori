@@ -204,7 +204,7 @@ export default function App() {
       case '/previsao':
         return <ForecastPage />;
       case '/relatorio-neuro':
-        return <NeuroReportPage />;
+        return isAdmin ? <NeuroReportPage /> : <DashboardPage onNavigate={navigate} />;
       default:
         return <DashboardPage onNavigate={navigate} />;
     }

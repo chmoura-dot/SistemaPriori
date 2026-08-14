@@ -39,7 +39,7 @@ const menuItems = [
   { icon: BarChart3, label: 'Financeiro', path: '/financeiro' },
   { icon: FileText, label: 'Faturamento', path: '/faturamento' },
   { icon: CalendarSearch, label: 'Previsão Atendimentos', path: '/previsao' },
-  { icon: FileText, label: 'Gestão Neuropsicológica', path: '/relatorio-neuro' },
+  { icon: FileText, label: 'Gestão Neuropsicológica', path: '/relatorio-neuro', adminOnly: true },
   { icon: ArrowRightLeft, label: 'Repasse', path: '/repasse' },
   { icon: BarChart3, label: 'Capacidade', path: '/capacidade' },
   { icon: TrendingDown, label: 'Despesas', path: '/despesas' },
