@@ -13,7 +13,7 @@ import { useDashboardOperacional } from './dashboard/useDashboardOperacional';
 import { useDashboardCaptacao }    from './dashboard/useDashboardCaptacao';
 import { PricingContext } from '../lib/pricing';
 
-export function useDashboardData() {
+export function useDashboardData(activeTab?: 'financeiro' | 'operacional' | 'captacao' | 'clinico') {
   const base = useDashboardBase();
 
   // Contexto de precificação (compartilhado entre hooks)
@@ -92,6 +92,7 @@ export function useDashboardData() {
     isCanceledButBilled:  base.isCanceledButBilled,
     filterMode:           base.filterMode,
     pricingCtx,
+    skip:                 activeTab !== undefined && activeTab !== 'financeiro',
   });
 
   const operacional = useDashboardOperacional({
@@ -110,6 +111,7 @@ export function useDashboardData() {
     calculateRevenue:     base.calculateRevenue,
     isCanceledButBilled:  base.isCanceledButBilled,
     pricingCtx,
+    skip:                 activeTab !== undefined && activeTab !== 'operacional',
   });
 
   const captacao = useDashboardCaptacao({
@@ -131,6 +133,7 @@ export function useDashboardData() {
     isCanceledButBilled:  base.isCanceledButBilled,
     activeCustomersCount: kpis.activeCustomersCount,
     ticketMedioConsulta:  kpis.ticketMedioConsulta,
+    skip:                 activeTab !== undefined && activeTab !== 'captacao',
   });
 
   return {

@@ -36,21 +36,23 @@ export function useDashboardCaptacao({
   today, filterMode, selectedMonth, selectedYear,
   isInSelectedPeriod, isInPrevPeriod,
   calculateRevenue, isCanceledButBilled,
-  activeCustomersCount, ticketMedioConsulta,
-}: Params) {
+  activeCustomersCount, ticketMedioConsulta, skip = false,
+}: Params & { skip?: boolean }) {
 
   // ─── NOVOS PACIENTES NO PERÍODO ────────────────────────────────────────
-  const novosPacientes = useMemo(() =>
-    customers.filter(c => isInSelectedPeriod(c.createdAt)),
-    [customers, isInSelectedPeriod]
-  );
-  const novosPacientesPrev = useMemo(() =>
-    customers.filter(c => isInPrevPeriod(c.createdAt)),
-    [customers, isInPrevPeriod]
-  );
+  const novosPacientes = useMemo(() => {
+    if (skip) return [];
+    return customers.filter(c => isInSelectedPeriod(c.createdAt));
+  }, [customers, isInSelectedPeriod, skip]);
+
+  const novosPacientesPrev = useMemo(() => {
+    if (skip) return [];
+    return customers.filter(c => isInPrevPeriod(c.createdAt));
+  }, [customers, isInPrevPeriod, skip]);
 
   // ─── TAXA DE RETENÇÃO (voltaram após 1ª sessão) ───────────────────────
   const taxaRetencao = useMemo(() => {
+    if (skip) return 0;
     const allRealized = appointments.filter(app =>
       (app.confirmedPsychologist || isCanceledButBilled(app)) && !app.isInternal
     );
@@ -59,11 +61,12 @@ export function useDashboardCaptacao({
     const total = Object.keys(map).length;
     const returned = Object.values(map).filter(n => n >= 2).length;
     return total > 0 ? (returned / total) * 100 : 0;
-  }, [appointments, isCanceledButBilled]);
+  }, [appointments, isCanceledButBilled, skip]);
 
   // ─── LTV CLÍNICO ──────────────────────────────────────────────────────
   // Método histórico: para pacientes com first e lastAppointmentDate
   const ltvData = useMemo(() => {
+    if (skip) return { ltvMedio: 0, duracaoMediaMeses: 0, sessoesMediaMensal: 0 };
     const elegíveis = customers.filter(c =>
       c.firstAppointmentDate && c.lastAppointmentDate &&
       c.totalAppointmentsPerformed && c.totalAppointmentsPerformed >= 2
@@ -93,19 +96,21 @@ export function useDashboardCaptacao({
     const ltvMedio = totalReceita / elegíveis.length;
 
     return { ltvMedio, duracaoMediaMeses, sessoesMediaMensal };
-  }, [customers, appointments, calculateRevenue, isCanceledButBilled]);
+  }, [customers, appointments, calculateRevenue, isCanceledButBilled, skip]);
 
   // ─── CAC (Custo de Aquisição de Cliente) ──────────────────────────────
-  const despesaMarketing = useMemo(() =>
-    expensesFiltered
+  const despesaMarketing = useMemo(() => {
+    if (skip) return 0;
+    return expensesFiltered
       .filter(e => e.category === ExpenseCategory.MARKETING)
-      .reduce((acc, e) => acc + e.amount, 0),
-    [expensesFiltered]
-  );
-  const cac = novosPacientes.length > 0 ? despesaMarketing / novosPacientes.length : 0;
+      .reduce((acc, e) => acc + e.amount, 0);
+  }, [expensesFiltered, skip]);
+
+  const cac = skip ? 0 : (novosPacientes.length > 0 ? despesaMarketing / novosPacientes.length : 0);
 
   // ─── EVOLUÇÃO NOVOS PACIENTES (últimos 12 meses) ──────────────────────
   const evolucaoNovosPacientes = useMemo(() => {
+    if (skip) return [];
     const data: Record<string, { month: string; sortKey: number; count: number }> = {};
     customers.forEach(c => {
       if (!c.createdAt) return;
@@ -117,11 +122,12 @@ export function useDashboardCaptacao({
       data[key].count++;
     });
     return Object.values(data).sort((a, b) => a.sortKey - b.sortKey).slice(-12);
-  }, [customers]);
+  }, [customers, skip]);
 
   // ─── FUNIL DE CONVERSÃO ───────────────────────────────────────────────
   // Topo: Fila de Espera | Meio: Novos Pacientes | Fundo: Aderidos (≥3 sessões)
   const funil = useMemo(() => {
+    if (skip) return { filaEspera: 0, novosPacientes: 0, aderidos: 0, taxaConversaoFila: 0, taxaAdesao: 0 };
     const totalFilaEspera = waitingList.length;
     const novosPeriodo = novosPacientes.length;
     const aderidos = novosPacientes.filter(c =>
@@ -134,11 +140,12 @@ export function useDashboardCaptacao({
       taxaConversaoFila: totalFilaEspera > 0 ? (novosPeriodo / totalFilaEspera) * 100 : 0,
       taxaAdesao: novosPeriodo > 0 ? (aderidos / novosPeriodo) * 100 : 0,
     };
-  }, [waitingList, novosPacientes]);
+  }, [waitingList, novosPacientes, skip]);
 
   // ─── COHORT DE RETENÇÃO ───────────────────────────────────────────────
   // Agrupa pacientes por mês de entrada e verifica se ainda estão ativos
   const cohortData = useMemo(() => {
+    if (skip) return [];
     const cohorts: Record<string, {
       month: string; sortKey: number;
       total: number; ativosMes1: number; ativosMes3: number; ativosMes6: number;
@@ -180,10 +187,11 @@ export function useDashboardCaptacao({
         retencaoMes3: c.total > 0 ? (c.ativosMes3 / c.total) * 100 : 0,
         retencaoMes6: c.total > 0 ? (c.ativosMes6 / c.total) * 100 : 0,
       }));
-  }, [customers, appointments, calculateRevenue, isCanceledButBilled]);
+  }, [customers, appointments, calculateRevenue, isCanceledButBilled, skip]);
 
   // ─── FONTE DE CAPTAÇÃO (se campo existir) ─────────────────────────────
   const fonteCaptacao = useMemo(() => {
+    if (skip) return [];
     const fontes: Record<string, { fonte: string; count: number; receita: number }> = {};
     novosPacientes.forEach(c => {
       const src = (c as any).acquisitionSource || 'Não informado';
@@ -202,7 +210,7 @@ export function useDashboardCaptacao({
       percent: total > 0 ? (f.count / total) * 100 : 0,
       ltvMedio: f.count > 0 ? f.receita / f.count : 0,
     }));
-  }, [novosPacientes, appointments, calculateRevenue, isCanceledButBilled]);
+  }, [novosPacientes, appointments, calculateRevenue, isCanceledButBilled, skip]);
 
   return {
     // Cards KPI

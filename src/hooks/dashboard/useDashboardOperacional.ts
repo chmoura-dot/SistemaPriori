@@ -39,13 +39,17 @@ export function useDashboardOperacional({
   appointments, appointmentsFiltered, appsRealizados, customers, psychologists,
   today, todayStr, filterMode, selectedMonth, selectedYear,
   isInSelectedPeriod, activeCustomersCount, calculateRevenue, isCanceledButBilled,
-  pricingCtx,
-}: Params) {
+  pricingCtx, skip = false,
+}: Params & { skip?: boolean }) {
 
-  const activePsychologists = useMemo(() => psychologists.filter(p => p.active), [psychologists]);
+  const activePsychologists = useMemo(() => {
+    if (skip) return [];
+    return psychologists.filter(p => p.active);
+  }, [psychologists, skip]);
 
   // ─── CAPACIDADE INSTALADA (horas reais por availability) ───────────────
   const capacidadeHoras = useMemo(() => {
+    if (skip) return 0;
     if (filterMode === 'all') {
       // Para "todo período" usa estimativa: psicólogos ativos × 22 dias × horas médias
       return activePsychologists.reduce((total, psy) => {
@@ -80,10 +84,11 @@ export function useDashboardOperacional({
       });
     });
     return totalHours;
-  }, [activePsychologists, filterMode, selectedMonth, selectedYear]);
+  }, [activePsychologists, filterMode, selectedMonth, selectedYear, skip]);
 
   // ─── HORAS EFETIVAMENTE OCUPADAS ───────────────────────────────────────
   const horasOcupadas = useMemo(() => {
+    if (skip) return 0;
     const appsValidos = appointmentsFiltered.filter(
       a => a.status !== AppointmentStatus.CANCELED && !a.isInternal
     );
@@ -91,13 +96,14 @@ export function useDashboardOperacional({
       const mins = diffMinutes(app.startTime, app.endTime);
       return total + (mins > 0 ? mins / 60 : 0.83); // fallback 50min
     }, 0);
-  }, [appointmentsFiltered]);
+  }, [appointmentsFiltered, skip]);
 
-  const taxaOcupacao = capacidadeHoras > 0 ? Math.min((horasOcupadas / capacidadeHoras) * 100, 100) : 0;
+  const taxaOcupacao = skip ? 0 : (capacidadeHoras > 0 ? Math.min((horasOcupadas / capacidadeHoras) * 100, 100) : 0);
 
   // ─── OCUPAÇÃO POR PSICÓLOGO ────────────────────────────────────────────
-  const ocupacaoPorPsicologo = useMemo(() =>
-    activePsychologists.map(psy => {
+  const ocupacaoPorPsicologo = useMemo(() => {
+    if (skip) return [];
+    return activePsychologists.map(psy => {
       // Agendados = todos não cancelados no período
       const psyAppsAgendados = appointmentsFiltered.filter(
         a => a.psychologistId === psy.id && a.status !== AppointmentStatus.CANCELED && !a.isInternal
@@ -144,38 +150,39 @@ export function useDashboardOperacional({
         sessoes: psyAppsAgendados.length,
         cancelados,
       };
-    }).sort((a, b) => b.taxa - a.taxa),
-    [activePsychologists, appointmentsFiltered, filterMode, selectedMonth, selectedYear]
-  );
+    }).sort((a, b) => b.taxa - a.taxa);
+  }, [activePsychologists, appointmentsFiltered, filterMode, selectedMonth, selectedYear, skip]);
 
   // ─── NO-SHOW (consultas passadas, não canceladas, não confirmadas) ─────
-  const noShowApps = useMemo(() =>
-    appointmentsFiltered.filter(app =>
+  const noShowApps = useMemo(() => {
+    if (skip) return [];
+    return appointmentsFiltered.filter(app =>
       app.date < todayStr &&
       app.status !== AppointmentStatus.CANCELED &&
       !app.confirmedPsychologist &&
       !app.confirmedPatient &&
       !app.isInternal
-    ),
-    [appointmentsFiltered, todayStr]
-  );
-  const pastNonCanceled = useMemo(() =>
-    appointmentsFiltered.filter(a =>
+    );
+  }, [appointmentsFiltered, todayStr, skip]);
+
+  const pastNonCanceled = useMemo(() => {
+    if (skip) return 0;
+    return appointmentsFiltered.filter(a =>
       a.date <= todayStr && a.status !== AppointmentStatus.CANCELED && !a.isInternal
-    ).length,
-    [appointmentsFiltered, todayStr]
-  );
+    ).length;
+  }, [appointmentsFiltered, todayStr, skip]);
   const noShowRate = pastNonCanceled > 0 ? (noShowApps.length / pastNonCanceled) * 100 : 0;
 
   // ─── IMPACTO FINANCEIRO DO NO-SHOW (ponderado por psicólogo) ───────────
-  const impactoFinanceiroNoShow = useMemo(() =>
-    noShowApps.reduce((total, app) => total + getAppPrice(app, pricingCtx), 0),
-    [noShowApps, pricingCtx]
-  );
+  const impactoFinanceiroNoShow = useMemo(() => {
+    if (skip) return 0;
+    return noShowApps.reduce((total, app) => total + getAppPrice(app, pricingCtx), 0);
+  }, [noShowApps, pricingCtx, skip]);
 
   // ─── NO-SHOW POR PSICÓLOGO ────────────────────────────────────────────
-  const noShowPorPsicologo = useMemo(() =>
-    activePsychologists.map(psy => {
+  const noShowPorPsicologo = useMemo(() => {
+    if (skip) return [];
+    return activePsychologists.map(psy => {
       const psyNoShows = noShowApps.filter(a => a.psychologistId === psy.id);
       const psyTotal = appointmentsFiltered.filter(
         a => a.psychologistId === psy.id && a.date <= todayStr &&
@@ -189,12 +196,12 @@ export function useDashboardOperacional({
         taxa: psyTotal > 0 ? (psyNoShows.length / psyTotal) * 100 : 0,
         impactoR$: impacto,
       };
-    }).filter(p => p.noShows > 0).sort((a, b) => b.impactoR$ - a.impactoR$),
-    [activePsychologists, noShowApps, appointmentsFiltered, todayStr, pricingCtx]
-  );
+    }).filter(p => p.noShows > 0).sort((a, b) => b.impactoR$ - a.impactoR$);
+  }, [activePsychologists, noShowApps, appointmentsFiltered, todayStr, pricingCtx, skip]);
 
   // ─── EVOLUÇÃO NO-SHOW MENSAL (últimos 6 meses) ────────────────────────
   const noShowTendencia = useMemo(() => {
+    if (skip) return [];
     const data: Record<string, { month: string; sortKey: number; noShows: number; total: number }> = {};
     appointments.filter(a => a.date <= todayStr && !a.isInternal).forEach(app => {
       const d = new Date(app.date + 'T12:00:00');
@@ -210,24 +217,28 @@ export function useDashboardOperacional({
       .sort((a, b) => a.sortKey - b.sortKey)
       .slice(-6)
       .map(d => ({ ...d, taxa: d.total > 0 ? (d.noShows / d.total) * 100 : 0 }));
-  }, [appointments, todayStr]);
+  }, [appointments, todayStr, skip]);
 
   // ─── CHURN SEGMENTADO ──────────────────────────────────────────────────
-  const churnDesistencia = useMemo(() =>
-    customers.filter(c => c.status === CustomerStatus.INACTIVE && c.inactivationReason === InactivationReason.DESISTENCIA).length,
-    [customers]
-  );
-  const churnPerda = useMemo(() =>
-    customers.filter(c => c.status === CustomerStatus.INACTIVE && c.inactivationReason === InactivationReason.PERDA_PLANO).length,
-    [customers]
-  );
-  const churnAlta = useMemo(() =>
-    customers.filter(c => c.status === CustomerStatus.INACTIVE && c.inactivationReason === InactivationReason.ALTA_PSICOLOGO).length,
-    [customers]
-  );
+  const churnDesistencia = useMemo(() => {
+    if (skip) return 0;
+    return customers.filter(c => c.status === CustomerStatus.INACTIVE && c.inactivationReason === InactivationReason.DESISTENCIA).length;
+  }, [customers, skip]);
+
+  const churnPerda = useMemo(() => {
+    if (skip) return 0;
+    return customers.filter(c => c.status === CustomerStatus.INACTIVE && c.inactivationReason === InactivationReason.PERDA_PLANO).length;
+  }, [customers, skip]);
+
+  const churnAlta = useMemo(() => {
+    if (skip) return 0;
+    return customers.filter(c => c.status === CustomerStatus.INACTIVE && c.inactivationReason === InactivationReason.ALTA_PSICOLOGO).length;
+  }, [customers, skip]);
+
   // Churn fantasma: ativos (sem alta) mas sem consulta há >30 dias
-  const churnFantasma = useMemo(() =>
-    customers.filter(c => {
+  const churnFantasma = useMemo(() => {
+    if (skip) return [];
+    return customers.filter(c => {
       if (
         c.status !== CustomerStatus.ACTIVE ||
         c.inactivationReason === InactivationReason.ALTA_PSICOLOGO ||
@@ -235,17 +246,22 @@ export function useDashboardOperacional({
       ) return false;
       const last = new Date(c.lastAppointmentDate + 'T12:00:00');
       return Math.ceil((today.getTime() - last.getTime()) / (1000 * 60 * 60 * 24)) > 30;
-    }),
-    [customers, today]
-  );
-  const totalBase = useMemo(() => customers.length, [customers]);
+    });
+  }, [customers, today, skip]);
+
+  const totalBase = useMemo(() => {
+    if (skip) return 0;
+    return customers.length;
+  }, [customers, skip]);
+
   const churnRateTotal = totalBase > 0
     ? ((churnDesistencia + churnPerda + churnFantasma.length) / totalBase) * 100
     : 0;
 
   // ─── PACIENTES EM RISCO DE CHURN (tabela) ─────────────────────────────
-  const pacientesRiscoChurn = useMemo(() =>
-    churnFantasma.map(c => {
+  const pacientesRiscoChurn = useMemo(() => {
+    if (skip) return [];
+    return churnFantasma.map(c => {
       const psy = psychologists.find(p => p.id === c.psychologistId);
       const last = new Date(c.lastAppointmentDate! + 'T12:00:00');
       const diasAusente = Math.ceil((today.getTime() - last.getTime()) / (1000 * 60 * 60 * 24));
@@ -259,14 +275,14 @@ export function useDashboardOperacional({
         diasAusente,
         receitaPerdidaEstimada: psyApps.length > 0 ? receitaTotal / psyApps.length : 0,
       };
-    }).sort((a, b) => b.diasAusente - a.diasAusente).slice(0, 20),
-    [churnFantasma, psychologists, appsRealizados, calculateRevenue, today]
-  );
+    }).sort((a, b) => b.diasAusente - a.diasAusente).slice(0, 20);
+  }, [churnFantasma, psychologists, appsRealizados, calculateRevenue, today, skip]);
 
   // ─── HEATMAP DE HORÁRIOS ───────────────────────────────────────────────
   const heatmapData = useMemo(() => {
     const dayNames = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex'];
     const hours = ['07:00','08:00','09:00','10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00','19:00'];
+    if (skip) return { grid: {}, capacityGrid: {}, hours, dayNames };
     const grid: Record<string, Record<string, number>> = {};
     hours.forEach(h => { grid[h] = {}; dayNames.forEach(d => { grid[h][d] = 0; }); });
     appointmentsFiltered.forEach(app => {
@@ -294,7 +310,7 @@ export function useDashboardOperacional({
       });
     });
     return { grid, capacityGrid, hours, dayNames };
-  }, [appointmentsFiltered, activePsychologists]);
+  }, [appointmentsFiltered, activePsychologists, skip]);
 
   return {
     // Cards KPI

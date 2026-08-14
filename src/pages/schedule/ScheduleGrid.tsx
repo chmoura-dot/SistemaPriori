@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Plus } from 'lucide-react';
 import { Appointment, Room, Psychologist, Customer, AttendanceMode, AppointmentStatus } from '../../services/types';
 import { cn } from '../../lib/utils';
-import { addMinutes, hasMinSpace } from './scheduleUtils';
+import { addMinutes } from './scheduleUtils';
 import { AppointmentCard } from './AppointmentCard';
+import { toMinutes, hasTimeOverlap } from '../../lib/timeUtils';
 
 interface ScheduleGridProps {
   appointments: Appointment[];
@@ -25,7 +26,7 @@ interface ScheduleGridProps {
   onReschedule: (app: Appointment) => void;
 }
 
-export const ScheduleGrid: React.FC<ScheduleGridProps> = ({
+export const ScheduleGrid: React.FC<ScheduleGridProps> = React.memo(({
   appointments,
   rooms,
   psychologists,
@@ -53,6 +54,107 @@ export const ScheduleGrid: React.FC<ScheduleGridProps> = ({
     if (matches.length <= 1) return matches[0];
     return matches.find(a => a.status !== AppointmentStatus.CANCELED) ?? matches[0];
   };
+
+  // ── OTIMIZAÇÃO: Indexação O(1) de agendamentos por slot/célula do grid ──
+  const appointmentByCell = useMemo(() => {
+    const map: Record<string, Appointment[]> = {};
+
+    appointments.forEach(a => {
+      // Varremos os slots e checamos overlaps
+      timeSlots.forEach(slot => {
+        const slotEnd = addMinutes(slot, 30);
+        const overlaps = a.startTime < slotEnd && a.endTime > slot;
+        if (!overlaps) return;
+
+        if (viewMode === 'daily') {
+          if (a.date === date && a.mode === AttendanceMode.PRESENCIAL) {
+            const key = `${slot}-${a.roomId}`;
+            if (!map[key]) map[key] = [];
+            map[key].push(a);
+          }
+        } else if (viewMode === 'weekly') {
+          if (a.roomId === selectedRoom && a.mode === AttendanceMode.PRESENCIAL) {
+            const key = `${slot}-${a.date}`;
+            if (!map[key]) map[key] = [];
+            map[key].push(a);
+          }
+        } else if (viewMode === 'psychologist') {
+          if (a.psychologistId === selectedPsychologistId) {
+            const key = `${slot}-${a.date}`;
+            if (!map[key]) map[key] = [];
+            map[key].push(a);
+          }
+        }
+      });
+    });
+
+    return map;
+  }, [appointments, viewMode, date, selectedRoom, selectedPsychologistId, timeSlots]);
+
+  // ── OTIMIZAÇÃO: Cache e Indexação rápida de conflitos para hasMinSpaceFast ──
+  const conflictsMap = useMemo(() => {
+    const activeAppsByRoom: Record<string, Appointment[]> = {};
+    const activeAppsByPsy: Record<string, Appointment[]> = {};
+
+    appointments.forEach(a => {
+      if (a.status === AppointmentStatus.CANCELED) return;
+
+      const rKey = `${a.date}-${a.roomId}`;
+      if (!activeAppsByRoom[rKey]) activeAppsByRoom[rKey] = [];
+      activeAppsByRoom[rKey].push(a);
+
+      const pKey = `${a.date}-${a.psychologistId}`;
+      if (!activeAppsByPsy[pKey]) activeAppsByPsy[pKey] = [];
+      activeAppsByPsy[pKey].push(a);
+    });
+
+    return { activeAppsByRoom, activeAppsByPsy };
+  }, [appointments]);
+
+  // ── OTIMIZAÇÃO: Versão ultraveloz do hasMinSpace em O(1) usando o cache local ──
+  const hasMinSpaceFast = (
+    slot: string,
+    dateStr: string,
+    roomId: string | undefined,
+    psyId: string | undefined,
+  ): boolean => {
+    const minEndTime = addMinutes(slot, 10);
+    const isOnline = formMode === AttendanceMode.ONLINE;
+    const dayOfWeek = new Date(dateStr + 'T12:00:00').getDay();
+    const isSaturday = dayOfWeek === 6;
+    const limit = isSaturday ? '14:00' : '20:00';
+
+    if (!isOnline && minEndTime > limit) return false;
+    if (dayOfWeek === 0) return false;
+
+    if (roomId) {
+      const key = `${dateStr}-${roomId}`;
+      const relevantApps = conflictsMap.activeAppsByRoom[key] ?? [];
+      const hasConflict = relevantApps.some(a =>
+        hasTimeOverlap(slot, minEndTime, a.startTime, a.endTime)
+      );
+      if (hasConflict) return false;
+    }
+
+    if (psyId) {
+      const psy = psychologists.find(p => p.id === psyId);
+      if (!psy || !psy.active) return false;
+      const isWithinAvailability = psy.availability.some(
+        s => s.dayOfWeek === dayOfWeek && toMinutes(slot) >= toMinutes(s.startTime) && toMinutes(minEndTime) <= toMinutes(s.endTime)
+      );
+      if (!isWithinAvailability) return false;
+
+      const key = `${dateStr}-${psyId}`;
+      const relevantApps = conflictsMap.activeAppsByPsy[key] ?? [];
+      const hasPsyConflict = relevantApps.some(a =>
+        hasTimeOverlap(slot, minEndTime, a.startTime, a.endTime)
+      );
+      if (hasPsyConflict) return false;
+    }
+
+    return true;
+  };
+
 
   return (
     <div className="bg-white border border-zinc-100 rounded-2xl overflow-hidden shadow-sm">
@@ -108,16 +210,8 @@ export const ScheduleGrid: React.FC<ScheduleGridProps> = ({
 
                 {viewMode === 'daily'
                   ? rooms.map(room => {
-                      const appointment = pickSlotAppointment(
-                        appointments.filter(
-                          a =>
-                            a.date === date &&
-                            a.roomId === room.id &&
-                            a.mode === AttendanceMode.PRESENCIAL &&
-                            a.startTime < addMinutes(slot, 30) &&
-                            a.endTime > slot
-                        )
-                      );
+                      const key = `${slot}-${room.id}`;
+                      const appointment = pickSlotAppointment(appointmentByCell[key] ?? []);
                       const isFirstSlot =
                         !!appointment &&
                         appointment.startTime >= slot &&
@@ -142,14 +236,11 @@ export const ScheduleGrid: React.FC<ScheduleGridProps> = ({
                             ) : (
                               <div className="h-full w-full" />
                             )
-                          ) : hasMinSpace(
+                          ) : hasMinSpaceFast(
                               slot,
                               date,
                               room.id,
-                              undefined,
-                              formMode,
-                              appointments,
-                              psychologists
+                              undefined
                             ) ? (
                             <div className="h-full w-full rounded-md border border-dashed border-zinc-100 flex items-center justify-center text-zinc-200">
                               <Plus size={10} />
@@ -161,18 +252,8 @@ export const ScheduleGrid: React.FC<ScheduleGridProps> = ({
                       );
                     })
                   : weekDays.map(day => {
-                      const appointment = pickSlotAppointment(
-                        appointments.filter(
-                          a =>
-                            a.date === day &&
-                            (viewMode === 'psychologist'
-                              ? a.psychologistId === selectedPsychologistId
-                              : a.roomId === selectedRoom) &&
-                            (viewMode === 'psychologist' ? true : a.mode === AttendanceMode.PRESENCIAL) &&
-                            a.startTime < addMinutes(slot, 30) &&
-                            a.endTime > slot
-                        )
-                      );
+                      const key = `${slot}-${day}`;
+                      const appointment = pickSlotAppointment(appointmentByCell[key] ?? []);
                       const isFirstSlot =
                         !!appointment &&
                         appointment.startTime >= slot &&
@@ -201,14 +282,11 @@ export const ScheduleGrid: React.FC<ScheduleGridProps> = ({
                             ) : (
                               <div className="h-full w-full" />
                             )
-                          ) : hasMinSpace(
+                          ) : hasMinSpaceFast(
                               slot,
                               day,
                               viewMode === 'psychologist' ? undefined : selectedRoom,
-                              viewMode === 'psychologist' ? selectedPsychologistId : undefined,
-                              formMode,
-                              appointments,
-                              psychologists
+                              viewMode === 'psychologist' ? selectedPsychologistId : undefined
                             ) ? (
                             <div className="h-full w-full rounded-md border border-dashed border-zinc-100 flex items-center justify-center text-zinc-200">
                               <Plus size={10} />
@@ -226,4 +304,6 @@ export const ScheduleGrid: React.FC<ScheduleGridProps> = ({
       </div>
     </div>
   );
-};
+});
+
+ScheduleGrid.displayName = 'ScheduleGrid';

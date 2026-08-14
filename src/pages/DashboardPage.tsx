@@ -22,7 +22,7 @@ const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
 
 export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => void }) => {
   const [activeTab, setActiveTab] = useState<TabId>('financeiro');
-  const data = useDashboardData();
+  const data = useDashboardData(activeTab);
 
   const {
     isLoading, error,

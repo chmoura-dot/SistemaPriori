@@ -81,59 +81,70 @@ export function useDashboardFinanceiro({
   appointments, appointmentsFiltered, appsRealizados, appsRealizadosPrev,
   customers, psychologists, plans, expenses, expensesFiltered, expensesPrevMonth,
   subscriptionRevenue, findPlan, calculateRevenue, isCanceledButBilled,
-  filterMode, pricingCtx,
-}: Params) {
+  filterMode, pricingCtx, skip = false,
+}: Params & { skip?: boolean }) {
 
   // ─── RECEITA BRUTA ──────────────────────────────────────────────────────
-  const receitaBruta = useMemo(() =>
-    calculateRevenue(appsRealizados) + subscriptionRevenue,
-    [appsRealizados, subscriptionRevenue, calculateRevenue]
-  );
-  const receitaBrutaPrev = useMemo(() =>
-    calculateRevenue(appsRealizadosPrev),
-    [appsRealizadosPrev, calculateRevenue]
-  );
+  const receitaBruta = useMemo(() => {
+    if (skip) return 0;
+    return calculateRevenue(appsRealizados) + subscriptionRevenue;
+  }, [appsRealizados, subscriptionRevenue, calculateRevenue, skip]);
+
+  const receitaBrutaPrev = useMemo(() => {
+    if (skip) return 0;
+    return calculateRevenue(appsRealizadosPrev);
+  }, [appsRealizadosPrev, calculateRevenue, skip]);
 
   // ─── TOTAL DE REPASSES ─────────────────────────────────────────────────
-  const totalRepasses = useMemo(() =>
-    appsRealizados.reduce((total, app) => {
+  const totalRepasses = useMemo(() => {
+    if (skip) return 0;
+    return appsRealizados.reduce((total, app) => {
       const psy = psychologists.find(p => p.id === app.psychologistId);
       return total + getRepassValueForApp(app, customers, psy, findPlan, pricingCtx);
-    }, 0),
-    [appsRealizados, customers, psychologists, findPlan, pricingCtx]
-  );
+    }, 0);
+  }, [appsRealizados, customers, psychologists, findPlan, pricingCtx, skip]);
 
   // ─── IMPOSTOS + TAXAS (das despesas reais) ──────────────────────────────
-  const impostosPeriodo = useMemo(() =>
-    expensesFiltered
+  const impostosPeriodo = useMemo(() => {
+    if (skip) return 0;
+    return expensesFiltered
       .filter(e => e.category === ExpenseCategory.TAX)
-      .reduce((acc, e) => acc + e.amount, 0),
-    [expensesFiltered]
-  );
-  const taxasBancarias = useMemo(() =>
-    expensesFiltered
+      .reduce((acc, e) => acc + e.amount, 0);
+  }, [expensesFiltered, skip]);
+
+  const taxasBancarias = useMemo(() => {
+    if (skip) return 0;
+    return expensesFiltered
       .filter(e => e.category === ExpenseCategory.BANK_FEES)
-      .reduce((acc, e) => acc + e.amount, 0),
-    [expensesFiltered]
-  );
-  const despesasOperacionais = useMemo(() =>
-    expensesFiltered
+      .reduce((acc, e) => acc + e.amount, 0);
+  }, [expensesFiltered, skip]);
+
+  const despesasOperacionais = useMemo(() => {
+    if (skip) return 0;
+    return expensesFiltered
       .filter(e => e.category !== ExpenseCategory.TAX && e.category !== ExpenseCategory.BANK_FEES)
-      .reduce((acc, e) => acc + e.amount, 0),
-    [expensesFiltered]
-  );
+      .reduce((acc, e) => acc + e.amount, 0);
+  }, [expensesFiltered, skip]);
 
   // ─── RECEITA LÍQUIDA ───────────────────────────────────────────────────
-  const receitaLiquida = receitaBruta - impostosPeriodo - taxasBancarias - totalRepasses;
+  const receitaLiquida = skip ? 0 : receitaBruta - impostosPeriodo - taxasBancarias - totalRepasses;
 
   // ─── LUCRO OPERACIONAL ─────────────────────────────────────────────────
-  const lucroOperacional = receitaLiquida - despesasOperacionais;
-  const totalDespesas = useMemo(() => expensesFiltered.reduce((a, e) => a + e.amount, 0), [expensesFiltered]);
-  const totalDespesasPrev = useMemo(() => expensesPrevMonth.reduce((a, e) => a + e.amount, 0), [expensesPrevMonth]);
+  const lucroOperacional = skip ? 0 : receitaLiquida - despesasOperacionais;
+  const totalDespesas = useMemo(() => {
+    if (skip) return 0;
+    return expensesFiltered.reduce((a, e) => a + e.amount, 0);
+  }, [expensesFiltered, skip]);
+
+  const totalDespesasPrev = useMemo(() => {
+    if (skip) return 0;
+    return expensesPrevMonth.reduce((a, e) => a + e.amount, 0);
+  }, [expensesPrevMonth, skip]);
 
   // ─── REPASSE POR PSICÓLOGO (tabela detalhada) ──────────────────────────
-  const repassePorPsicologo = useMemo(() =>
-    psychologists.filter(p => p.active).map(psy => {
+  const repassePorPsicologo = useMemo(() => {
+    if (skip) return [];
+    return psychologists.filter(p => p.active).map(psy => {
       const psyApps = appsRealizados.filter(a => a.psychologistId === psy.id);
       // Usa mesma hierarquia da RepassePage para consistência
       const { bruto, repasse } = psyApps.reduce((acc, app) => {
@@ -154,12 +165,12 @@ export function useDashboardFinanceiro({
         regra,
         percentReceita: receitaBruta > 0 ? (bruto / receitaBruta) * 100 : 0,
       };
-    }).filter(p => p.sessoes > 0).sort((a, b) => b.bruto - a.bruto),
-    [psychologists, appsRealizados, customers, findPlan, calculateRevenue, receitaBruta]
-  );
+    }).filter(p => p.sessoes > 0).sort((a, b) => b.bruto - a.bruto);
+  }, [psychologists, appsRealizados, customers, findPlan, calculateRevenue, receitaBruta, pricingCtx, skip]);
 
   // ─── RECEITA POR CANAL (Particular vs cada Convênio) ───────────────────
   const receitaPorCanal = useMemo(() => {
+    if (skip) return [];
     const canais: Record<string, { nome: string; sessoes: number; receita: number }> = {};
     appsRealizados.forEach(app => {
       const customer = customers.find(c => c.id === app.customerId);
@@ -176,11 +187,12 @@ export function useDashboardFinanceiro({
       ticketMedio: c.sessoes > 0 ? c.receita / c.sessoes : 0,
       percentMix: totalReceita > 0 ? (c.receita / totalReceita) * 100 : 0,
     }));
-  }, [appsRealizados, customers, pricingCtx]);
+  }, [appsRealizados, customers, pricingCtx, skip]);
 
   // ─── TICKET MÉDIO POR PSICÓLOGO ────────────────────────────────────────
-  const ticketMedioPorPsicologo = useMemo(() =>
-    psychologists.filter(p => p.active).map(psy => {
+  const ticketMedioPorPsicologo = useMemo(() => {
+    if (skip) return [];
+    return psychologists.filter(p => p.active).map(psy => {
       const psyApps = appsRealizados.filter(a => a.psychologistId === psy.id);
       const receita = calculateRevenue(psyApps);
       return {
@@ -189,12 +201,12 @@ export function useDashboardFinanceiro({
         receita,
         ticketMedio: psyApps.length > 0 ? receita / psyApps.length : 0,
       };
-    }).filter(p => p.sessoes > 0).sort((a, b) => b.ticketMedio - a.ticketMedio),
-    [psychologists, appsRealizados, calculateRevenue]
-  );
+    }).filter(p => p.sessoes > 0).sort((a, b) => b.ticketMedio - a.ticketMedio);
+  }, [psychologists, appsRealizados, calculateRevenue, skip]);
 
   // ─── GLOSA POR CONVÊNIO (appointments com billingStatus === 'denied') ──
   const glosaPorConvenio = useMemo(() => {
+    if (skip) return [];
     const convMap: Record<string, { plano: string; enviados: number; glosados: number; motivos: Record<string, number> }> = {};
     appointmentsFiltered.forEach(app => {
       if (!app.billingBatchId) return; // sem lote = particular, não entra
@@ -216,10 +228,11 @@ export function useDashboardFinanceiro({
       taxaGlosa: c.enviados > 0 ? (c.glosados / c.enviados) * 100 : 0,
       motivoFrequente: Object.entries(c.motivos).sort((a, b) => b[1] - a[1])[0]?.[0] || '—',
     })).sort((a, b) => b.taxaGlosa - a.taxaGlosa);
-  }, [appointmentsFiltered, customers]);
+  }, [appointmentsFiltered, customers, skip]);
 
   // ─── TENDÊNCIA RECEITA 6 MESES ─────────────────────────────────────────
   const tendenciaReceita6m = useMemo(() => {
+    if (skip) return [];
     // ① Pré-gera janela fixa dos últimos 6 meses calendário
     const now = new Date();
     const data: Record<string, { month: string; sortKey: number; bruta: number; repasses: number; liquida: number; impostos: number }> = {};
@@ -259,7 +272,7 @@ export function useDashboardFinanceiro({
       d.liquida = d.bruta > 0 ? d.bruta - d.repasses - d.impostos : 0;
     });
     return sorted;
-  }, [appointments, expenses, customers, psychologists, findPlan, isCanceledButBilled, pricingCtx]);
+  }, [appointments, expenses, customers, psychologists, findPlan, isCanceledButBilled, pricingCtx, skip]);
 
   return {
     // Cards KPI
