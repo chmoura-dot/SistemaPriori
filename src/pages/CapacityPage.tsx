@@ -25,6 +25,19 @@ import { Button } from '../components/Button';
 
 const DAYS_OF_WEEK = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
 
+interface DailyStats {
+  date: string;
+  label: string;
+  total: number;
+  occupied: number;
+  available: number;
+  bottleneck: number;
+  rate: number;
+}
+
+type SlotStatus = 'occupied' | 'available' | 'bottleneck';
+type SlotStatusMap = Record<string, Record<string, Record<string, SlotStatus>>>;
+
 export const CapacityPage = () => {
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [viewMode, setViewMode] = useState<'daily' | 'weekly'>('daily');
@@ -97,107 +110,116 @@ export const CapacityPage = () => {
 
   const timeSlots = useMemo(() => getTimeSlotsForDate(date), [date]);
 
-  const getSlotStatus = (slot: string, roomId: string, targetDate: string, dayAppointments: Appointment[]) => {
-    const slotStart = slot;
-    const [h, m] = slot.split(':').map(Number);
-    const slotEnd = `${(h + 1).toString().padStart(2, '0')}:00`;
-
-    // 1. Check if occupied
-    const isOccupied = dayAppointments.some(a => 
-      a.roomId === roomId && 
-      a.status !== AppointmentStatus.CANCELED &&
-      ((slotStart >= a.startTime && slotStart < a.endTime) ||
-       (slotEnd > a.startTime && slotEnd <= a.endTime))
-    );
-
-    if (isOccupied) return 'occupied';
-
-    // 2. Check if there are psychologists available in this time slot
-    const dateObj = new Date(targetDate + 'T12:00:00');
-    const dayOfWeek = dateObj.getDay();
-
-    const availablePsys = psychologists.filter(psy => {
-      // Check if psy has availability for this slot
-      const hasAvailability = psy.availability.some(s => 
-        s.dayOfWeek === dayOfWeek && 
-        slotStart >= s.startTime && 
-        slotEnd <= s.endTime &&
-        (s.mode === 'Presencial' || s.mode === 'Ambos')
-      );
-
-      if (!hasAvailability) return false;
-
-      // Check if psy is already busy
-      const isPsyBusy = dayAppointments.some(a => 
-        a.psychologistId === psy.id && 
-        a.status !== AppointmentStatus.CANCELED &&
-        ((slotStart >= a.startTime && slotStart < a.endTime) ||
-         (slotEnd > a.startTime && slotEnd <= a.endTime))
-      );
-
-      return !isPsyBusy;
-    });
-
-    if (availablePsys.length > 0) return 'available';
-    return 'bottleneck';
-  };
-
-  const stats = useMemo(() => {
+  const { resolvedStatuses, stats } = useMemo<{
+    resolvedStatuses: SlotStatusMap;
+    stats: {
+      totalSlots: number;
+      occupiedCount: number;
+      availableCount: number;
+      bottleneckCount: number;
+      occupancyRate: number;
+      dailyBreakdown?: DailyStats[];
+    };
+  }>(() => {
+    const datesToProcess: string[] = [];
     if (viewMode === 'daily') {
-      let totalSlots = timeSlots.length * rooms.length;
-      let occupiedCount = 0;
-      let availableCount = 0;
-      let bottleneckCount = 0;
-
-      timeSlots.forEach(slot => {
-        rooms.forEach(room => {
-          const status = getSlotStatus(slot, room.id, date, appointments);
-          if (status === 'occupied') occupiedCount++;
-          else if (status === 'available') availableCount++;
-          else bottleneckCount++;
-        });
-      });
-
-      const occupancyRate = totalSlots > 0 ? (occupiedCount / totalSlots) * 100 : 0;
-      return { totalSlots, occupiedCount, availableCount, bottleneckCount, occupancyRate };
+      datesToProcess.push(date);
     } else {
-      // Weekly aggregation
       const { start } = getWeekRange(date);
-      let totalSlots = 0;
-      let occupiedCount = 0;
-      let availableCount = 0;
-      let bottleneckCount = 0;
-      const dailyBreakdown: any[] = [];
-
-      // Iterate 6 days (Monday to Saturday)
       for (let i = 0; i < 6; i++) {
         const d = new Date(start + 'T12:00:00');
         d.setDate(d.getDate() + i);
-        const dateStr = d.toISOString().split('T')[0];
-        const daySlots = getTimeSlotsForDate(dateStr);
-        const dayAppointments = appointments.filter(a => a.date === dateStr);
+        datesToProcess.push(d.toISOString().split('T')[0]);
+      }
+    }
 
-        let dTotal = daySlots.length * rooms.length;
-        let dOccupied = 0;
-        let dAvailable = 0;
-        let dBottleneck = 0;
+    const statuses: SlotStatusMap = {};
+    let totalSlots = 0;
+    let occupiedCount = 0;
+    let availableCount = 0;
+    let bottleneckCount = 0;
+    const dailyBreakdown: DailyStats[] = [];
 
-        daySlots.forEach(slot => {
-          rooms.forEach(room => {
-            const status = getSlotStatus(slot, room.id, dateStr, dayAppointments);
-            if (status === 'occupied') dOccupied++;
-            else if (status === 'available') dAvailable++;
-            else dBottleneck++;
-          });
+    datesToProcess.forEach(targetDate => {
+      statuses[targetDate] = {};
+      const targetTimeSlots = getTimeSlotsForDate(targetDate);
+      const dayAppointments = appointments.filter(
+        a => a.date === targetDate && a.status !== AppointmentStatus.CANCELED
+      );
+
+      const d = new Date(targetDate + 'T12:00:00');
+      const dayOfWeek = d.getDay();
+
+      const dTotal = targetTimeSlots.length * rooms.length;
+      let dOccupied = 0;
+      let dAvailable = 0;
+      let dBottleneck = 0;
+
+      targetTimeSlots.forEach(slot => {
+        statuses[targetDate][slot] = {};
+        const slotStart = slot;
+        const [h] = slot.split(':').map(Number);
+        const slotEnd = `${(h + 1).toString().padStart(2, '0')}:00`;
+
+        // 1. Identify which rooms are occupied in this slot
+        const occupiedRoomIds = new Set<string>();
+        dayAppointments.forEach(a => {
+          if (
+            (slotStart >= a.startTime && slotStart < a.endTime) ||
+            (slotEnd > a.startTime && slotEnd <= a.endTime)
+          ) {
+            occupiedRoomIds.add(a.roomId);
+          }
         });
 
-        totalSlots += dTotal;
-        occupiedCount += dOccupied;
-        availableCount += dAvailable;
-        bottleneckCount += dBottleneck;
+        // 2. Identify available psychologists in this slot
+        const availablePsys = psychologists.filter(psy => {
+          const hasAvailability = psy.availability.some(s => 
+            s.dayOfWeek === dayOfWeek && 
+            slotStart >= s.startTime && 
+            slotEnd <= s.endTime &&
+            (s.mode === 'Presencial' || s.mode === 'Ambos' || !s.mode)
+          );
 
+          if (!hasAvailability) return false;
+
+          const isPsyBusy = dayAppointments.some(a => 
+            a.psychologistId === psy.id && 
+            ((slotStart >= a.startTime && slotStart < a.endTime) ||
+             (slotEnd > a.startTime && slotEnd <= a.endTime))
+          );
+
+          return !isPsyBusy;
+        });
+
+        let availablePsyCount = availablePsys.length;
+
+        // 3. Assign statuses to each room
+        rooms.forEach(room => {
+          if (occupiedRoomIds.has(room.id)) {
+            statuses[targetDate][slot][room.id] = 'occupied';
+            dOccupied++;
+          } else {
+            if (availablePsyCount > 0) {
+              statuses[targetDate][slot][room.id] = 'available';
+              dAvailable++;
+              availablePsyCount--;
+            } else {
+              statuses[targetDate][slot][room.id] = 'bottleneck';
+              dBottleneck++;
+            }
+          }
+        });
+      });
+
+      totalSlots += dTotal;
+      occupiedCount += dOccupied;
+      availableCount += dAvailable;
+      bottleneckCount += dBottleneck;
+
+      if (viewMode === 'weekly') {
         dailyBreakdown.push({
-          date: dateStr,
+          date: targetDate,
           label: d.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit' }),
           total: dTotal,
           occupied: dOccupied,
@@ -206,11 +228,22 @@ export const CapacityPage = () => {
           rate: dTotal > 0 ? (dOccupied / dTotal) * 100 : 0
         });
       }
+    });
 
-      const occupancyRate = totalSlots > 0 ? (occupiedCount / totalSlots) * 100 : 0;
-      return { totalSlots, occupiedCount, availableCount, bottleneckCount, occupancyRate, dailyBreakdown };
-    }
-  }, [appointments, rooms, psychologists, timeSlots, viewMode, date]);
+    const occupancyRate = totalSlots > 0 ? (occupiedCount / totalSlots) * 100 : 0;
+
+    return {
+      resolvedStatuses: statuses,
+      stats: {
+        totalSlots,
+        occupiedCount,
+        availableCount,
+        bottleneckCount,
+        occupancyRate,
+        dailyBreakdown: viewMode === 'weekly' ? dailyBreakdown : undefined
+      }
+    };
+  }, [appointments, rooms, psychologists, date, viewMode]);
 
   const changeDate = (days: number) => {
     const d = new Date(date + 'T12:00:00');
@@ -276,58 +309,104 @@ export const CapacityPage = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-white border border-zinc-100 rounded-2xl p-5 shadow-sm">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="p-2 bg-priori-navy/5 rounded-lg text-priori-navy">
-              <TrendingUp size={20} />
+      {isLoading ? (
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          {Array.from({ length: 4 }).map((_, idx) => (
+            <div key={idx} className="bg-white border border-zinc-100 rounded-2xl p-5 shadow-sm animate-pulse">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-10 h-10 bg-zinc-100 rounded-lg" />
+                <div className="h-3 bg-zinc-200 rounded w-24" />
+              </div>
+              <div className="h-8 bg-zinc-200 rounded w-16 mb-2" />
+              <div className="h-2 bg-zinc-100 rounded w-full overflow-hidden" />
             </div>
-            <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Ocupação Atual</span>
+          ))}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="bg-white border border-zinc-100 rounded-2xl p-5 shadow-sm">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="p-2 bg-priori-navy/5 rounded-lg text-priori-navy">
+                <TrendingUp size={20} />
+              </div>
+              <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Ocupação Atual</span>
+            </div>
+            <div className="text-2xl font-black text-priori-navy">{stats.occupancyRate.toFixed(1)}%</div>
+            <div className="mt-2 h-1.5 bg-zinc-100 rounded-full overflow-hidden">
+              <div 
+                className="h-full bg-priori-navy transition-all duration-500" 
+                style={{ width: `${stats.occupancyRate}%` }}
+              />
+            </div>
           </div>
-          <div className="text-2xl font-black text-priori-navy">{stats.occupancyRate.toFixed(1)}%</div>
-          <div className="mt-2 h-1.5 bg-zinc-100 rounded-full overflow-hidden">
-            <div 
-              className="h-full bg-priori-navy transition-all duration-500" 
-              style={{ width: `${stats.occupancyRate}%` }}
-            />
+
+          <div className="bg-white border border-zinc-100 rounded-2xl p-5 shadow-sm">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="p-2 bg-emerald-50 rounded-lg text-emerald-600">
+                <CheckCircle2 size={20} />
+              </div>
+              <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Horários Livres</span>
+            </div>
+            <div className="text-2xl font-black text-emerald-600">{stats.availableCount}</div>
+            <p className="text-[10px] text-zinc-500 mt-1">Salas com profissionais disponíveis</p>
+          </div>
+
+          <div className="bg-white border border-zinc-100 rounded-2xl p-5 shadow-sm border-l-4 border-l-priori-gold">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="p-2 bg-amber-50 rounded-lg text-priori-gold">
+                <AlertTriangle size={20} />
+              </div>
+              <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Gargalos de Equipe</span>
+            </div>
+            <div className="text-2xl font-black text-priori-gold">{stats.bottleneckCount}</div>
+            <p className="text-[10px] text-zinc-500 mt-1">Sala livre mas sem psicólogo no turno</p>
+          </div>
+
+          <div className="bg-white border border-zinc-100 rounded-2xl p-5 shadow-sm">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="p-2 bg-zinc-50 rounded-lg text-zinc-500">
+                <Users size={20} />
+              </div>
+              <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Capacidade Total</span>
+            </div>
+            <div className="text-2xl font-black text-zinc-700">{stats.totalSlots}h</div>
+            <p className="text-[10px] text-zinc-500 mt-1">Somatório de salas no período</p>
           </div>
         </div>
+      )}
 
-        <div className="bg-white border border-zinc-100 rounded-2xl p-5 shadow-sm">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="p-2 bg-emerald-50 rounded-lg text-emerald-600">
-              <CheckCircle2 size={20} />
+      {isLoading ? (
+        <div className="bg-white border border-zinc-100 rounded-2xl shadow-sm overflow-hidden animate-pulse">
+          <div className="p-4 border-b border-zinc-50 bg-zinc-50/30 flex items-center justify-between">
+            <div className="h-4 bg-zinc-200 rounded w-48" />
+            <div className="flex gap-4">
+              <div className="w-12 h-3 bg-zinc-200 rounded" />
+              <div className="w-12 h-3 bg-zinc-200 rounded" />
+              <div className="w-12 h-3 bg-zinc-200 rounded" />
             </div>
-            <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Horários Livres</span>
           </div>
-          <div className="text-2xl font-black text-emerald-600">{stats.availableCount}</div>
-          <p className="text-[10px] text-zinc-500 mt-1">Salas com profissionais disponíveis</p>
-        </div>
-
-        <div className="bg-white border border-zinc-100 rounded-2xl p-5 shadow-sm border-l-4 border-l-priori-gold">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="p-2 bg-amber-50 rounded-lg text-priori-gold">
-              <AlertTriangle size={20} />
+          <div className="p-6 border-b border-zinc-50 bg-white">
+            <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="bg-zinc-50/50 border border-zinc-100 rounded-xl p-3 h-28 flex flex-col justify-between">
+                  <div className="h-3 bg-zinc-200 rounded w-16 animate-pulse" />
+                  <div className="h-6 bg-zinc-200 rounded w-12 animate-pulse" />
+                  <div className="h-1 bg-zinc-200 rounded-full w-full animate-pulse" />
+                </div>
+              ))}
             </div>
-            <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Gargalos de Equipe</span>
           </div>
-          <div className="text-2xl font-black text-priori-gold">{stats.bottleneckCount}</div>
-          <p className="text-[10px] text-zinc-500 mt-1">Sala livre mas sem psicólogo no turno</p>
-        </div>
-
-        <div className="bg-white border border-zinc-100 rounded-2xl p-5 shadow-sm">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="p-2 bg-zinc-50 rounded-lg text-zinc-500">
-              <Users size={20} />
-            </div>
-            <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Capacidade Total</span>
+          <div className="p-4 space-y-3">
+            {Array.from({ length: 8 }).map((_, idx) => (
+              <div key={idx} className="flex gap-4 items-center">
+                <div className="w-16 h-10 bg-zinc-50 rounded animate-pulse" />
+                <div className="flex-1 h-10 bg-zinc-50 rounded animate-pulse" />
+              </div>
+            ))}
           </div>
-          <div className="text-2xl font-black text-zinc-700">{stats.totalSlots}h</div>
-          <p className="text-[10px] text-zinc-500 mt-1">Somatório de salas no período</p>
         </div>
-      </div>
-
-      <div className="bg-white border border-zinc-100 rounded-2xl shadow-sm overflow-hidden">
+      ) : (
+        <div className="bg-white border border-zinc-100 rounded-2xl shadow-sm overflow-hidden">
         <div className="p-4 border-b border-zinc-50 bg-zinc-50/30 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <BarChart3 size={18} className="text-priori-navy" />
@@ -355,7 +434,7 @@ export const CapacityPage = () => {
         {viewMode === 'weekly' && stats.dailyBreakdown && (
           <div className="p-6 border-b border-zinc-50 bg-white">
             <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
-              {stats.dailyBreakdown.map((day: any) => (
+              {stats.dailyBreakdown.map((day: DailyStats) => (
                 <div 
                   key={day.date} 
                   onClick={() => {
@@ -420,7 +499,7 @@ export const CapacityPage = () => {
                     </div>
                   </td>
                   {rooms.map(room => {
-                    const status = getSlotStatus(slot, room.id, date, appointments);
+                    const status = resolvedStatuses[date]?.[slot]?.[room.id] || 'bottleneck';
                     return (
                       <td key={`${slot}-${room.id}`} className="p-1 border-r border-zinc-100 last:border-r-0">
                         <div className={cn(
@@ -469,6 +548,7 @@ export const CapacityPage = () => {
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 };
