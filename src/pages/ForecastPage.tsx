@@ -66,29 +66,31 @@ export const ForecastPage = () => {
       while (startMonth < 0) { startMonth += 12; startYear -= 1; }
       const firstDay = `${startYear}-${String(startMonth + 1).padStart(2, '0')}-01`;
 
-      // Início da janela de CONTEXTO: no mínimo 7 meses (>180 dias) antes do mês
-      // navegado, independente do lookback escolhido. Necessário para a regra de
-      // carência de 180 dias e o ciclo AMS de 10 meses não classificarem uma
-      // sessão de controle como "1ª sessão faturável" por falta de histórico.
-      const CONTEXT_MONTHS = Math.max(lookbackMonths, 12);
-      let ctxYear = year;
-      let ctxMonth = month - CONTEXT_MONTHS;
-      while (ctxMonth < 0) { ctxMonth += 12; ctxYear -= 1; }
-      const contextFirstDay = `${ctxYear}-${String(ctxMonth + 1).padStart(2, '0')}-01`;
-
       // Fim da janela: último dia do mês navegado.
       const pad = (n: number) => String(n).padStart(2, '0');
       const lastDate = new Date(year, month + 1, 0);
       const lastDay = `${lastDate.getFullYear()}-${pad(lastDate.getMonth() + 1)}-${pad(lastDate.getDate())}`;
 
-      const [apps, ctxApps, custs, pls] = await Promise.all([
+      // Otimização: Em vez de carregar TODOS os atendimentos gerais de até 12 meses atrás
+      // (o que consome muita RAM e I/O de rede desnecessariamente), carregamos apenas os
+      // atendimentos do período de previsão escolhido. Para o cálculo de precificação (AMS/180 dias),
+      // carregamos APENAS as avaliações neuropsicológicas históricas (que é a única especialidade
+      // que necessita de histórico no pricing.ts).
+      const [apps, neuroApps, custs, pls] = await Promise.all([
         api.getAppointmentsByRange(firstDay, lastDay),
-        api.getAppointmentsByRange(contextFirstDay, lastDay),
+        api.getNeuroAppointments(),
         api.getCustomers(),
         api.getPlans(),
       ]);
+
+      // Une os atendimentos da competência com o histórico específico de neuropsicologia
+      // deduplicando por ID para alimentar o PricingContext de forma ultra-otimizada.
+      const mergedContext = Array.from(
+        new Map([...apps, ...neuroApps].map(appt => [appt.id, appt])).values()
+      );
+
       setAppointments(apps);
-      setContextAppointments(ctxApps);
+      setContextAppointments(mergedContext);
       setCustomers(custs);
       setPlans(pls);
     } catch {
