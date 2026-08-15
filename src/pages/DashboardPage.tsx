@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, lazy, Suspense } from 'react';
 import {
   Activity, AlertCircle, RefreshCw, Calendar, Bell,
   Clock, UserMinus, ListOrdered,
@@ -6,10 +6,11 @@ import {
 } from 'lucide-react';
 import { useDashboardData } from '../hooks/useDashboardData';
 import { cn } from '../lib/utils';
-import { DashboardFinanceiroV2Tab } from './dashboard/DashboardFinanceiroV2Tab';
-import { DashboardOperacionalTab }  from './dashboard/DashboardOperacionalTab';
-import { DashboardCaptacaoTab }     from './dashboard/DashboardCaptacaoTab';
-import { DashboardQualitativoTab }  from './dashboard/DashboardQualitativoTab';
+
+const DashboardFinanceiroV2Tab = lazy(() => import('./dashboard/DashboardFinanceiroV2Tab').then(m => ({ default: m.DashboardFinanceiroV2Tab })));
+const DashboardOperacionalTab  = lazy(() => import('./dashboard/DashboardOperacionalTab').then(m => ({ default: m.DashboardOperacionalTab })));
+const DashboardCaptacaoTab     = lazy(() => import('./dashboard/DashboardCaptacaoTab').then(m => ({ default: m.DashboardCaptacaoTab })));
+const DashboardQualitativoTab  = lazy(() => import('./dashboard/DashboardQualitativoTab').then(m => ({ default: m.DashboardQualitativoTab })));
 
 type TabId = 'financeiro' | 'operacional' | 'captacao' | 'clinico';
 
@@ -189,33 +190,39 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
       </div>
 
       {/* ── Conteúdo das Abas ── */}
-      {activeTab === 'financeiro' && (
-        <DashboardFinanceiroV2Tab
-          {...data.financeiro}
-          filterMode={data.filterMode}
-        />
-      )}
-      {activeTab === 'operacional' && (
-        <DashboardOperacionalTab
-          {...data.operacional}
-        />
-      )}
-      {activeTab === 'captacao' && (
-        <DashboardCaptacaoTab
-          {...data.captacao}
-          filterMode={data.filterMode}
-        />
-      )}
-      {activeTab === 'clinico' && (
-        <DashboardQualitativoTab
-          appointments={data.appointments}
-          appointmentsFiltered={data.appointmentsFiltered}
-          appsRealizados={data.appsRealizados}
-          customers={data.customers}
-          psychologists={data.psychologists}
-          activeCustomersCount={data.activeCustomersCount}
-        />
-      )}
+      <Suspense fallback={
+        <div className="flex items-center justify-center py-20 bg-white/50 rounded-2xl border border-zinc-100 min-h-[300px]">
+          <div className="animate-spin rounded-full h-8 w-8 border-2 border-priori-navy border-t-transparent" />
+        </div>
+      }>
+        {activeTab === 'financeiro' && (
+          <DashboardFinanceiroV2Tab
+            {...data.financeiro}
+            filterMode={data.filterMode}
+          />
+        )}
+        {activeTab === 'operacional' && (
+          <DashboardOperacionalTab
+            {...data.operacional}
+          />
+        )}
+        {activeTab === 'captacao' && (
+          <DashboardCaptacaoTab
+            {...data.captacao}
+            filterMode={data.filterMode}
+          />
+        )}
+        {activeTab === 'clinico' && (
+          <DashboardQualitativoTab
+            appointments={data.appointments}
+            appointmentsFiltered={data.appointmentsFiltered}
+            appsRealizados={data.appsRealizados}
+            customers={data.customers}
+            psychologists={data.psychologists}
+            activeCustomersCount={data.activeCustomersCount}
+          />
+        )}
+      </Suspense>
 
       {/* ── Footer ── */}
       <div className="bg-white border border-zinc-100 rounded-2xl p-6 shadow-sm flex flex-col justify-center items-center text-center space-y-4">

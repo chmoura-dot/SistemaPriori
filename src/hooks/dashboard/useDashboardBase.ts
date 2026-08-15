@@ -52,10 +52,14 @@ export function useDashboardBase() {
     }
   }, []);
 
-  // Carga inicial + auto-refresh a cada 5 minutos
+  // Carga inicial + auto-refresh a cada 5 minutos (somente se a aba estiver visível)
   useEffect(() => {
     loadData();
-    const interval = setInterval(loadData, 5 * 60 * 1000);
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        loadData();
+      }
+    }, 5 * 60 * 1000);
     return () => clearInterval(interval);
   }, [loadData]);
 
