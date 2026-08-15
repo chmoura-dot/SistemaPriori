@@ -163,5 +163,6 @@ export const PlanFormModal: React.FC<Props> = ({
         <label htmlFor="active" className="text-sm text-zinc-600">Plano Ativo</label>
       </div>
     </form>
-  </Modal>
-);
+    </Modal>
+  );
+};

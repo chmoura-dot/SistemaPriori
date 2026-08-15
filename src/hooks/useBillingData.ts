@@ -199,7 +199,7 @@ export function useBillingData() {
     }
   };
 
-  const handleOverrideProcedureCode = async (id: string, newCode: string) => { try { await api.updateAppointment(id, { procedureCode: newCode || null, customPrice: null } as any); setAppointments(p => p.map(a => a.id === id ? { ...a, procedureCode: newCode || undefined, customPrice: undefined } : a)); } catch (err) { logger.error('Erro:', err); } };
+  const handleOverrideProcedureCode = async (id: string, newCode: string) => { try { await api.updateAppointment(id, { procedureCode: newCode || null, customPrice: null }); setAppointments(p => p.map(a => a.id === id ? { ...a, procedureCode: newCode || undefined, customPrice: undefined } : a)); } catch (err) { logger.error('Erro:', err); } };
 
   // ─── Valores derivados ────────────────────────────────────────────────────
   const draftBatches = batches.filter(b => b.status === BillingBatchStatus.DRAFT);

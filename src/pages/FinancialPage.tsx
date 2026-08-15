@@ -1,351 +1,47 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React from 'react';
 import { 
-  TrendingUp, 
-  TrendingDown, 
   DollarSign, 
   Calendar,
   ArrowUpRight,
   ArrowDownRight,
   Users,
   Filter,
-  CheckCircle2,
-  Clock,
   Loader2,
   Receipt,
   CreditCard,
   Layers,
   Check,
-  AlertCircle
+  AlertCircle,
+  RotateCcw
 } from 'lucide-react';
-import { api } from '../services/api';
-import { 
-  Appointment, 
-  Customer, 
-  Plan, 
-  Psychologist, 
-  AppointmentStatus, 
-  HealthPlan, 
-  AppointmentType, 
-  BillingBatch, 
-  Repasse, 
-  Expense,
-  BillingBatchStatus,
-  RepasseStatus
-} from '../services/types';
 import { cn, formatCurrency } from '../lib/utils';
-import { getAppPrice } from '../lib/pricing';
 import { Button } from '../components/Button';
 import { MonthSelector } from '../components/MonthSelector';
+import { useFinancialData } from '../hooks/useFinancialData';
 
 export const FinancialPage = () => {
-  const [appointments, setAppointments] = useState<Appointment[]>([]);
-  const [batches, setBatches] = useState<BillingBatch[]>([]);
-  const [repasses, setRepasses] = useState<Repasse[]>([]);
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [plans, setPlans] = useState<Plan[]>([]);
-  const [psychologists, setPsychologists] = useState<Psychologist[]>([]);
-  const [expenses, setExpenses] = useState<Expense[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-
-  const [isFiltersOpen, setIsFiltersOpen] = useState(true);
-  const [filterMonth, setFilterMonth] = useState(() => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-  });
-  const [filterStatus, setFilterStatus] = useState<string>('all');
-  const [filterOrigin, setFilterOrigin] = useState<string>('all');
-
-  const loadData = async () => {
-    try {
-      const [apps, bts, rps, cust, pl, psy, exp] = await Promise.all([
-        api.getAppointments(),
-        api.getBillingBatches(),
-        api.getRepasses(),
-        api.getCustomers(),
-        api.getPlans(),
-        api.getPsychologists(),
-        api.getExpenses(),
-      ]);
-
-      const billed = apps.filter(a => 
-        a.confirmedPsychologist || 
-        (a.status === AppointmentStatus.CANCELED && (
-          a.cancellationBilling === 'plan' ||
-          a.cancellationBilling === 'particular' ||
-          a.cancellationFault === 'patient_exempt'
-        ))
-      );
-
-      setAppointments(billed);
-      setBatches(bts);
-      setRepasses(rps);
-      setCustomers(cust);
-      setPlans(pl);
-      setPsychologists(psy);
-      setExpenses(exp);
-    } catch (err) {
-      console.error('[Financeiro] Erro ao carregar dados:', err);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  const pricingCtx = useMemo(() => ({
-    customers,
-    plans,
-    appointments
-  }), [customers, plans, appointments]);
-
-
-  // Lista unificada de todas as movimentações financeiras geradas pelas regras de faturamento e repasse
-  const allTransactions = useMemo(() => {
-    const transactions: {
-      id: string;
-      type: 'entrada_convenio' | 'entrada_particular' | 'saida_repasse' | 'saida_despesa';
-      description: string;
-      origin: string;
-      date: string;
-      competence: string;
-      amount: number;
-      status: 'pending' | 'partial' | 'paid';
-      originalEntity: any;
-    }[] = [];
-
-    // 1. Entradas: Lotes de Convênios
-    batches.forEach(batch => {
-      // Competência com base nos atendimentos majoritários do lote
-      const batchApps = appointments.filter(a => batch.appointmentIds.includes(a.id));
-      const monthCounts: Record<string, number> = {};
-      for (const app of batchApps) {
-        const month = (app.date || '').substring(0, 7);
-        if (/^\d{4}-\d{2}$/.test(month)) {
-          monthCounts[month] = (monthCounts[month] || 0) + 1;
-        }
-      }
-      const competence = Object.entries(monthCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || batch.sentAt.substring(0, 7);
-
-      // --- FILTRO PREVENTIVO DE DESEMPENHO ---
-      // Evita o processamento e inclusão de dados de outras competências desnecessariamente
-      if (filterMonth && competence !== filterMonth) return;
-
-      let status: 'pending' | 'partial' | 'paid' = 'pending';
-      if (batch.status === BillingBatchStatus.PAID) status = 'paid';
-      else if (batch.status === BillingBatchStatus.PARTIALLY_PAID) status = 'partial';
-
-      transactions.push({
-        id: `batch-${batch.id}`,
-        type: 'entrada_convenio',
-        description: `Lote #${batch.batchNumber} - ${batch.healthPlan}`,
-        origin: batch.healthPlan,
-        date: batch.sentAt.substring(0, 10),
-        competence,
-        amount: batch.totalAmount,
-        status,
-        originalEntity: batch
-      });
-    });
-
-    // 2. Entradas: Consultas Particulares (não faturadas via lotes)
-    const particularApps = appointments.filter(app => {
-      // --- FILTRO PREVENTIVO DE DESEMPENHO ---
-      // Filtra o range por mês antes de realizar qualquer cálculo pesado de precificação (getAppPrice)
-      const competence = app.date.substring(0, 7);
-      if (filterMonth && competence !== filterMonth) return false;
-
-      const customer = customers.find(c => c.id === app.customerId);
-      return !app.billingBatchId && (customer?.healthPlan === HealthPlan.PARTICULAR || !customer?.healthPlan);
-    });
-
-    particularApps.forEach(app => {
-      const customer = customers.find(c => c.id === app.customerId);
-      const price = getAppPrice(app, pricingCtx);
-      if (price <= 0) return;
-
-      const competence = app.date.substring(0, 7);
-      const status: 'pending' | 'partial' | 'paid' = app.paidAt ? 'paid' : 'pending';
-
-      transactions.push({
-        id: `app-${app.id}`,
-        type: 'entrada_particular',
-        description: `Particular - ${customer?.name || 'Paciente'}`,
-        origin: 'Particular',
-        date: app.date,
-        competence,
-        amount: price,
-        status,
-        originalEntity: app
-      });
-    });
-
-    // 3. Saídas: Obrigações de Repasse aos Psicólogos
-    repasses.forEach(repasse => {
-      const psy = psychologists.find(p => p.id === repasse.psychologistId);
-      const batch = batches.find(b => b.id === repasse.billingBatchId);
-      
-      let competence = repasse.createdAt.substring(0, 7);
-      if (batch) {
-        const batchApps = appointments.filter(a => batch.appointmentIds.includes(a.id));
-        const monthCounts: Record<string, number> = {};
-        for (const app of batchApps) {
-          const month = (app.date || '').substring(0, 7);
-          if (/^\d{4}-\d{2}$/.test(month)) {
-            monthCounts[month] = (monthCounts[month] || 0) + 1;
-          }
-        }
-        competence = Object.entries(monthCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || batch.sentAt.substring(0, 7);
-      }
-
-      // --- FILTRO PREVENTIVO DE DESEMPENHO ---
-      if (filterMonth && competence !== filterMonth) return;
-
-      const status: 'pending' | 'partial' | 'paid' = repasse.status === RepasseStatus.PAID ? 'paid' : 'pending';
-
-      transactions.push({
-        id: `repasse-${repasse.id}`,
-        type: 'saida_repasse',
-        description: `Repasse - ${psy?.name || 'Psicólogo(a)'}${batch ? ` (Lote #${batch.batchNumber})` : ''}`,
-        origin: psy?.name || 'Psicólogo(a)',
-        date: repasse.createdAt.substring(0, 10),
-        competence,
-        amount: -repasse.totalAmount,
-        status,
-        originalEntity: repasse
-      });
-    });
-
-    // 4. Saídas: Despesas Gerais da Clínica
-    expenses.forEach(expense => {
-      const competence = expense.date.substring(0, 7);
-
-      // --- FILTRO PREVENTIVO DE DESEMPENHO ---
-      if (filterMonth && competence !== filterMonth) return;
-
-      transactions.push({
-        id: `expense-${expense.id}`,
-        type: 'saida_despesa',
-        description: `${expense.description} (${expense.category})`,
-        origin: expense.beneficiary || expense.category,
-        date: expense.date,
-        competence,
-        amount: -expense.amount,
-        status: 'paid',
-        originalEntity: expense
-      });
-    });
-
-    return transactions;
-  }, [batches, appointments, repasses, customers, plans, psychologists, expenses, pricingCtx, filterMonth]);
-
-  // Lista única das operadoras/origens para alimentar o filtro
-  const uniqueOrigins = useMemo(() => {
-    const plans = batches.map(b => b.healthPlan);
-    return Array.from(new Set(['Particular', ...plans]));
-  }, [batches]);
-
-  // Aplicação instantânea dos filtros locais via useMemo com ordenação temporal decrescente (comportamento de extrato)
-  const filteredTransactions = useMemo(() => {
-    const filtered = allTransactions.filter(t => {
-      const matchesMonth = !filterMonth || t.competence === filterMonth;
-      const matchesStatus = filterStatus === 'all' || t.status === filterStatus;
-      
-      let matchesOrigin = true;
-      if (filterOrigin !== 'all') {
-        if (filterOrigin === 'Particular') {
-          matchesOrigin = t.type === 'entrada_particular';
-        } else {
-          if (t.type === 'entrada_convenio') {
-            matchesOrigin = t.origin === filterOrigin;
-          } else if (t.type === 'saida_repasse') {
-            const rep = t.originalEntity as Repasse;
-            const batch = batches.find(b => b.id === rep.billingBatchId);
-            matchesOrigin = batch?.healthPlan === filterOrigin;
-          } else {
-            matchesOrigin = false;
-          }
-        }
-      }
-
-      return matchesMonth && matchesStatus && matchesOrigin;
-    });
-
-    // Ordenação de Extrato: mais recentes no topo da tabela
-    return filtered.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [allTransactions, filterMonth, filterStatus, filterOrigin, batches]);
-
-  // Estatísticas e Métricas Executivas consolidadas
-  const stats = useMemo(() => {
-    let entradasPrevisto = 0;
-    let entradasRealizado = 0;
-    let saidasComprometido = 0;
-    let saidasPago = 0;
-    let despesasTotais = 0;
-
-    filteredTransactions.forEach(t => {
-      if (t.type === 'entrada_convenio' || t.type === 'entrada_particular') {
-        entradasPrevisto += t.amount;
-        if (t.status === 'paid') {
-          entradasRealizado += t.amount;
-        }
-      } else if (t.type === 'saida_repasse') {
-        const absVal = Math.abs(t.amount);
-        saidasComprometido += absVal;
-        if (t.status === 'paid') {
-          saidasPago += absVal;
-        }
-      } else if (t.type === 'saida_despesa') {
-        despesasTotais += Math.abs(t.amount);
-      }
-    });
-
-    const lucroPrevisto = entradasPrevisto - saidasComprometido - despesasTotais;
-    const lucroRealizado = entradasRealizado - saidasPago - despesasTotais;
-
-    return {
-      entradasPrevisto,
-      entradasRealizado,
-      saidasComprometido,
-      saidasPago,
-      despesasTotais,
-      lucroPrevisto,
-      lucroRealizado
-    };
-  }, [filteredTransactions]);
-
-  const handleMarkParticularPaid = async (appId: string) => {
-    // 1. Salva o estado original de agendamentos para rollback em caso de falhas
-    const originalAppointments = [...appointments];
-
-    // 2. Atualização Otimista (Optimistic UI Update): altera o estado local imediatamente
-    setAppointments(prev => prev.map(app => {
-      if (app.id === appId) {
-        return {
-          ...app,
-          paidAt: new Date().toISOString()
-        };
-      }
-      return app;
-    }));
-
-    try {
-      // 3. Executa atualização em background na base
-      await api.updateAppointment(appId, { paidAt: new Date().toISOString() });
-    } catch (err) {
-      console.error('[Financeiro] Erro ao registrar pagamento particular:', err);
-      // Fallback em caso de erro no Supabase
-      setAppointments(originalAppointments);
-      alert('Erro ao registrar o pagamento do atendimento particular.');
-    }
-  };
+  const {
+    isLoading,
+    isFiltersOpen,
+    setIsFiltersOpen,
+    filterMonth,
+    setFilterMonth,
+    filterStatus,
+    setFilterStatus,
+    filterOrigin,
+    setFilterOrigin,
+    uniqueOrigins,
+    filteredTransactions,
+    stats,
+    handleMarkParticularPaid,
+    resetFilters,
+  } = useFinancialData();
 
   const renderStatusBadge = (status: 'paid' | 'partial' | 'pending') => {
     const classes = {
       paid: 'bg-emerald-50 text-emerald-700 border-emerald-200',
       partial: 'bg-amber-50 text-amber-700 border-amber-200',
-      pending: 'bg-zinc-50 text-zinc-600 border-zinc-200',
+      pending: 'bg-priori-navy/10 text-priori-navy border-priori-navy/20',
     };
     const labels = {
       paid: 'Liquidado',
@@ -360,7 +56,7 @@ export const FinancialPage = () => {
       )}>
         <span className={cn(
           "w-1.5 h-1.5 rounded-full",
-          status === 'paid' ? 'bg-emerald-500 animate-pulse' : status === 'partial' ? 'bg-amber-500 animate-pulse' : 'bg-zinc-400'
+          status === 'paid' ? 'bg-emerald-500 animate-pulse' : status === 'partial' ? 'bg-amber-500 animate-pulse' : 'bg-priori-navy'
         )} />
         {labels[status]}
       </span>
@@ -374,6 +70,13 @@ export const FinancialPage = () => {
       </div>
     );
   }
+
+
+
+
+
+
+
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -524,9 +227,25 @@ export const FinancialPage = () => {
         <div className="overflow-x-auto">
 
           {filteredTransactions.length === 0 ? (
-            <div className="p-12 text-center text-zinc-400 text-sm italic flex flex-col items-center justify-center gap-2">
-              <AlertCircle size={24} className="text-zinc-300" />
-              Nenhum lançamento financeiro registrado com os filtros selecionados para esta competência.
+            <div className="p-12 text-center text-zinc-500 text-sm flex flex-col items-center justify-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-zinc-50 flex items-center justify-center text-zinc-400 border border-zinc-200">
+                <AlertCircle size={24} />
+              </div>
+              <div>
+                <p className="font-semibold text-zinc-700">Nenhum lançamento encontrado</p>
+                <p className="text-xs text-zinc-400 mt-0.5">Não há lançamentos financeiros com os filtros selecionados para esta competência.</p>
+              </div>
+              {(filterMonth || filterStatus !== 'all' || filterOrigin !== 'all') && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={resetFilters}
+                  className="mt-2 text-xs border-zinc-200 hover:bg-zinc-50 text-priori-navy flex items-center gap-1.5"
+                >
+                  <RotateCcw size={13} />
+                  Limpar Filtros
+                </Button>
+              )}
             </div>
           ) : (
             <table className="w-full border-collapse text-left">

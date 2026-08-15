@@ -60,6 +60,7 @@ export interface Customer {
   cardNumber?: string;
   reminderDismissedAt?: string;
   reminderJustification?: string;
+  acquisitionSource?: string | null;
   createdAt: string;
   // Metrics
   totalAppointmentsPerformed?: number;
@@ -72,10 +73,10 @@ export interface Appointment {
   id: string;
   customerId: string;
   psychologistId: string;
-  roomId?: string;
+  roomId?: string | null;
   mode: AttendanceMode;
   type: AppointmentType;
-  procedureCode?: string;
+  procedureCode?: string | null;
   date: string; // YYYY-MM-DD
   dayOfWeek: number; // 0-6 (Sunday-Saturday)
   startTime: string; // HH:mm
@@ -83,36 +84,36 @@ export interface Appointment {
   status: AppointmentStatus;
   confirmedPatient: boolean;
   confirmedPsychologist: boolean;
-  confirmationStatus?: 'pending' | 'confirmed' | 'declined';
-  reminderSentAt?: string;
-  patientNotes?: string;
+  confirmationStatus?: 'pending' | 'confirmed' | 'declined' | null;
+  reminderSentAt?: string | null;
+  patientNotes?: string | null;
   isRecurring: boolean;
-  recurrenceFrequency?: RecurrenceFrequency;
-  recurrenceGroupId?: string;
+  recurrenceFrequency?: RecurrenceFrequency | null;
+  recurrenceGroupId?: string | null;
   needsRenewal?: boolean;
-  renewedAt?: string;
-  renewedBy?: string;
-  customPrice?: number;
-  customRepassAmount?: number;
-  billingBatchId?: string;
-  billingStatus?: 'paid' | 'denied';
+  renewedAt?: string | null;
+  renewedBy?: string | null;
+  customPrice?: number | null;
+  customRepassAmount?: number | null;
+  billingBatchId?: string | null;
+  billingStatus?: 'paid' | 'denied' | null;
   billingIgnored?: boolean;
   // Justificativa registrada ao desconsiderar definitivamente um atendimento
   // de faturamento futuro (fluxo "Remover do lote" > "Desconsiderar").
-  billingIgnoredReason?: string;
-  billingIgnoredAt?: string;
-  paidAt?: string;
+  billingIgnoredReason?: string | null;
+  billingIgnoredAt?: string | null;
+  paidAt?: string | null;
 
   // Split de repasse da Avaliação Neuropsicológica (2 fases de 50%)
-  reportDeliveredAt?: string;      // laudo entregue (ISO)
-  reportDeliveredBy?: string;      // quem registrou a entrega
-  repassPhase1RepasseId?: string;  // repasse que pagou a 1ª parcela (sessão)
-  repassPhase2RepasseId?: string;  // repasse que pagou a 2ª parcela (laudo)
+  reportDeliveredAt?: string | null;      // laudo entregue (ISO)
+  reportDeliveredBy?: string | null;      // quem registrou a entrega
+  repassPhase1RepasseId?: string | null;  // repasse que pagou a 1ª parcela (sessão)
+  repassPhase2RepasseId?: string | null;  // repasse que pagou a 2ª parcela (laudo)
 
-  healthPlanAtTime?: string;
+  healthPlanAtTime?: string | null;
 
-  denialReason?: string;
-  denialResolution?: 'accepted' | 'appealed';
+  denialReason?: string | null;
+  denialResolution?: 'accepted' | 'appealed' | null;
   createdAt: string;
   cancellationBilling?: 'none' | 'plan' | 'particular' | null;
   // 'patient_exempt': falta do paciente marcada como "Não Cobrar (Isento)" —
@@ -125,20 +126,20 @@ export interface Appointment {
   // 'reschedule' = remanejamento: vaga reaproveitada, NÃO é falta/no-show real.
   cancellationType?: 'no_show' | 'psychologist_absence' | 'discharge' | 'reschedule' | 'other' | null;
   // Vínculo de remanejamento (bidirecional):
-  replacedByAppointmentId?: string;  // no cancelado → novo atendimento que ocupou a vaga
-  replacesAppointmentId?: string;    // no novo → atendimento original substituído
+  replacedByAppointmentId?: string | null;  // no cancelado → novo atendimento que ocupou a vaga
+  replacesAppointmentId?: string | null;    // no novo → atendimento original substituído
   // Campos para horário interno
   isInternal?: boolean;
-  internalType?: 'SUPERVISAO' | 'RESPONSAVEIS' | 'REUNIAO' | 'ADMIN' | 'OUTRO';
-  internalTitle?: string;
-  internalNotes?: string;
+  internalType?: 'SUPERVISAO' | 'RESPONSAVEIS' | 'REUNIAO' | 'ADMIN' | 'OUTRO' | null;
+  internalTitle?: string | null;
+  internalNotes?: string | null;
 }
 
 export interface BillingBatch {
   id: string;
   batchNumber: string;
   sentAt: string;
-  paidAt?: string;
+  paidAt?: string | null;
   status: BillingBatchStatus;
   healthPlan: HealthPlan;
   totalAmount: number;

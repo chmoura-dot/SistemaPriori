@@ -244,7 +244,12 @@ export function createBillingActions({
       if (app?.billingStatus === 'paid') {
         initialStatuses[id] = { status: 'paid' };
       } else if (app?.billingStatus === 'denied') {
-        initialStatuses[id] = { status: 'denied', reason: app.denialReason || undefined, resolution: (app.denialResolution as any) || undefined };
+        const res = app.denialResolution;
+        initialStatuses[id] = { 
+          status: 'denied', 
+          reason: app.denialReason || undefined, 
+          resolution: (res === 'accepted' || res === 'appealed') ? res : undefined 
+        };
       } else {
         initialStatuses[id] = { status: 'paid' };
       }
@@ -298,7 +303,7 @@ export function createBillingActions({
       return { status: newStatus, paidAt: batch.paidAt };
     }
 
-    const paidAt = newStatus === BillingBatchStatus.PAID ? (customPaidAt || batch.paidAt || new Date().toISOString()) : null as any;
+    const paidAt = newStatus === BillingBatchStatus.PAID ? (customPaidAt || batch.paidAt || new Date().toISOString()) : null;
     const updates: Partial<BillingBatch> = { status: newStatus, paidAt };
     await api.updateBillingBatch(batchId, updates);
     setBatches(prev => prev.map(b => b.id === batchId ? { ...b, ...updates } : b));
@@ -337,7 +342,7 @@ export function createBillingActions({
     const app = appointments.find(a => a.id === appId);
     if (!app || !app.billingBatchId) return;
     try {
-      await api.updateAppointment(appId, { billingStatus: null as any, paidAt: null as any, denialReason: null as any, denialResolution: null as any });
+      await api.updateAppointment(appId, { billingStatus: null, paidAt: null, denialReason: null, denialResolution: null });
       const updatedApps = appointments.map(a =>
         a.id === appId ? { ...a, billingStatus: undefined, paidAt: undefined, denialReason: undefined, denialResolution: undefined } : a
       );
@@ -453,7 +458,7 @@ export function createBillingActions({
       //    em getEligibleAppointments/getAvailableAppointmentsToAddToBatch.
       const isPermanentIgnore = mode === 'ignore_permanently';
       await api.updateAppointment(appId, {
-        billingBatchId: null as any,
+        billingBatchId: null,
         ...(isPermanentIgnore
           ? {
               billingIgnored: true,
@@ -591,10 +596,10 @@ export function createBillingActions({
         const isPaid = statusData.status === 'paid';
         const isDenied = statusData.status === 'denied';
         return api.updateAppointment(id, {
-          billingStatus: isPaid ? 'paid' : (isDenied ? 'denied' : null as any),
-          denialReason: isDenied ? statusData.reason : null as any,
-          denialResolution: isDenied ? statusData.resolution : null as any,
-          paidAt: isPaid ? isoPaidAt : null as any
+          billingStatus: isPaid ? 'paid' : (isDenied ? 'denied' : null),
+          denialReason: isDenied ? statusData.reason : null,
+          denialResolution: isDenied ? statusData.resolution : null,
+          paidAt: isPaid ? isoPaidAt : null
         });
       }));
 

@@ -1,0 +1,457 @@
+import { format, parseISO } from 'date-fns';
+import {
+  Appointment,
+  AppointmentType,
+  BillingBatch,
+  Customer,
+  HealthPlan,
+  Plan,
+  Psychologist,
+  Repasse,
+  RepasseStatus,
+} from '../../services/types';
+import { calcRepass } from '../../lib/repassRules';
+import {
+  getAppPrice,
+  getAmsNeuropsicoSessionIndex,
+  isRepassBlocked,
+  PricingContext,
+} from '../../lib/pricing';
+import { matchPlanByHealthPlan } from '../../services/supabase/helpers';
+
+const fmt = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
+
+export interface RepassDivergence {
+  customerName: string;
+  date: string;
+  actual: number;
+  expected: number;
+}
+
+/**
+ * Calcula o valor de repasse para um atendimento respeitando a hierarquia:
+ *  1. Override manual no atendimento (customRepassAmount)
+ *  2. Override manual no paciente (customRepassAmount)
+ *  3. Regra do psicólogo (repassRate/repassFixedAmount) — ex: Michelly = 92%
+ *  4. Valor cadastrado no plano (procedure.repassAmount) — para psicólogos sem regra
+ *  5. Fallback: 50% padrão (nenhuma regra configurada)
+ */
+export function getRepassValue(
+  app: Appointment,
+  customers: Customer[],
+  plans: Plan[],
+  psy: Psychologist | undefined,
+  pricingCtx: PricingContext,
+): number {
+  if (isRepassBlocked(app)) return 0;
+
+  const gross = getAppPrice(app, pricingCtx);
+  if (gross <= 0) return 0;
+
+  if (app.customRepassAmount != null && app.customRepassAmount > 0) {
+    return app.customRepassAmount;
+  }
+
+  const customer = customers.find(c => c.id === app.customerId);
+  if (customer?.customRepassAmount != null && customer.customRepassAmount > 0) {
+    return customer.customRepassAmount;
+  }
+
+  if (psy?.repassOverridesPlan && (psy.repassRate != null || (psy.repassFixedAmount != null && psy.repassFixedAmount > 0))) {
+    return calcRepass(gross, psy);
+  }
+
+  const plan = matchPlanByHealthPlan(plans, customer?.healthPlan);
+
+  let resolvedProcCode = app.procedureCode;
+  if (
+    customer?.healthPlan === HealthPlan.AMS_PETROBRAS &&
+    app.type === AppointmentType.NEUROPSICOLOGICA
+  ) {
+    const sessionIdx = getAmsNeuropsicoSessionIndex(app, pricingCtx);
+    if (sessionIdx === 1 || sessionIdx === 2) {
+      resolvedProcCode = '95090010';
+    }
+  }
+
+  const procedureByCode = resolvedProcCode
+    ? plan?.procedures?.find(p => p.code === resolvedProcCode)
+    : undefined;
+  const procedure = procedureByCode ?? plan?.procedures?.find(p => p.type === app.type);
+
+  if (procedure?.repassAmount != null && procedure.repassAmount > 0) {
+    return procedure.repassAmount;
+  }
+
+  return calcRepass(gross, psy);
+}
+
+/**
+ * Retorna o mês e ano preponderante dos atendimentos do lote no formato YYYY-MM.
+ * Caso não haja atendimentos, faz fallback para a data de envio.
+ */
+export function getBatchYearMonth(batch: BillingBatch, appointments: Appointment[]): string {
+  const batchApps = appointments.filter(a => batch.appointmentIds.includes(a.id));
+  const monthCounts: Record<string, number> = {};
+  for (const app of batchApps) {
+    const month = (app.date || '').substring(0, 7); // YYYY-MM
+    if (/^\d{4}-\d{2}$/.test(month)) {
+      monthCounts[month] = (monthCounts[month] || 0) + 1;
+    }
+  }
+  const predominant = Object.entries(monthCounts).sort((a, b) => b[1] - a[1])[0]?.[0];
+  if (predominant) return predominant;
+  if (batch.sentAt) return batch.sentAt.substring(0, 7);
+  return '';
+}
+
+/**
+ * Calcula o repasse esperado SEM considerar o override do atendimento (step 1).
+ * Usado para detectar divergências entre o valor salvo no atendimento e o que
+ * seria calculado pelas regras automáticas (paciente → psicólogo → plano → 50%).
+ */
+export function getExpectedRepass(
+  app: Appointment,
+  customers: Customer[],
+  plans: Plan[],
+  psy: Psychologist | undefined,
+  pricingCtx: PricingContext,
+): number {
+  if (isRepassBlocked(app)) return 0;
+
+  const gross = getAppPrice(app, pricingCtx);
+  if (gross <= 0) return 0;
+
+  const customer = customers.find(c => c.id === app.customerId);
+  if (customer?.customRepassAmount != null && customer.customRepassAmount > 0) {
+    return customer.customRepassAmount;
+  }
+
+  if (psy?.repassOverridesPlan && (psy.repassRate != null || (psy.repassFixedAmount != null && psy.repassFixedAmount > 0))) {
+    return calcRepass(gross, psy);
+  }
+
+  const plan = matchPlanByHealthPlan(plans, customer?.healthPlan);
+  let resolvedProcCode = app.procedureCode;
+  if (
+    customer?.healthPlan === HealthPlan.AMS_PETROBRAS &&
+    app.type === AppointmentType.NEUROPSICOLOGICA
+  ) {
+    const sessionIdx = getAmsNeuropsicoSessionIndex(app, pricingCtx);
+    if (sessionIdx === 1 || sessionIdx === 2) resolvedProcCode = '95090010';
+  }
+
+  const procedureByCode = resolvedProcCode
+    ? plan?.procedures?.find(p => p.code === resolvedProcCode)
+    : undefined;
+  const procedure = procedureByCode ?? plan?.procedures?.find(p => p.type === app.type);
+  if (procedure?.repassAmount != null && procedure.repassAmount > 0) {
+    return procedure.repassAmount;
+  }
+
+  return calcRepass(gross, psy);
+}
+
+/**
+ * Monta o item enviado à RPC check_repass_integrity para um atendimento.
+ * O frontend resolve o gross (getAppPrice) e o plan_repass (procedure.repassAmount)
+ * — que dependem de contexto complexo (neuropsico/AMS/TUSS) — e o SERVIDOR resolve
+ * a regra do psicólogo (repass_rate/fixed/overridesPlan), fonte das divergências.
+ */
+export function buildRepassItem(
+  app: Appointment,
+  customers: Customer[],
+  plans: Plan[],
+  pricingCtx: PricingContext,
+): { gross: number; app_repass: number | null; customer_repass: number | null; plan_repass: number | null } {
+  const gross = getAppPrice(app, pricingCtx);
+  const customer = customers.find(c => c.id === app.customerId);
+
+  let plan_repass: number | null = null;
+  if (gross > 0) {
+    const plan = matchPlanByHealthPlan(plans, customer?.healthPlan);
+    let resolvedProcCode = app.procedureCode;
+    if (
+      customer?.healthPlan === HealthPlan.AMS_PETROBRAS &&
+      app.type === AppointmentType.NEUROPSICOLOGICA
+    ) {
+      const sessionIdx = getAmsNeuropsicoSessionIndex(app, pricingCtx);
+      if (sessionIdx === 1 || sessionIdx === 2) resolvedProcCode = '95090010';
+    }
+    const procedureByCode = resolvedProcCode
+      ? plan?.procedures?.find(p => p.code === resolvedProcCode)
+      : undefined;
+    const procedure = procedureByCode ?? plan?.procedures?.find(p => p.type === app.type);
+    if (procedure?.repassAmount != null && procedure.repassAmount > 0) {
+      plan_repass = procedure.repassAmount;
+    }
+  }
+
+  return {
+    gross,
+    app_repass: app.customRepassAmount ?? null,
+    customer_repass: customer?.customRepassAmount ?? null,
+    plan_repass,
+  };
+}
+
+/**
+ * Verifica se o atendimento tem um customRepassAmount que diverge (≥ R$1)
+ * do valor que seria calculado automaticamente.
+ */
+export function checkDivergence(
+  app: Appointment,
+  customers: Customer[],
+  plans: Plan[],
+  psy: Psychologist | undefined,
+  pricingCtx: PricingContext,
+): RepassDivergence | null {
+  if (app.customRepassAmount == null || app.customRepassAmount <= 0) return null;
+  if (isRepassBlocked(app)) return null;
+  const gross = getAppPrice(app, pricingCtx);
+  if (gross <= 0) return null;
+  const expected = getExpectedRepass(app, customers, plans, psy, pricingCtx);
+
+  if (Math.abs(app.customRepassAmount - expected) < 1) return null;
+  const customer = customers.find(c => c.id === app.customerId);
+  return {
+    customerName: customer?.name ?? '—',
+    date: app.date,
+    actual: app.customRepassAmount,
+    expected,
+  };
+}
+
+/**
+ * PDF Generation function
+ */
+export function generateRepassePDF(
+  repasse: Repasse,
+  psy: Psychologist | undefined,
+  batch: BillingBatch | undefined,
+  appointments: Appointment[],
+  customers: Customer[],
+  plans: Plan[],
+) {
+  const pricingCtx: PricingContext = { customers, plans, appointments };
+  const rows = repasse.appointmentIds
+    .map(id => {
+      const app = appointments.find(a => a.id === id);
+      if (!app || app.billingStatus === 'denied') return null;
+      const customer = customers.find(c => c.id === app.customerId);
+      const plan = matchPlanByHealthPlan(plans, customer?.healthPlan);
+      let resolvedProcCode = app.procedureCode;
+      if (
+        customer?.healthPlan === HealthPlan.AMS_PETROBRAS &&
+        app.type === AppointmentType.NEUROPSICOLOGICA
+      ) {
+        const sessionIdx = getAmsNeuropsicoSessionIndex(app, pricingCtx);
+        if (sessionIdx === 1 || sessionIdx === 2) resolvedProcCode = '95090010';
+      }
+
+      const procedureByCode = resolvedProcCode
+        ? plan?.procedures?.find(proc => proc.code === resolvedProcCode)
+        : undefined;
+      const procedure = procedureByCode ?? plan?.procedures?.find(proc => proc.type === app.type);
+
+      let repassVal = getRepassValue(app, customers, plans, psy, pricingCtx);
+      let parcelaLabel = '';
+      if (app.repassPhase1RepasseId === repasse.id) {
+        repassVal = Math.round(repassVal * 100 * 0.5) / 100;
+        parcelaLabel = ' (Etapa 1/2 — Sessão)';
+      } else if (app.repassPhase2RepasseId === repasse.id) {
+        repassVal = Math.round(repassVal * 100 * 0.5) / 100;
+        parcelaLabel = ' (Etapa 2/2 — Laudo)';
+      }
+      return { app, customer, procedure, repassVal, parcelaLabel };
+    })
+    .filter((r): r is NonNullable<typeof r> => r !== null)
+    .filter(r => r.repassVal > 0);
+
+  const today = format(new Date(), 'dd/MM/yyyy');
+  const planName = batch?.healthPlan ?? '—';
+  const batchNum = batch?.batchNumber ?? '—';
+  const sentAt = batch?.sentAt ? format(new Date(batch.sentAt), 'dd/MM/yyyy') : '—';
+  const paidAt = batch?.paidAt ? format(new Date(batch.paidAt), 'dd/MM/yyyy') : '—';
+
+  const byPatient: Record<string, {
+    name: string;
+    sessions: { date: string; code: string; description: string; repassVal: number }[];
+    subtotal: number;
+  }> = {};
+
+  rows.forEach(({ app, customer, procedure, repassVal, parcelaLabel }) => {
+    const patientId = customer?.id ?? 'unknown';
+    if (!byPatient[patientId]) {
+      byPatient[patientId] = {
+        name: customer?.name ?? '—',
+        sessions: [],
+        subtotal: 0,
+      };
+    }
+    byPatient[patientId].sessions.push({
+      date: app.date ? format(new Date(app.date + 'T12:00:00'), 'dd/MM/yyyy') : '—',
+      code: procedure?.code ?? '—',
+      description: (procedure?.description ?? app.type ?? '—') + parcelaLabel,
+      repassVal,
+    });
+
+    byPatient[patientId].subtotal += repassVal;
+  });
+
+  Object.values(byPatient).forEach(p => {
+    p.sessions.sort((a, b) => a.date.localeCompare(b.date));
+  });
+
+  const sortedPatients = Object.values(byPatient).sort((a, b) =>
+    a.name.localeCompare(b.name, 'pt-BR'),
+  );
+
+  let tableRows = '';
+  sortedPatients.forEach(patient => {
+    tableRows += `
+        <tr class="patient-header">
+          <td colspan="4">${patient.name}</td>
+          <td class="right">${patient.sessions.length} sessão(ões)</td>
+        </tr>`;
+    patient.sessions.forEach(s => {
+      tableRows += `
+        <tr>
+          <td class="cell indent">${s.date}</td>
+          <td class="cell">${s.code}</td>
+          <td class="cell" colspan="2">${s.description}</td>
+          <td class="cell right">${fmt.format(s.repassVal)}</td>
+        </tr>`;
+    });
+    tableRows += `
+        <tr class="subtotal-row">
+          <td colspan="4" class="right">Subtotal — ${patient.name}</td>
+          <td class="right">${fmt.format(patient.subtotal)}</td>
+        </tr>`;
+  });
+
+  const totalCents = rows.reduce((s, r) => s + Math.round(r.repassVal * 100), 0);
+  const total = totalCents / 100;
+  const totalSessions = rows.length;
+
+  const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Repasse — ${planName} — Lote ${batchNum} — ${psy?.name ?? ''} — ${repasse.paidAt ? format(parseISO(repasse.paidAt), 'dd-MM-yyyy') : 'sem data'}</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    @page { size: A4; margin: 20mm 15mm; }
+    body { font-family: Arial, sans-serif; color: #1a202c; padding: 40px; font-size: 12px; }
+    .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 28px; border-bottom: 2px solid #1B365D; padding-bottom: 14px; }
+    .brand { font-size: 20px; font-weight: 700; color: #1B365D; }
+    .brand-sub { font-size: 11px; color: #718096; margin-top: 2px; }
+    .meta { text-align: right; font-size: 11px; color: #718096; }
+    h2 { font-size: 14px; color: #1B365D; margin-bottom: 12px; }
+    .info-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px 24px; margin-bottom: 24px; padding: 14px 16px; background: #f7f8fa; border-radius: 8px; }
+    .info-label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; color: #718096; }
+    .info-value { font-weight: 600; color: #1B365D; margin-top: 2px; font-size: 12px; }
+    .summary-bar { display: flex; justify-content: flex-end; gap: 24px; margin-bottom: 12px; padding: 10px 16px; background: #edf2f7; border-radius: 6px; }
+    .summary-item { text-align: center; }
+    .summary-number { font-size: 18px; font-weight: 700; color: #1B365D; }
+    .summary-label { font-size: 9px; text-transform: uppercase; color: #718096; letter-spacing: 0.5px; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
+    th { background: #1B365D; color: white; padding: 8px 10px; text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .cell { padding: 6px 10px; border-bottom: 1px solid #edf2f7; color: #2d3748; font-size: 11px; }
+    .indent { padding-left: 20px; }
+    .right { text-align: right; }
+    .patient-header td { background: #edf2f7; font-weight: 700; color: #1B365D; padding: 8px 10px; font-size: 11px; border-bottom: 1px solid #cbd5e0; }
+    .subtotal-row td { background: #f7f8fa; font-weight: 600; color: #4a5568; padding: 6px 10px; font-size: 11px; border-bottom: 2px solid #cbd5e0; }
+    .total-row { background: #1B365D !important; }
+    .total-row td { color: white !important; padding: 10px; font-weight: 700; font-size: 13px; }
+    .footer { margin-top: 32px; border-top: 1px solid #e2e8f0; padding-top: 10px; font-size: 9px; color: #a0aec0; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div>
+      <div class="brand">Núcleo Priori</div>
+      <div class="brand-sub">Neuropsicologia e Psicoterapia</div>
+    </div>
+    <div class="meta">
+      <div><strong>Comprovante de Repasse</strong></div>
+      <div>Emitido em: ${today}</div>
+    </div>
+  </div>
+
+  <h2>Detalhes do Repasse</h2>
+  <div class="info-grid">
+    <div>
+      <div class="info-label">Psicólogo(a)</div>
+      <div class="info-value">${psy?.name ?? '—'}</div>
+    </div>
+    <div>
+      <div class="info-label">Plano de Saúde</div>
+      <div class="info-value">${planName}</div>
+    </div>
+    <div>
+      <div class="info-label">Número do Lote</div>
+      <div class="info-value">#${batchNum}</div>
+    </div>
+    <div>
+      <div class="info-label">Data de Envio do Lote</div>
+      <div class="info-value">${sentAt}</div>
+    </div>
+    <div>
+      <div class="info-label">Data de Pagamento pelo Plano</div>
+      <div class="info-value">${paidAt}</div>
+    </div>
+    <div>
+      <div class="info-label">Status</div>
+      <div class="info-value">${repasse.status === RepasseStatus.PAID ? `Pago em ${repasse.paidAt ? format(new Date(repasse.paidAt), 'dd/MM/yyyy') : '—'}` : 'Pendente'}</div>
+    </div>
+  </div>
+
+  <div class="summary-bar">
+    <div class="summary-item">
+      <div class="summary-number">${totalSessions}</div>
+      <div class="summary-label">Sessões</div>
+    </div>
+    <div class="summary-item">
+      <div class="summary-number">${sortedPatients.length}</div>
+      <div class="summary-label">Pacientes</div>
+    </div>
+    <div class="summary-item">
+      <div class="summary-number">${fmt.format(total)}</div>
+      <div class="summary-label">Total do Repasse</div>
+    </div>
+  </div>
+
+  <h2>Atendimentos</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Data</th>
+        <th>COD TUSS</th>
+        <th colspan="2">Procedimento</th>
+        <th style="text-align:right">Valor Repasse</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${tableRows}
+      <tr class="total-row">
+        <td colspan="4">TOTAL DO REPASSE (${totalSessions} sessões)</td>
+        <td style="text-align:right">${fmt.format(total)}</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="footer">
+    Documento gerado automaticamente pelo Sistema Núcleo Priori em ${today}. Este documento é um comprovante interno.
+  </div>
+</body>
+</html>`;
+
+  const win = window.open('', '_blank');
+  if (win) {
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    setTimeout(() => win.print(), 500);
+  }
+}

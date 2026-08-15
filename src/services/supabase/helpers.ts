@@ -46,6 +46,7 @@ export const CUSTOMER_COLUMNS = [
   'card_number',
   'reminder_dismissed_at',
   'reminder_justification',
+  'acquisition_source',
   'created_at',
 ].join(', ');
 
@@ -166,6 +167,7 @@ export function toCustomer(row: any): Customer {
     cardNumber: row.card_number ?? undefined,
     reminderDismissedAt: row.reminder_dismissed_at ?? undefined,
     reminderJustification: row.reminder_justification ?? undefined,
+    acquisitionSource: row.acquisition_source ?? null,
     createdAt: row.created_at,
   };
 }

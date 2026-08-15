@@ -95,7 +95,7 @@ export const customerService = {
 
   // ── Plans ──────────────────────────────────────────────────────────────────
   getPlans: async (): Promise<Plan[]> => {
-    const { data, error } = await supabase.from('plans').select('*').order('name');
+    const { data, error } = await supabase.from('plans').select('id, name, procedures, active, created_at').order('name');
     if (error) throw new Error(error.message);
     return (data ?? []).map(toPlan);
   },
@@ -123,7 +123,7 @@ export const customerService = {
 
   // ── Subscriptions ──────────────────────────────────────────────────────────
   getSubscriptions: async (): Promise<Subscription[]> => {
-    const { data, error } = await supabase.from('subscriptions').select('*').order('created_at');
+    const { data, error } = await supabase.from('subscriptions').select('id, customer_id, plan_id, start_date, next_renewal, status, created_at').order('created_at');
     if (error) throw new Error(error.message);
     return (data ?? []).map(toSubscription);
   },
@@ -159,7 +159,7 @@ export const customerService = {
 
   // ── Payments ───────────────────────────────────────────────────────────────
   getPayments: async (): Promise<Payment[]> => {
-    const { data, error } = await supabase.from('payments').select('*').order('paid_at', { ascending: false });
+    const { data, error } = await supabase.from('payments').select('id, subscription_id, amount, repass_amount, paid_at, created_at').order('paid_at', { ascending: false });
     if (error) throw new Error(error.message);
     return (data ?? []).map(toPayment);
   },
@@ -178,7 +178,7 @@ export const customerService = {
 
   listPaymentsBySubscription: async (subscriptionId: string): Promise<Payment[]> => {
     const { data, error } = await supabase
-      .from('payments').select('*')
+      .from('payments').select('id, subscription_id, amount, repass_amount, paid_at, created_at')
       .eq('subscription_id', subscriptionId)
       .order('paid_at', { ascending: false });
     if (error) throw new Error(error.message);

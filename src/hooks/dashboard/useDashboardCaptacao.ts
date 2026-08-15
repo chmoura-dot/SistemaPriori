@@ -194,7 +194,7 @@ export function useDashboardCaptacao({
     if (skip) return [];
     const fontes: Record<string, { fonte: string; count: number; receita: number }> = {};
     novosPacientes.forEach(c => {
-      const src = (c as any).acquisitionSource || 'Não informado';
+      const src = c.acquisitionSource || 'Não informado';
       if (!fontes[src]) fontes[src] = { fonte: src, count: 0, receita: 0 };
       fontes[src].count++;
       // Receita gerada pelos pacientes dessa fonte

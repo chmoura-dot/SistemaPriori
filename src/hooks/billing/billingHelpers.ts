@@ -181,7 +181,7 @@ export function createBillingHelpers({
 export async function syncAppointmentsBatch(batchId: string, prevIds: string[], nextIds: string[]) {
   const toAdd = nextIds.filter(id => !prevIds.includes(id));
   const toRemove = prevIds.filter(id => !nextIds.includes(id));
-  await Promise.all([...toAdd.map(id => api.updateAppointment(id, { billingBatchId: batchId })), ...toRemove.map(id => api.updateAppointment(id, { billingBatchId: null as any }))]);
+  await Promise.all([...toAdd.map(id => api.updateAppointment(id, { billingBatchId: batchId })), ...toRemove.map(id => api.updateAppointment(id, { billingBatchId: null }))]);
 }
 
 export async function auditPriceParity(appIds: string[], appointments: Appointment[], customers: Customer[], plans: Plan[], getAppPrice: (app: Appointment) => number): Promise<void> {
