@@ -253,6 +253,17 @@ Deno.serve(async (_req) => {
     });
 
   } catch (err: any) {
+    console.error('[RenewalReminderEmail] Erro:', err.message);
+    try {
+      const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
+      await supabase.rpc('log_operation_failure', {
+        p_context: 'renewal-reminder-email',
+        p_message: `Erro ao enviar e-mail de lembrete de renovação: ${err.message}`,
+        p_severity: 'critical'
+      });
+    } catch (dbErr) {
+      console.error("Falha ao registrar log no banco:", dbErr);
+    }
     return new Response(JSON.stringify({ error: err.message }), { status: 500 });
   }
 });

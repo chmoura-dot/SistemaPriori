@@ -494,6 +494,16 @@ Deno.serve(async (req) => {
 
   } catch (err: any) {
     console.error(`[ConfirmAppointment] Erro: ${err.message}`);
+    try {
+      const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
+      await supabase.rpc('log_operation_failure', {
+        p_context: 'confirm-appointment',
+        p_message: `Erro ao processar confirmação de atendimento: ${err.message}`,
+        p_severity: 'critical'
+      });
+    } catch (dbErr) {
+      console.error("Falha ao registrar log no banco:", dbErr);
+    }
     return new Response(JSON.stringify({ error: err.message }), { 
       status: 400,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' } 

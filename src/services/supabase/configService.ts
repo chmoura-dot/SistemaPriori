@@ -1,18 +1,69 @@
 // WaitingList, Holidays, ClinicClosures e NFS-e Invoices
-import { supabase, throwOnError } from './helpers';
+import {
+  supabase,
+  throwOnError,
+  WAITING_LIST_COLUMNS,
+  HOLIDAY_COLUMNS,
+  CLINIC_CLOSURE_COLUMNS,
+  NFSE_INVOICE_COLUMNS,
+} from './helpers';
 import { WaitingListEntry, Holiday, ClinicClosure } from '../types';
+
+interface DBWaitingList {
+  id: string;
+  customer_name: string;
+  phone: string;
+  preferred_days: (string | number)[] | null;
+  preferred_hours: string[] | null;
+  psychologist_id: string | null;
+  notes: string | null;
+  status: 'pending' | 'called' | 'resolved' | 'canceled';
+  created_at: string;
+}
+
+interface DBHoliday {
+  id: string;
+  date: string;
+  name: string;
+  type: 'nacional' | 'estadual' | 'municipal' | 'facultativo';
+  recurring: boolean;
+  clinic_open: boolean;
+  created_at: string;
+}
+
+interface DBClinicClosure {
+  id: string;
+  start_date: string;
+  end_date: string;
+  reason: string;
+  created_at: string;
+}
+
+interface DBNfseInvoice {
+  id: number | string;
+  invoice_number: string;
+  issue_date: string;
+  status: string;
+  payer: { nome: string; cpf_cnpj: string } | null;
+  total_amount: number;
+  description: string | null;
+  created_at: string;
+}
 
 export const configService = {
   // ── Waiting List ───────────────────────────────────────────────────────────
   getWaitingList: async (): Promise<WaitingListEntry[]> => {
     const { data, error } = await supabase
-      .from('waiting_list').select('*').order('created_at', { ascending: false });
+      .from('waiting_list')
+      .select(WAITING_LIST_COLUMNS)
+      .order('created_at', { ascending: false });
     if (error) throw new Error(error.message);
-    return (data ?? []).map((row: any): WaitingListEntry => ({
+    const rows = (data ?? []) as unknown as DBWaitingList[];
+    return rows.map((row): WaitingListEntry => ({
       id: row.id,
       customerName: row.customer_name,
       phone: row.phone,
-      preferredDays: row.preferred_days ?? [],
+      preferredDays: (row.preferred_days ?? []).map(Number),
       preferredHours: row.preferred_hours ?? [],
       psychologistId: row.psychologist_id,
       notes: row.notes,
@@ -22,7 +73,7 @@ export const configService = {
   },
 
   createWaitingListEntry: async (e: Omit<WaitingListEntry, 'id' | 'createdAt'>): Promise<WaitingListEntry> => {
-    const row: any = await throwOnError(
+    const row = await throwOnError(
       supabase.from('waiting_list').insert({
         customer_name: e.customerName,
         phone: e.phone,
@@ -31,13 +82,13 @@ export const configService = {
         psychologist_id: e.psychologistId,
         notes: e.notes,
         status: e.status,
-      }).select().single()
-    );
-    return { id: row.id, customerName: row.customer_name, phone: row.phone, preferredDays: row.preferred_days ?? [], preferredHours: row.preferred_hours ?? [], psychologistId: row.psychologist_id, notes: row.notes, status: row.status, createdAt: row.created_at };
+      }).select(WAITING_LIST_COLUMNS).single()
+    ) as unknown as DBWaitingList;
+    return { id: row.id, customerName: row.customer_name, phone: row.phone, preferredDays: (row.preferred_days ?? []).map(Number), preferredHours: row.preferred_hours ?? [], psychologistId: row.psychologist_id, notes: row.notes, status: row.status, createdAt: row.created_at };
   },
 
   updateWaitingListEntry: async (id: string, e: Partial<WaitingListEntry>): Promise<WaitingListEntry> => {
-    const updates: Record<string, any> = {};
+    const updates: Record<string, unknown> = {};
     if (e.customerName !== undefined) updates.customer_name = e.customerName;
     if (e.phone !== undefined) updates.phone = e.phone;
     if (e.preferredDays !== undefined) updates.preferred_days = e.preferredDays;
@@ -45,8 +96,10 @@ export const configService = {
     if (e.psychologistId !== undefined) updates.psychologist_id = e.psychologistId;
     if (e.notes !== undefined) updates.notes = e.notes;
     if (e.status !== undefined) updates.status = e.status;
-    const row: any = await throwOnError(supabase.from('waiting_list').update(updates).eq('id', id).select().single());
-    return { id: row.id, customerName: row.customer_name, phone: row.phone, preferredDays: row.preferred_days ?? [], preferredHours: row.preferred_hours ?? [], psychologistId: row.psychologist_id, notes: row.notes, status: row.status, createdAt: row.created_at };
+    const row = await throwOnError(
+      supabase.from('waiting_list').update(updates).eq('id', id).select(WAITING_LIST_COLUMNS).single()
+    ) as unknown as DBWaitingList;
+    return { id: row.id, customerName: row.customer_name, phone: row.phone, preferredDays: (row.preferred_days ?? []).map(Number), preferredHours: row.preferred_hours ?? [], psychologistId: row.psychologist_id, notes: row.notes, status: row.status, createdAt: row.created_at };
   },
 
   deleteWaitingListEntry: async (id: string): Promise<void> => {
@@ -56,32 +109,35 @@ export const configService = {
 
   // ── Holidays ───────────────────────────────────────────────────────────────
   getHolidays: async (): Promise<Holiday[]> => {
-    const { data, error } = await supabase.from('holidays').select('*').order('date');
+    const { data, error } = await supabase.from('holidays').select(HOLIDAY_COLUMNS).order('date');
     if (error) throw new Error(error.message);
-    return (data ?? []).map((row: any) => ({
+    const rows = (data ?? []) as unknown as DBHoliday[];
+    return rows.map((row) => ({
       id: row.id, date: row.date, name: row.name, type: row.type,
       recurring: row.recurring, clinicOpen: row.clinic_open, createdAt: row.created_at,
     }));
   },
 
   createHoliday: async (h: Omit<Holiday, 'id' | 'createdAt'>): Promise<Holiday> => {
-    const row: any = await throwOnError(
+    const row = await throwOnError(
       supabase.from('holidays').insert({
         date: h.date, name: h.name, type: h.type,
         recurring: h.recurring, clinic_open: h.clinicOpen,
-      }).select().single()
-    );
+      }).select(HOLIDAY_COLUMNS).single()
+    ) as unknown as DBHoliday;
     return { id: row.id, date: row.date, name: row.name, type: row.type, recurring: row.recurring, clinicOpen: row.clinic_open, createdAt: row.created_at };
   },
 
   updateHoliday: async (id: string, h: Partial<Holiday>): Promise<Holiday> => {
-    const updates: Record<string, any> = {};
+    const updates: Record<string, unknown> = {};
     if (h.date !== undefined) updates.date = h.date;
     if (h.name !== undefined) updates.name = h.name;
     if (h.type !== undefined) updates.type = h.type;
     if (h.recurring !== undefined) updates.recurring = h.recurring;
     if (h.clinicOpen !== undefined) updates.clinic_open = h.clinicOpen;
-    const row: any = await throwOnError(supabase.from('holidays').update(updates).eq('id', id).select().single());
+    const row = await throwOnError(
+      supabase.from('holidays').update(updates).eq('id', id).select(HOLIDAY_COLUMNS).single()
+    ) as unknown as DBHoliday;
     return { id: row.id, date: row.date, name: row.name, type: row.type, recurring: row.recurring, clinicOpen: row.clinic_open, createdAt: row.created_at };
   },
 
@@ -92,29 +148,32 @@ export const configService = {
 
   // ── Clinic Closures ────────────────────────────────────────────────────────
   getClinicClosures: async (): Promise<ClinicClosure[]> => {
-    const { data, error } = await supabase.from('clinic_closures').select('*').order('start_date');
+    const { data, error } = await supabase.from('clinic_closures').select(CLINIC_CLOSURE_COLUMNS).order('start_date');
     if (error) throw new Error(error.message);
-    return (data ?? []).map((row: any) => ({
+    const rows = (data ?? []) as unknown as DBClinicClosure[];
+    return rows.map((row) => ({
       id: row.id, startDate: row.start_date, endDate: row.end_date,
       reason: row.reason, createdAt: row.created_at,
     }));
   },
 
   createClinicClosure: async (c: Omit<ClinicClosure, 'id' | 'createdAt'>): Promise<ClinicClosure> => {
-    const row: any = await throwOnError(
+    const row = await throwOnError(
       supabase.from('clinic_closures').insert({
         start_date: c.startDate, end_date: c.endDate, reason: c.reason,
-      }).select().single()
-    );
+      }).select(CLINIC_CLOSURE_COLUMNS).single()
+    ) as unknown as DBClinicClosure;
     return { id: row.id, startDate: row.start_date, endDate: row.end_date, reason: row.reason, createdAt: row.created_at };
   },
 
   updateClinicClosure: async (id: string, c: Partial<ClinicClosure>): Promise<ClinicClosure> => {
-    const updates: Record<string, any> = {};
+    const updates: Record<string, unknown> = {};
     if (c.startDate !== undefined) updates.start_date = c.startDate;
     if (c.endDate !== undefined) updates.end_date = c.endDate;
     if (c.reason !== undefined) updates.reason = c.reason;
-    const row: any = await throwOnError(supabase.from('clinic_closures').update(updates).eq('id', id).select().single());
+    const row = await throwOnError(
+      supabase.from('clinic_closures').update(updates).eq('id', id).select(CLINIC_CLOSURE_COLUMNS).single()
+    ) as unknown as DBClinicClosure;
     return { id: row.id, startDate: row.start_date, endDate: row.end_date, reason: row.reason, createdAt: row.created_at };
   },
 
@@ -127,17 +186,24 @@ export const configService = {
   getInvoices: async (params?: { limit?: number }) => {
     const limit = params?.limit ?? 20;
     const { data, error } = await supabase
-      .from('nfse_invoices').select('*').order('created_at', { ascending: false }).limit(limit);
+      .from('nfse_invoices')
+      .select(NFSE_INVOICE_COLUMNS)
+      .order('created_at', { ascending: false })
+      .limit(limit);
     if (error) throw new Error(error.message);
-    return (data ?? []).map((row: any) => ({
+    const rows = (data ?? []) as unknown as DBNfseInvoice[];
+    return rows.map((row) => ({
       id: String(row.id),
       invoiceNumber: row.invoice_number,
       issueDate: row.issue_date,
       status: row.status,
-      payer: row.payer,
+      payer: {
+        nome: row.payer?.nome || '',
+        cpf_cnpj: row.payer?.cpf_cnpj || '',
+      },
       totalAmount: Number(row.total_amount ?? 0),
-      description: row.description ?? null,
-      createdAt: row.created_at,
+      description: row.description ?? undefined,
+      createdAt: row.created_at ?? undefined,
     }));
   },
 

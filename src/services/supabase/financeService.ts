@@ -1,11 +1,21 @@
 // Expenses, BillingBatches, Repasses e Settings
-import { supabase, toExpense, toBillingBatch, toSettings, throwOnError } from './helpers';
+import {
+  supabase,
+  toExpense,
+  toBillingBatch,
+  toSettings,
+  throwOnError,
+  EXPENSE_COLUMNS,
+  BILLING_BATCH_COLUMNS,
+  REPASSE_COLUMNS,
+  SETTINGS_COLUMNS,
+} from './helpers';
 import { Expense, BillingBatch, Repasse, RepasseStatus, Settings } from '../types';
 
 export const financeService = {
   // ── Expenses ───────────────────────────────────────────────────────────────
   getExpenses: async (): Promise<Expense[]> => {
-    const { data, error } = await supabase.from('expenses').select('*').order('date', { ascending: false });
+    const { data, error } = await supabase.from('expenses').select(EXPENSE_COLUMNS).order('date', { ascending: false });
     if (error) throw new Error(error.message);
     return (data ?? []).map(toExpense);
   },
@@ -22,13 +32,13 @@ export const financeService = {
         category: e.category,
         date: e.date,
         is_recurring: e.isRecurring,
-      }).select().single()
+      }).select(EXPENSE_COLUMNS).single()
     );
     return toExpense(row);
   },
 
   updateExpense: async (id: string, e: Partial<Expense>): Promise<Expense> => {
-    const updates: Record<string, any> = {};
+    const updates: Record<string, unknown> = {};
     if (e.description !== undefined) updates.description = e.description;
     if (e.beneficiary !== undefined) updates.beneficiary = e.beneficiary;
     if (e.razaoSocial !== undefined) updates.razao_social = e.razaoSocial;
@@ -38,7 +48,7 @@ export const financeService = {
     if (e.category !== undefined) updates.category = e.category;
     if (e.date !== undefined) updates.date = e.date;
     if (e.isRecurring !== undefined) updates.is_recurring = e.isRecurring;
-    const row = await throwOnError(supabase.from('expenses').update(updates).eq('id', id).select().single());
+    const row = await throwOnError(supabase.from('expenses').update(updates).eq('id', id).select(EXPENSE_COLUMNS).single());
     return toExpense(row);
   },
 
@@ -50,7 +60,7 @@ export const financeService = {
   // ── Billing Batches ────────────────────────────────────────────────────────
   getBillingBatches: async (): Promise<BillingBatch[]> => {
     const { data, error } = await supabase
-      .from('billing_batches').select('*').order('sent_at', { ascending: false });
+      .from('billing_batches').select(BILLING_BATCH_COLUMNS).order('sent_at', { ascending: false });
     if (error) throw new Error(error.message);
     return (data ?? []).map(toBillingBatch);
   },
@@ -65,13 +75,13 @@ export const financeService = {
         health_plan: b.healthPlan,
         total_amount: b.totalAmount,
         appointment_ids: b.appointmentIds,
-      }).select().single()
+      }).select(BILLING_BATCH_COLUMNS).single()
     );
     return toBillingBatch(row);
   },
 
   updateBillingBatch: async (id: string, b: Partial<BillingBatch>): Promise<BillingBatch> => {
-    const updates: Record<string, any> = {};
+    const updates: Record<string, unknown> = {};
     if (b.batchNumber !== undefined) updates.batch_number = b.batchNumber;
     if (b.sentAt !== undefined) updates.sent_at = b.sentAt;
     if (b.paidAt !== undefined) updates.paid_at = b.paidAt;
@@ -79,7 +89,7 @@ export const financeService = {
     if (b.healthPlan !== undefined) updates.health_plan = b.healthPlan;
     if (b.totalAmount !== undefined) updates.total_amount = b.totalAmount;
     if (b.appointmentIds !== undefined) updates.appointment_ids = b.appointmentIds;
-    const row = await throwOnError(supabase.from('billing_batches').update(updates).eq('id', id).select().single());
+    const row = await throwOnError(supabase.from('billing_batches').update(updates).eq('id', id).select(BILLING_BATCH_COLUMNS).single());
     return toBillingBatch(row);
   },
 
@@ -97,13 +107,25 @@ export const financeService = {
 
   // ── Repasses ───────────────────────────────────────────────────────────────
   getRepasses: async (): Promise<Repasse[]> => {
+    interface DBRepasse {
+      id: string;
+      psychologist_id: string;
+      billing_batch_id: string | null;
+      appointment_ids: string[] | null;
+      total_amount: number;
+      status: string;
+      paid_at: string | null;
+      notes: string | null;
+      created_at: string;
+    }
     const { data, error } = await supabase
-      .from('repasses').select('*').order('created_at', { ascending: false });
+      .from('repasses').select(REPASSE_COLUMNS).order('created_at', { ascending: false });
     if (error) throw new Error(error.message);
-    return (data ?? []).map((row: any): Repasse => ({
+    const rows = (data ?? []) as unknown as DBRepasse[];
+    return rows.map((row): Repasse => ({
       id: row.id,
       psychologistId: row.psychologist_id,
-      billingBatchId: row.billing_batch_id,
+      billingBatchId: row.billing_batch_id ?? undefined,
       appointmentIds: row.appointment_ids ?? [],
       totalAmount: row.total_amount,
       status: row.status as RepasseStatus,
@@ -114,28 +136,52 @@ export const financeService = {
   },
 
   createRepasse: async (r: Omit<Repasse, 'id' | 'createdAt'>): Promise<Repasse> => {
-    const row: any = await throwOnError(
+    interface DBRepasse {
+      id: string;
+      psychologist_id: string;
+      billing_batch_id: string | null;
+      appointment_ids: string[] | null;
+      total_amount: number;
+      status: string;
+      paid_at: string | null;
+      notes: string | null;
+      created_at: string;
+    }
+    const row = await throwOnError(
       supabase.from('repasses').insert({
         psychologist_id: r.psychologistId,
-        billing_batch_id: r.billingBatchId,
+        billing_batch_id: r.billingBatchId ?? null,
         appointment_ids: r.appointmentIds,
         total_amount: r.totalAmount,
         status: r.status,
         paid_at: r.paidAt ?? null,
         notes: r.notes ?? null,
-      }).select().single()
-    );
-    return { id: row.id, psychologistId: row.psychologist_id, billingBatchId: row.billing_batch_id, appointmentIds: row.appointment_ids ?? [], totalAmount: row.total_amount, status: row.status as RepasseStatus, paidAt: row.paid_at ?? undefined, notes: row.notes ?? undefined, createdAt: row.created_at };
+      }).select(REPASSE_COLUMNS).single()
+    ) as unknown as DBRepasse;
+    return { id: row.id, psychologistId: row.psychologist_id, billingBatchId: row.billing_batch_id ?? undefined, appointmentIds: row.appointment_ids ?? [], totalAmount: row.total_amount, status: row.status as RepasseStatus, paidAt: row.paid_at ?? undefined, notes: row.notes ?? undefined, createdAt: row.created_at };
   },
 
   updateRepasse: async (id: string, r: Partial<Repasse>): Promise<Repasse> => {
-    const updates: Record<string, any> = {};
+    interface DBRepasse {
+      id: string;
+      psychologist_id: string;
+      billing_batch_id: string | null;
+      appointment_ids: string[] | null;
+      total_amount: number;
+      status: string;
+      paid_at: string | null;
+      notes: string | null;
+      created_at: string;
+    }
+    const updates: Record<string, unknown> = {};
     if (r.status !== undefined) updates.status = r.status;
     if (r.paidAt !== undefined) updates.paid_at = r.paidAt;
     if (r.notes !== undefined) updates.notes = r.notes;
     if (r.totalAmount !== undefined) updates.total_amount = r.totalAmount;
-    const row: any = await throwOnError(supabase.from('repasses').update(updates).eq('id', id).select().single());
-    return { id: row.id, psychologistId: row.psychologist_id, billingBatchId: row.billing_batch_id, appointmentIds: row.appointment_ids ?? [], totalAmount: row.total_amount, status: row.status as RepasseStatus, paidAt: row.paid_at ?? undefined, notes: row.notes ?? undefined, createdAt: row.created_at };
+    const row = await throwOnError(
+      supabase.from('repasses').update(updates).eq('id', id).select(REPASSE_COLUMNS).single()
+    ) as unknown as DBRepasse;
+    return { id: row.id, psychologistId: row.psychologist_id, billingBatchId: row.billing_batch_id ?? undefined, appointmentIds: row.appointment_ids ?? [], totalAmount: row.total_amount, status: row.status as RepasseStatus, paidAt: row.paid_at ?? undefined, notes: row.notes ?? undefined, createdAt: row.created_at };
   },
 
   deleteRepasse: async (id: string): Promise<void> => {
@@ -145,9 +191,9 @@ export const financeService = {
 
   // ── Settings ───────────────────────────────────────────────────────────────
   getSettings: async (): Promise<Settings> => {
-    let { data, error } = await supabase.from('settings').select('*').limit(1).maybeSingle();
+    let { data, error } = await supabase.from('settings').select(SETTINGS_COLUMNS).limit(1).maybeSingle();
     if (!data && !error) {
-      const { data: newData, error: newErr } = await supabase.from('settings').insert({}).select().single();
+      const { data: newData, error: newErr } = await supabase.from('settings').insert({}).select(SETTINGS_COLUMNS).single();
       if (newErr) throw new Error(newErr.message);
       data = newData;
     } else if (error) {
@@ -157,11 +203,11 @@ export const financeService = {
   },
 
   updateSettings: async (id: string, settings: Partial<Settings>): Promise<Settings> => {
-    const updates: any = {};
+    const updates: Record<string, unknown> = {};
     if (settings.zapiUrl !== undefined) updates.zapi_url = settings.zapiUrl;
     if (settings.zapiToken !== undefined) updates.zapi_token = settings.zapiToken;
     updates.updated_at = new Date().toISOString();
-    const row = await throwOnError(supabase.from('settings').update(updates).eq('id', id).select().single());
+    const row = await throwOnError(supabase.from('settings').update(updates).eq('id', id).select(SETTINGS_COLUMNS).single());
     return toSettings(row);
   },
 };

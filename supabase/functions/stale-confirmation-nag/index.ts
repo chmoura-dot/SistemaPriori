@@ -137,11 +137,37 @@ Deno.serve(async (req) => {
       }
     }
 
+    const failures = results.filter(r => r.status === "mail_error");
+    if (failures.length > 0) {
+      try {
+        const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
+        await supabase.rpc('log_operation_failure', {
+          p_context: 'stale-confirmation-nag',
+          p_message: `Falha no envio de e-mail de lembrete de pendências para ${failures.length} psicólogo(s)`,
+          p_details: { failures },
+          p_severity: 'critical'
+        });
+      } catch (dbErr) {
+        console.error("Falha ao registrar log no banco:", dbErr);
+      }
+    }
+
     return new Response(JSON.stringify({ success: true, processed: results }), {
       headers: { 'Content-Type': 'application/json' }
     });
 
   } catch (err: any) {
+    console.error('[StaleConfirmationNag] Erro:', err.message);
+    try {
+      const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
+      await supabase.rpc('log_operation_failure', {
+        p_context: 'stale-confirmation-nag',
+        p_message: `Erro ao enviar e-mails de lembrete de pendências (nag): ${err.message}`,
+        p_severity: 'critical'
+      });
+    } catch (dbErr) {
+      console.error("Falha ao registrar log no banco:", dbErr);
+    }
     return new Response(JSON.stringify({ error: err.message }), { status: 500 });
   }
 });

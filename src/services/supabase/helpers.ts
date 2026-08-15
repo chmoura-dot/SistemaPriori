@@ -49,6 +49,50 @@ export const CUSTOMER_COLUMNS = [
   'created_at',
 ].join(', ');
 
+export const PSYCHOLOGIST_COLUMNS = [
+  'id', 'name', 'email', 'phone', 'specialties', 'active',
+  'availability', 'repass_rate', 'repass_fixed_amount',
+  'repass_overrides_plan', 'pix_key_type', 'pix_key'
+].join(', ');
+
+export const ROOM_COLUMNS = [
+  'id', 'name', 'active'
+].join(', ');
+
+export const WAITING_LIST_COLUMNS = [
+  'id', 'customer_name', 'phone', 'preferred_days', 'preferred_hours',
+  'psychologist_id', 'notes', 'status', 'created_at'
+].join(', ');
+
+export const HOLIDAY_COLUMNS = [
+  'id', 'date', 'name', 'type', 'recurring', 'clinic_open', 'created_at'
+].join(', ');
+
+export const CLINIC_CLOSURE_COLUMNS = [
+  'id', 'start_date', 'end_date', 'reason', 'created_at'
+].join(', ');
+
+export const NFSE_INVOICE_COLUMNS = [
+  'id', 'invoice_number', 'issue_date', 'status', 'payer', 'total_amount', 'description', 'created_at'
+].join(', ');
+
+export const EXPENSE_COLUMNS = [
+  'id', 'description', 'beneficiary', 'razao_social', 'nome_fantasia',
+  'product_description', 'amount', 'category', 'date', 'is_recurring', 'created_at'
+].join(', ');
+
+export const BILLING_BATCH_COLUMNS = [
+  'id', 'batch_number', 'sent_at', 'paid_at', 'status', 'health_plan', 'total_amount', 'appointment_ids', 'created_at'
+].join(', ');
+
+export const REPASSE_COLUMNS = [
+  'id', 'psychologist_id', 'billing_batch_id', 'appointment_ids', 'total_amount', 'status', 'paid_at', 'notes', 'created_at'
+].join(', ');
+
+export const SETTINGS_COLUMNS = [
+  'id', 'zapi_url', 'zapi_token', 'created_at', 'updated_at'
+].join(', ');
+
 // ── Mapper functions ─────────────────────────────────────────────────────────
 
 export function toPsychologist(row: any): Psychologist {

@@ -1,9 +1,9 @@
-import { supabase, toPsychologist, toRoom, throwOnError } from './helpers';
+import { supabase, toPsychologist, toRoom, throwOnError, PSYCHOLOGIST_COLUMNS, ROOM_COLUMNS } from './helpers';
 import { Psychologist, Room } from '../types';
 
 export const psychologistService = {
   getPsychologists: async (): Promise<Psychologist[]> => {
-    const { data, error } = await supabase.from('psychologists').select('*').order('name');
+    const { data, error } = await supabase.from('psychologists').select(PSYCHOLOGIST_COLUMNS).order('name');
     if (error) throw new Error(error.message);
     return (data ?? []).map(toPsychologist);
   },
@@ -70,7 +70,7 @@ export const psychologistService = {
   },
 
   getRooms: async (): Promise<Room[]> => {
-    const { data, error } = await supabase.from('rooms').select('*').order('name');
+    const { data, error } = await supabase.from('rooms').select(ROOM_COLUMNS).order('name');
     if (error) throw new Error(error.message);
     return (data ?? []).map(toRoom);
   },

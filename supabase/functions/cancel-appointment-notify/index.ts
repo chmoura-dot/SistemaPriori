@@ -148,6 +148,16 @@ Deno.serve(async (req) => {
 
   } catch (err: any) {
     console.error("Erro na função cancel-appointment-notify:", err);
+    try {
+      const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
+      await supabase.rpc('log_operation_failure', {
+        p_context: 'cancel-appointment-notify',
+        p_message: `Erro ao notificar cancelamento: ${err.message}`,
+        p_severity: 'critical'
+      });
+    } catch (dbErr) {
+      console.error("Falha ao registrar log no banco:", dbErr);
+    }
     return new Response(JSON.stringify({ error: err.message }), { 
       status: 500, 
       headers: { ...corsHeaders, "Content-Type": "application/json" } 
