@@ -26,7 +26,7 @@ function formatDate(dateStr: string): string {
 export const NeuroReportPage = () => {
   const { reportItems, isLoading, error, refetch } = useNeuroReportData();
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'todos' | 'Em andamento' | 'Finalizado'>('Em andamento');
+  const [statusFilter, setStatusFilter] = useState<'todos' | 'A iniciar' | 'Em andamento' | 'Finalizado' | 'Cancelado'>('Em andamento');
   const [planFilter, setPlanFilter] = useState<string>('todos');
   const [sortField, setSortField] = useState<SortKey>('cycleTimeDays');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
@@ -93,15 +93,21 @@ export const NeuroReportPage = () => {
 
   // Contagens para os botões das abas
   const counts = useMemo(() => {
+    let aIniciar = 0;
     let emAndamento = 0;
     let finalizado = 0;
+    let cancelado = 0;
     reportItems.forEach(item => {
-      if (item.status === 'Em andamento') emAndamento++;
+      if (item.status === 'A iniciar') aIniciar++;
+      else if (item.status === 'Em andamento') emAndamento++;
       else if (item.status === 'Finalizado') finalizado++;
+      else if (item.status === 'Cancelado') cancelado++;
     });
     return {
+      aIniciar,
       emAndamento,
       finalizado,
+      cancelado,
       todos: reportItems.length,
     };
   }, [reportItems]);
@@ -171,11 +177,11 @@ export const NeuroReportPage = () => {
       </div>
 
       {/* Abas de Filtragem Rápida */}
-      <div className="flex border-b border-zinc-200 gap-1 print:hidden">
+      <div className="flex border-b border-zinc-200 gap-1 print:hidden overflow-x-auto">
         <button
           onClick={() => setStatusFilter('Em andamento')}
           className={cn(
-            "px-5 py-3 text-sm font-semibold border-b-2 transition-all flex items-center gap-2",
+            "px-5 py-3 text-sm font-semibold border-b-2 transition-all flex items-center gap-2 whitespace-nowrap",
             statusFilter === 'Em andamento'
               ? "border-priori-navy text-priori-navy"
               : "border-transparent text-zinc-400 hover:text-zinc-600"
@@ -190,9 +196,26 @@ export const NeuroReportPage = () => {
           </span>
         </button>
         <button
+          onClick={() => setStatusFilter('A iniciar')}
+          className={cn(
+            "px-5 py-3 text-sm font-semibold border-b-2 transition-all flex items-center gap-2 whitespace-nowrap",
+            statusFilter === 'A iniciar'
+              ? "border-priori-navy text-priori-navy"
+              : "border-transparent text-zinc-400 hover:text-zinc-600"
+          )}
+        >
+          A Iniciar (Agendados)
+          <span className={cn(
+            "px-2 py-0.5 text-xs rounded-full font-bold",
+            statusFilter === 'A iniciar' ? "bg-priori-navy text-white" : "bg-zinc-100 text-zinc-500"
+          )}>
+            {counts.aIniciar}
+          </span>
+        </button>
+        <button
           onClick={() => setStatusFilter('Finalizado')}
           className={cn(
-            "px-5 py-3 text-sm font-semibold border-b-2 transition-all flex items-center gap-2",
+            "px-5 py-3 text-sm font-semibold border-b-2 transition-all flex items-center gap-2 whitespace-nowrap",
             statusFilter === 'Finalizado'
               ? "border-priori-navy text-priori-navy"
               : "border-transparent text-zinc-400 hover:text-zinc-600"
@@ -207,9 +230,26 @@ export const NeuroReportPage = () => {
           </span>
         </button>
         <button
+          onClick={() => setStatusFilter('Cancelado')}
+          className={cn(
+            "px-5 py-3 text-sm font-semibold border-b-2 transition-all flex items-center gap-2 whitespace-nowrap",
+            statusFilter === 'Cancelado'
+              ? "border-priori-navy text-priori-navy"
+              : "border-transparent text-zinc-400 hover:text-zinc-600"
+          )}
+        >
+          Cancelados
+          <span className={cn(
+            "px-2 py-0.5 text-xs rounded-full font-bold",
+            statusFilter === 'Cancelado' ? "bg-priori-navy text-white" : "bg-zinc-100 text-zinc-500"
+          )}>
+            {counts.cancelado}
+          </span>
+        </button>
+        <button
           onClick={() => setStatusFilter('todos')}
           className={cn(
-            "px-5 py-3 text-sm font-semibold border-b-2 transition-all flex items-center gap-2",
+            "px-5 py-3 text-sm font-semibold border-b-2 transition-all flex items-center gap-2 whitespace-nowrap",
             statusFilter === 'todos'
               ? "border-priori-navy text-priori-navy"
               : "border-transparent text-zinc-400 hover:text-zinc-600"
@@ -330,7 +370,7 @@ export const NeuroReportPage = () => {
                     key={`${item.psychologistId}-${item.customerId}`} 
                     className={cn(
                       "hover:bg-zinc-50/40 transition-all group",
-                      item.status === 'Finalizado' && "opacity-60 bg-zinc-50/30"
+                      (item.status === 'Finalizado' || item.status === 'Cancelado') && "opacity-60 bg-zinc-50/30"
                     )}
                   >
                     {/* Psicólogo */}
@@ -357,15 +397,28 @@ export const NeuroReportPage = () => {
 
                     {/* Status */}
                     <td className="px-6 py-4 whitespace-nowrap">
-                      {item.status === 'Em andamento' ? (
+                      {item.status === 'Em andamento' && (
                         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-100">
                           <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></span>
                           Em andamento
                         </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-zinc-150 text-zinc-500 border border-zinc-250">
-                          <span className="w-1.5 h-1.5 rounded-full bg-zinc-400"></span>
+                      )}
+                      {item.status === 'A iniciar' && (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-100">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                          A iniciar
+                        </span>
+                      )}
+                      {item.status === 'Finalizado' && (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
                           Finalizado
+                        </span>
+                      )}
+                      {item.status === 'Cancelado' && (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-red-50 text-red-700 border border-red-100">
+                          <span className="w-1.5 h-1.5 rounded-full bg-red-500"></span>
+                          Cancelado
                         </span>
                       )}
                     </td>
@@ -390,9 +443,27 @@ export const NeuroReportPage = () => {
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center gap-2">
                         <Clock size={13} className="text-zinc-400" />
-                        <span className="font-bold text-zinc-900 bg-zinc-50 px-2.5 py-1 rounded-lg border border-zinc-100">
-                          {item.cycleTimeDays} {item.cycleTimeDays === 1 ? 'dia' : 'dias'}
-                        </span>
+                        {item.status === 'A iniciar' ? (
+                          <span className="text-zinc-400 font-medium bg-zinc-50 px-2.5 py-1 rounded-lg border border-zinc-100 text-xs">
+                            Não iniciado
+                          </span>
+                        ) : item.status === 'Cancelado' ? (
+                          <span className="text-red-400 font-medium bg-red-50/50 px-2.5 py-1 rounded-lg border border-red-100/50 text-xs">
+                            Cancelado
+                          </span>
+                        ) : (
+                          <span className={cn(
+                            "font-bold px-2.5 py-1 rounded-lg border",
+                            item.cycleTimeDays > 180
+                              ? "bg-red-50 text-red-700 border-red-200"
+                              : "bg-zinc-50 text-zinc-900 border-zinc-100"
+                          )}
+                          title={item.cycleTimeDays > 180 ? "Ciclo excedeu o limite de faturamento de 180 dias!" : undefined}
+                          >
+                            {item.cycleTimeDays} {item.cycleTimeDays === 1 ? 'dia' : 'dias'}
+                            {item.cycleTimeDays > 180 && " (Excedido)"}
+                          </span>
+                        )}
                       </div>
                     </td>
 

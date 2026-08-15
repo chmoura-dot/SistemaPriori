@@ -14,7 +14,7 @@ export interface NeuroReportItem {
   sessionsPerformedCount: number;
   patientAbsencesCount: number;
   psychologistAbsencesCount: number;
-  status: 'Em andamento' | 'Finalizado';
+  status: 'A iniciar' | 'Em andamento' | 'Finalizado' | 'Cancelado';
 }
 
 export function useNeuroReportData() {
@@ -104,20 +104,42 @@ export function useNeuroReportData() {
       const sortedApps = [...groupApps].sort((a, b) => a.date.localeCompare(b.date));
       if (sortedApps.length === 0) continue;
 
-      const firstAppDate = sortedApps[0].date;
-      const lastAppDate = sortedApps[sortedApps.length - 1].date;
+      const activeApps = sortedApps.filter(app => app.status !== 'canceled');
 
-      // Cálculo de Tempo de Ciclo:
-      // Se a última consulta for no passado (antes de hoje), o ciclo é fechado (Última Consulta - Primeira Consulta).
-      // Se for hoje ou no futuro (em aberto), calcula-se o tempo decorrido até hoje (Hoje - Primeira Consulta).
-      const firstAppMs = new Date(firstAppDate + 'T00:00:00').getTime();
-      const endMs = lastAppDate < todayStr 
-        ? new Date(lastAppDate + 'T00:00:00').getTime() 
-        : todayMs;
+      const firstAppDate = activeApps.length > 0 ? activeApps[0].date : sortedApps[0].date;
+      const lastAppDate = activeApps.length > 0 ? activeApps[activeApps.length - 1].date : sortedApps[sortedApps.length - 1].date;
 
-      const diffMs = endMs - firstAppMs;
-      const rawDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-      const cycleTimeDays = Math.max(1, rawDays);
+      let cycleTimeDays = 0;
+      let status: 'A iniciar' | 'Em andamento' | 'Finalizado' | 'Cancelado' = 'Em andamento';
+
+      if (activeApps.length === 0) {
+        status = 'Cancelado';
+        cycleTimeDays = 0;
+      } else {
+        const firstActiveAppDate = activeApps[0].date;
+        if (firstActiveAppDate > todayStr) {
+          status = 'A iniciar';
+          cycleTimeDays = 0;
+        } else {
+          // Já iniciou (primeira consulta ativa <= hoje)
+          const hasActiveFutureOrToday = activeApps.some(app => app.date >= todayStr);
+          if (hasActiveFutureOrToday) {
+            status = 'Em andamento';
+            const firstAppMs = new Date(firstAppDate + 'T00:00:00').getTime();
+            const endMs = todayMs;
+            const diffMs = endMs - firstAppMs;
+            const rawDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+            cycleTimeDays = Math.max(1, rawDays);
+          } else {
+            status = 'Finalizado';
+            const firstAppMs = new Date(firstAppDate + 'T00:00:00').getTime();
+            const endMs = new Date(lastAppDate + 'T00:00:00').getTime();
+            const diffMs = endMs - firstAppMs;
+            const rawDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+            cycleTimeDays = Math.max(1, rawDays);
+          }
+        }
+      }
 
       // Métricas de contagem
       let sessionsPerformedCount = 0;
@@ -148,10 +170,6 @@ export function useNeuroReportData() {
           }
         }
       }
-
-      // Status do ciclo: se houver pelo menos um agendamento não cancelado com data >= hoje, está em andamento.
-      const hasActiveFutureOrToday = sortedApps.some(app => app.status !== 'canceled' && app.date >= todayStr);
-      const status: 'Em andamento' | 'Finalizado' = hasActiveFutureOrToday ? 'Em andamento' : 'Finalizado';
 
       items.push({
         psychologistId,

@@ -5,7 +5,7 @@ Comunicação direta, técnica, sem saudações ou explicações de conceitos b�
 
 # [STACK TECNOLÓGICA]
 - Frontend: React, TypeScript (Strict Mode), Vite, Tailwind CSS, Lucide React (Ícones).
-- Backend / BaaS: Supabase (PostgreSQL).
+- Backend / BaaS: Supabase (PostgreSQL). Atenção: Sem deploy via CLI local.
 - Serverless: Supabase Edge Functions (Deno/TypeScript).
 - Automações e Integrações: Z-API (WhatsApp), Resend (E-mail), pg_cron (Jobs do banco).
 
@@ -26,6 +26,7 @@ Comunicação direta, técnica, sem saudações ou explicações de conceitos b�
 
 # [DIRETRIZES DE CÓDIGO E ARQUITETURA]
 - TypeScript Estrito: Proibido o uso de `any`. Tipagem de retorno de funções é obrigatória. Compilação `tsc --noEmit` deve passar com 0 erros.
+- Fluxo do Supabase (Banco e Functions): O projeto NÃO utiliza deploy automatizado ou migrações locais (`supabase cli`). Qualquer alteração arquitetural (tabelas, índices, RLS, triggers, RPCs ou Edge Functions) deve ser executada manualmente no painel web.
 - Banco de Dados Primeiro: Sempre que possível, mova lógicas pesadas de agregação e filtros para Views, RPCs (Stored Procedures) ou regras no Supabase, reduzindo o tráfego de rede para o frontend.
 - Consultas Supabase (Client): Evite `select('*')`. Especifique exatamente as colunas necessárias para reduzir o payload de rede.
 - Frontend Performance: Utilize hooks de memorização (`useMemo`, `useCallback`) em processamentos de dados de tabelas e gráficos. Previna renders em cascata (waterfall).
@@ -33,5 +34,6 @@ Comunicação direta, técnica, sem saudações ou explicações de conceitos b�
 
 # [COMPORTAMENTO DE RESPOSTA]
 1. Se for solicitado a corrigir um bug, entregue: Causa Raiz -> Estratégia -> Código de Correção.
-2. Apenas documente regras de negócio complexas.
-3. Todo código fornecido deve ser copy-paste ready, mantendo as importações e sem remover o código existente utilizando comentários preguiçosos como `// restante do código aqui`.
+2. Alterações de Banco de Dados: Se a solução exigir qualquer mudança no PostgreSQL, forneça o script SQL completo, otimizado, e indique claramente a instrução: "Rode este script no SQL Editor do painel web do Supabase".
+3. Apenas documente regras de negócio complexas.
+4. Todo código fornecido deve ser copy-paste ready, mantendo as importações e sem remover o código existente utilizando comentários preguiçosos como `// restante do código aqui`.
