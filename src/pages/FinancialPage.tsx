@@ -128,6 +128,10 @@ export const FinancialPage = () => {
       }
       const competence = Object.entries(monthCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || batch.sentAt.substring(0, 7);
 
+      // --- FILTRO PREVENTIVO DE DESEMPENHO ---
+      // Evita o processamento e inclusão de dados de outras competências desnecessariamente
+      if (filterMonth && competence !== filterMonth) return;
+
       let status: 'pending' | 'partial' | 'paid' = 'pending';
       if (batch.status === BillingBatchStatus.PAID) status = 'paid';
       else if (batch.status === BillingBatchStatus.PARTIALLY_PAID) status = 'partial';
@@ -147,6 +151,11 @@ export const FinancialPage = () => {
 
     // 2. Entradas: Consultas Particulares (não faturadas via lotes)
     const particularApps = appointments.filter(app => {
+      // --- FILTRO PREVENTIVO DE DESEMPENHO ---
+      // Filtra o range por mês antes de realizar qualquer cálculo pesado de precificação (getAppPrice)
+      const competence = app.date.substring(0, 7);
+      if (filterMonth && competence !== filterMonth) return false;
+
       const customer = customers.find(c => c.id === app.customerId);
       return !app.billingBatchId && (customer?.healthPlan === HealthPlan.PARTICULAR || !customer?.healthPlan);
     });
@@ -171,6 +180,7 @@ export const FinancialPage = () => {
         originalEntity: app
       });
     });
+
     // 3. Saídas: Obrigações de Repasse aos Psicólogos
     repasses.forEach(repasse => {
       const psy = psychologists.find(p => p.id === repasse.psychologistId);
@@ -188,6 +198,9 @@ export const FinancialPage = () => {
         }
         competence = Object.entries(monthCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || batch.sentAt.substring(0, 7);
       }
+
+      // --- FILTRO PREVENTIVO DE DESEMPENHO ---
+      if (filterMonth && competence !== filterMonth) return;
 
       const status: 'pending' | 'partial' | 'paid' = repasse.status === RepasseStatus.PAID ? 'paid' : 'pending';
 
@@ -207,6 +220,10 @@ export const FinancialPage = () => {
     // 4. Saídas: Despesas Gerais da Clínica
     expenses.forEach(expense => {
       const competence = expense.date.substring(0, 7);
+
+      // --- FILTRO PREVENTIVO DE DESEMPENHO ---
+      if (filterMonth && competence !== filterMonth) return;
+
       transactions.push({
         id: `expense-${expense.id}`,
         type: 'saida_despesa',
@@ -221,7 +238,7 @@ export const FinancialPage = () => {
     });
 
     return transactions;
-  }, [batches, appointments, repasses, customers, plans, psychologists, expenses, pricingCtx]);
+  }, [batches, appointments, repasses, customers, plans, psychologists, expenses, pricingCtx, filterMonth]);
 
   // Lista única das operadoras/origens para alimentar o filtro
   const uniqueOrigins = useMemo(() => {
@@ -229,9 +246,9 @@ export const FinancialPage = () => {
     return Array.from(new Set(['Particular', ...plans]));
   }, [batches]);
 
-  // Aplicação instantânea dos filtros locais via useMemo
+  // Aplicação instantânea dos filtros locais via useMemo com ordenação temporal decrescente (comportamento de extrato)
   const filteredTransactions = useMemo(() => {
-    return allTransactions.filter(t => {
+    const filtered = allTransactions.filter(t => {
       const matchesMonth = !filterMonth || t.competence === filterMonth;
       const matchesStatus = filterStatus === 'all' || t.status === filterStatus;
       
@@ -254,6 +271,9 @@ export const FinancialPage = () => {
 
       return matchesMonth && matchesStatus && matchesOrigin;
     });
+
+    // Ordenação de Extrato: mais recentes no topo da tabela
+    return filtered.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [allTransactions, filterMonth, filterStatus, filterOrigin, batches]);
 
   // Estatísticas e Métricas Executivas consolidadas
@@ -296,11 +316,27 @@ export const FinancialPage = () => {
   }, [filteredTransactions]);
 
   const handleMarkParticularPaid = async (appId: string) => {
+    // 1. Salva o estado original de agendamentos para rollback em caso de falhas
+    const originalAppointments = [...appointments];
+
+    // 2. Atualização Otimista (Optimistic UI Update): altera o estado local imediatamente
+    setAppointments(prev => prev.map(app => {
+      if (app.id === appId) {
+        return {
+          ...app,
+          paidAt: new Date().toISOString()
+        };
+      }
+      return app;
+    }));
+
     try {
+      // 3. Executa atualização em background na base
       await api.updateAppointment(appId, { paidAt: new Date().toISOString() });
-      await loadData();
     } catch (err) {
       console.error('[Financeiro] Erro ao registrar pagamento particular:', err);
+      // Fallback em caso de erro no Supabase
+      setAppointments(originalAppointments);
       alert('Erro ao registrar o pagamento do atendimento particular.');
     }
   };
