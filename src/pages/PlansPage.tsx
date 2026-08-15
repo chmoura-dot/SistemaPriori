@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { TrendingUp, Plus, Edit2, Trash2 } from 'lucide-react';
+import { toast } from 'react-hot-toast';
 import { api } from '../services/api';
 import { Plan, AppointmentType, PlanProcedure } from '../services/types';
 import { Button } from '../components/Button';
@@ -98,27 +99,43 @@ export const PlansPage = () => {
 
       await loadPlans();
       setIsBulkModalOpen(false);
-      alert(`${plansToUpdate.length} planos e ${appsToUpdate.length} agendamentos reajustados com sucesso!`);
-    } catch { alert('Erro ao aplicar reajuste'); }
-    finally { setIsSaving(false); }
+      toast.success(`${plansToUpdate.length} planos e ${appsToUpdate.length} agendamentos reajustados com sucesso!`);
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao aplicar reajuste');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
     try {
-      if (editingPlan) { await api.updatePlan(editingPlan.id, formData); }
-      else { await api.createPlan(formData); }
+      if (editingPlan) {
+        await api.updatePlan(editingPlan.id, formData);
+        toast.success('Plano atualizado com sucesso!');
+      } else {
+        await api.createPlan(formData);
+        toast.success('Plano criado com sucesso!');
+      }
       await loadPlans();
       setIsModalOpen(false);
-    } catch { alert('Erro ao salvar plano'); }
-    finally { setIsSaving(false); }
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao salvar plano');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleDelete = async (id: string) => {
     if (confirm('Tem certeza que deseja excluir este plano?')) {
-      await api.deletePlan(id);
-      await loadPlans();
+      try {
+        await api.deletePlan(id);
+        toast.success('Plano excluído com sucesso!');
+        await loadPlans();
+      } catch (err: any) {
+        toast.error(err?.message || 'Erro ao excluir plano');
+      }
     }
   };
 
