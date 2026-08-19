@@ -32,6 +32,7 @@ const HolidaysPage          = lazy(() => import('./pages/HolidaysPage').then(m =
 const PatientLookupPage     = lazy(() => import('./pages/PatientLookupPage').then(m => ({ default: m.PatientLookupPage })));
 const ForecastPage          = lazy(() => import('./pages/ForecastPage').then(m => ({ default: m.ForecastPage })));
 const NeuroReportPage       = lazy(() => import('./pages/NeuroReportPage').then(m => ({ default: m.NeuroReportPage })));
+const PortfolioPage         = lazy(() => import('./pages/PortfolioPage').then(m => ({ default: m.PortfolioPage })));
 import { api } from './services/api';
 import { supabase } from './lib/supabase';
 import { cn } from './lib/utils';
@@ -205,6 +206,8 @@ export default function App() {
         return <ForecastPage />;
       case '/relatorio-neuro':
         return isAdmin ? <NeuroReportPage /> : <DashboardPage onNavigate={navigate} />;
+      case '/carteira':
+        return isAdmin ? <PortfolioPage /> : <DashboardPage onNavigate={navigate} />;
       default:
         return <DashboardPage onNavigate={navigate} />;
     }

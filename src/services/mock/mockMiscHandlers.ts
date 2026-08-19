@@ -101,4 +101,10 @@ export const mockMiscHandlers = {
     return { id, startDate: '', endDate: '', reason: '', createdAt: '', ...c };
   },
   deleteClinicClosure: async (_id: string) => { await delay(200); },
+
+  // ── Portfolio (mock) ──────────────────────────────────────────────────────
+  getPsychologistPortfolio: async (_referenceDate?: string) => {
+    await delay(200);
+    return [];
+  },
 };

@@ -1,5 +1,5 @@
 import { supabase, toPsychologist, toRoom, throwOnError, PSYCHOLOGIST_COLUMNS, ROOM_COLUMNS } from './helpers';
-import { Psychologist, Room } from '../types';
+import { Psychologist, Room, PortfolioItem } from '../types';
 
 export const psychologistService = {
   getPsychologists: async (): Promise<Psychologist[]> => {
@@ -73,5 +73,26 @@ export const psychologistService = {
     const { data, error } = await supabase.from('rooms').select(ROOM_COLUMNS).order('name');
     if (error) throw new Error(error.message);
     return (data ?? []).map(toRoom);
+  },
+
+  getPsychologistPortfolio: async (referenceDate?: string): Promise<PortfolioItem[]> => {
+    const today = referenceDate || new Date().toISOString().split('T')[0];
+    const { data, error } = await supabase.rpc('get_portfolio_by_psychologist', {
+      p_reference_date: today,
+    });
+    if (error) throw new Error(error.message);
+    return (data ?? []).map((row: any) => ({
+      psychologistId: row.psychologist_id,
+      psychologistName: row.psychologist_name,
+      customerId: row.customer_id,
+      customerName: row.customer_name,
+      modality: row.modality,
+      lastSessionDate: row.last_session_date,
+      nextSessionDate: row.next_session_date,
+      frequency: row.frequency,
+      cycleStartDate: row.cycle_start_date,
+      cycleDays: row.cycle_days,
+      neuroStatus: row.neuro_status,
+    }));
   },
 };

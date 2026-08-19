@@ -14,6 +14,7 @@ import {
   ClinicClosure,
   WaitingListEntry,
   User,
+  PortfolioItem,
 } from './models';
 
 export interface AppService {
@@ -144,4 +145,7 @@ export interface AppService {
   createClinicClosure: (closure: Omit<ClinicClosure, 'id' | 'createdAt'>) => Promise<ClinicClosure>;
   updateClinicClosure: (id: string, closure: Partial<ClinicClosure>) => Promise<ClinicClosure>;
   deleteClinicClosure: (id: string) => Promise<void>;
+
+  // Portfolio Management
+  getPsychologistPortfolio: (referenceDate?: string) => Promise<PortfolioItem[]>;
 }

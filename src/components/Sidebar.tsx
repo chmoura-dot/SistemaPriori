@@ -20,6 +20,7 @@ import {
   SearchCheck,
   CalendarSearch,
   User as UserIcon,
+  UserCheck,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { api } from '../services/api';
@@ -53,6 +54,7 @@ const menuGroups: MenuGroup[] = [
     category: 'Gestão & Faturamento',
     items: [
       { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
+      { icon: UserCheck, label: 'Gestão de Carteira', path: '/carteira', adminOnly: true },
       { icon: FileText, label: 'Faturamento', path: '/faturamento' },
       { icon: ArrowRightLeft, label: 'Repasse', path: '/repasse' },
       { icon: CalendarSearch, label: 'Previsão Atendimentos', path: '/previsao' },

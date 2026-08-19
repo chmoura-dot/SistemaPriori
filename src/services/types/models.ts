@@ -259,3 +259,17 @@ export interface User {
   email: string;
   role: UserRole;
 }
+
+export interface PortfolioItem {
+  psychologistId: string;
+  psychologistName: string;
+  customerId: string;
+  customerName: string;
+  modality: 'Neuropsicologia' | 'Psicoterapia';
+  lastSessionDate?: string | null;
+  nextSessionDate?: string | null;
+  frequency?: string | null;
+  cycleStartDate?: string | null;
+  cycleDays?: number | null;
+  neuroStatus?: 'A iniciar' | 'Em andamento' | 'Finalizado' | 'Cancelado' | null;
+}
