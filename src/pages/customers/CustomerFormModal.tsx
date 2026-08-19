@@ -104,7 +104,8 @@ export const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
           <input
             className={cn(input, duplicateWarning && 'border-amber-400')}
             value={formData.name}
-            onChange={e => setFormData(p => ({ ...p, name: e.target.value.toUpperCase() }))}
+            onChange={e => setFormData(p => ({ ...p, name: e.target.value.toUpperCase().replace(/\s{2,}/g, ' ').replace(/^\s+/, '') }))}
+            onBlur={() => setFormData(p => ({ ...p, name: p.name.trim() }))}
             placeholder="Nome do paciente em maiúsculas"
             required
           />

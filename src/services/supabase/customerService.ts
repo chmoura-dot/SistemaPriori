@@ -40,7 +40,7 @@ export const customerService = {
   createCustomer: async (c: Omit<Customer, 'id' | 'createdAt'>): Promise<Customer> => {
     const row = await throwOnError(
       supabase.from('customers').insert({
-        name: c.name.toUpperCase(),
+        name: c.name.trim().replace(/\s+/g, ' ').toUpperCase(),
         email: c.email,
         phone: c.phone,
         health_plan: c.healthPlan,
@@ -64,7 +64,7 @@ export const customerService = {
 
   updateCustomer: async (id: string, c: Partial<Customer>): Promise<Customer> => {
     const updates: Record<string, any> = {};
-    if (c.name !== undefined) updates.name = c.name.toUpperCase();
+    if (c.name !== undefined) updates.name = c.name.trim().replace(/\s+/g, ' ').toUpperCase();
     if (c.email !== undefined) updates.email = c.email;
     if (c.phone !== undefined) updates.phone = c.phone;
     if (c.healthPlan !== undefined) updates.health_plan = c.healthPlan;

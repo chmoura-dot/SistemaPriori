@@ -61,7 +61,7 @@ export const CustomerImportModal: React.FC<CustomerImportModalProps> = ({
     const lines = rawText.trim().split('\n').filter(l => l.trim());
     const rows: ImportPreviewRow[] = lines.map(line => {
       const cols = parseCSVLine(line);
-      const name = cols[0]?.toUpperCase() || '';
+      const name = (cols[0] || '').trim().replace(/\s+/g, ' ').toUpperCase();
       const phone = cols[1] || '';
       const healthPlan = parsePlan(cols[2] || 'PARTICULAR');
       const birthDate = cols[3] || '';
