@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import toast from 'react-hot-toast';
 import {
   Users,
   Brain,
@@ -15,7 +16,7 @@ import {
   UserCheck
 } from 'lucide-react';
 import { api } from '../services/api';
-import { PortfolioItem, Psychologist } from '../services/types';
+import { PortfolioItem, Psychologist, CustomerStatus, InactivationReason } from '../services/types';
 import { cn } from '../lib/utils';
 
 function formatDate(dateStr?: string | null): string {
@@ -33,6 +34,42 @@ export const PortfolioPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
+  const [updatingCustomerId, setUpdatingCustomerId] = useState<string | null>(null);
+
+  // Edição rápida de status: permite inativar (concluir/paralisar) um paciente
+  // diretamente na carteira, sem navegar até a tela de Pacientes.
+  // Persiste via customers.status + customers.inactivation_reason (Supabase)
+  // e atualiza a UI de forma otimista, recalculando KPIs e grupos instantaneamente.
+  const handleStatusChange = async (customerId: string, newReason: string): Promise<void> => {
+    if (!newReason) return;
+
+    const confirmed = window.confirm(
+      `Tem certeza que deseja inativar este paciente pelo motivo: "${newReason}"?`
+    );
+    if (!confirmed) {
+      // Força um novo array para resetar o <select> não controlado de volta ao placeholder
+      setPortfolio(prev => [...prev]);
+      return;
+    }
+
+    setUpdatingCustomerId(customerId);
+    try {
+      await api.updateCustomer(customerId, {
+        status: CustomerStatus.INACTIVE,
+        inactivationReason: newReason as InactivationReason,
+      });
+      toast.success('Status do paciente atualizado com sucesso.');
+      // Remove o paciente inativado da carteira ativa exibida em tela
+      setPortfolio(prev => prev.filter(p => p.customerId !== customerId));
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Falha ao atualizar status do paciente.';
+      console.error('[PortfolioPage] Erro ao atualizar status do paciente:', err);
+      toast.error(message);
+    } finally {
+      setUpdatingCustomerId(null);
+    }
+  };
+
   const loadData = useCallback(async () => {
     setIsLoading(true);
     setError(null);
@@ -43,9 +80,10 @@ export const PortfolioPage: React.FC = () => {
       ]);
       setPortfolio(portfolioData);
       setPsychologists(psychData.filter(p => p.active));
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Falha ao buscar dados da carteira.';
       console.error('[PortfolioPage] Erro ao carregar carteira:', err);
-      setError(err?.message || 'Falha ao buscar dados da carteira.');
+      setError(message);
     } finally {
       setIsLoading(false);
     }
@@ -133,6 +171,7 @@ export const PortfolioPage: React.FC = () => {
       neuroFinished,
     };
   }, [filteredPortfolio]);
+
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[50vh] gap-3">
@@ -316,7 +355,8 @@ export const PortfolioPage: React.FC = () => {
                                 <th className="py-2.5 px-3">Última Sessão</th>
                                 <th className="py-2.5 px-3">Próxima Sessão</th>
                                 <th className="py-2.5 px-3">Ciclo (180 dias)</th>
-                                <th className="py-2.5 px-3 text-right">Status do Ciclo</th>
+                                <th className="py-2.5 px-3">Status do Ciclo</th>
+<th className="py-2.5 px-3 text-right">Ações</th>
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-zinc-100">
@@ -353,7 +393,7 @@ export const PortfolioPage: React.FC = () => {
                                       <span className="text-zinc-400">—</span>
                                     )}
                                   </td>
-                                  <td className="py-2.5 px-3 text-right">
+                                  <td className="py-2.5 px-3">
                                     <span
                                       className={cn(
                                         "px-2.5 py-1 rounded-full text-[10px] font-bold inline-flex items-center gap-1",
@@ -365,6 +405,26 @@ export const PortfolioPage: React.FC = () => {
                                     >
                                       {item.neuroStatus || 'Em andamento'}
                                     </span>
+                                  </td>
+                                  <td className="py-2.5 px-3 text-right">
+                                    {updatingCustomerId === item.customerId ? (
+                                      <span className="text-[10px] text-zinc-500 inline-flex items-center gap-1 font-medium">
+                                        <RefreshCw size={10} className="animate-spin text-priori-navy" />
+                                        Inativando...
+                                      </span>
+                                    ) : (
+                                      <select
+                                        value=""
+                                        onChange={(e) => handleStatusChange(item.customerId, e.target.value)}
+                                        className="bg-white border border-zinc-200 hover:border-zinc-300 rounded-lg px-2 py-1 text-[10px] font-semibold text-zinc-600 cursor-pointer outline-none focus:ring-2 focus:ring-priori-navy/20 transition-all shadow-xs"
+                                        title="Alterar status / Inativar paciente"
+                                      >
+                                        <option value="" disabled hidden>Inativar / Finalizar...</option>
+                                        {Object.values(InactivationReason).map((r: InactivationReason) => (
+                                          <option key={r} value={r}>{r}</option>
+                                        ))}
+                                      </select>
+                                    )}
                                   </td>
                                 </tr>
                               ))}
@@ -396,7 +456,8 @@ export const PortfolioPage: React.FC = () => {
                                 <th className="py-2.5 px-3">Frequência</th>
                                 <th className="py-2.5 px-3">Última Sessão</th>
                                 <th className="py-2.5 px-3">Próxima Sessão</th>
-                                <th className="py-2.5 px-3 text-right">Status</th>
+                                <th className="py-2.5 px-3">Status</th>
+<th className="py-2.5 px-3 text-right">Ações</th>
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-zinc-100">
@@ -422,11 +483,31 @@ export const PortfolioPage: React.FC = () => {
                                       {formatDate(item.nextSessionDate)}
                                     </span>
                                   </td>
-                                  <td className="py-2.5 px-3 text-right">
+                                  <td className="py-2.5 px-3">
                                     <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 inline-flex items-center gap-1">
                                       <CheckCircle2 size={10} />
                                       Ativo
                                     </span>
+                                  </td>
+                                  <td className="py-2.5 px-3 text-right">
+                                    {updatingCustomerId === item.customerId ? (
+                                      <span className="text-[10px] text-zinc-500 inline-flex items-center gap-1 font-medium">
+                                        <RefreshCw size={10} className="animate-spin text-priori-navy" />
+                                        Inativando...
+                                      </span>
+                                    ) : (
+                                      <select
+                                        value=""
+                                        onChange={(e) => handleStatusChange(item.customerId, e.target.value)}
+                                        className="bg-white border border-zinc-200 hover:border-zinc-300 rounded-lg px-2 py-1 text-[10px] font-semibold text-zinc-600 cursor-pointer outline-none focus:ring-2 focus:ring-priori-navy/20 transition-all shadow-xs"
+                                        title="Alterar status / Inativar paciente"
+                                      >
+                                        <option value="" disabled hidden>Inativar / Finalizar...</option>
+                                        {Object.values(InactivationReason).map((r: InactivationReason) => (
+                                          <option key={r} value={r}>{r}</option>
+                                        ))}
+                                      </select>
+                                    )}
                                   </td>
                                 </tr>
                               ))}
