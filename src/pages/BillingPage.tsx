@@ -2,8 +2,6 @@ import React from 'react';
 import { Plus, Loader2, ShieldAlert } from 'lucide-react';
 import { api } from '../services/api';
 import { UserRole } from '../services/types';
-
-import { Plus, Loader2 } from 'lucide-react';
 import { useBillingData } from '../hooks/useBillingData';
 import { BillingSummaryCards } from '../components/billing/BillingSummaryCards';
 import { BillingBatchTable } from '../components/billing/BillingBatchTable';

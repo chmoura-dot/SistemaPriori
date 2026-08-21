@@ -72,7 +72,7 @@ export function enrichAuditLogs(
       : 'Sistema / Automático';
 
     let entityLabel = 'Desconhecido';
-    let actionLabel = log.action;
+    let actionLabel: string = log.action;
     let recordDescription = '';
     let extractedReason: string | undefined = undefined;
     let isRelevant = true;

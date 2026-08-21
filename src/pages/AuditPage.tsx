@@ -55,6 +55,16 @@ export const AuditPage = () => {
 
   const openRevertModal = (entry: EnrichedAuditLogEntry) => {
     setRevertingEntry(entry);
+    setIsConfirmRevertOpen(true);
+  };
+
+  const confirmRevert = async () => {
+    if (!revertingEntry) return;
+    await handleRevert(revertingEntry);
+    setIsConfirmRevertOpen(false);
+    setRevertingEntry(null);
+  };
+
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
       {/* Header */}
@@ -169,6 +179,11 @@ export const AuditPage = () => {
               <option value="UPDATE">✏️ Edição / Atualização</option>
               <option value="INSERT">➕ Criação / Inclusão</option>
               <option value="DELETE">🗑️ Exclusão</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
       {/* Tabela de Auditoria */}
       <div className="bg-white rounded-2xl border border-zinc-100 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
@@ -244,9 +259,6 @@ export const AuditPage = () => {
                         <div className="text-[9px] font-mono text-zinc-400">ID: {log.recordId.slice(0, 8)}...</div>
                       </td>
 
-            </select>
-          </div>
-        </div>
                       <td className="px-4 py-3 max-w-[260px]">
                         {log.extractedReason ? (
                           <div className="p-1.5 rounded-lg bg-zinc-50 border border-zinc-200 text-zinc-700 text-[11px] leading-tight">
@@ -285,6 +297,12 @@ export const AuditPage = () => {
                     </tr>
                   );
                 })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       {/* Modal: Visualizador de Diff */}
       <Modal
         isOpen={isDiffModalOpen}
@@ -362,6 +380,14 @@ export const AuditPage = () => {
                   <span className="text-[10px] font-bold text-zinc-400 block mb-1">NEW DATA</span>
                   <pre className="p-2 bg-zinc-900 text-zinc-100 rounded-lg text-[10px] overflow-auto max-h-48">
                     {JSON.stringify(selectedEntry.newData, null, 2)}
+                  </pre>
+                </div>
+              </div>
+            </details>
+          </div>
+        )}
+      </Modal>
+
       {/* Modal: Confirmação de Reversão */}
       <Modal
         isOpen={isConfirmRevertOpen}

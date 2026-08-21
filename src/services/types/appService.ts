@@ -15,31 +15,8 @@ import {
   WaitingListEntry,
   User,
   PortfolioItem,
-  AuditLogEntry,
 } from './models';
-
-export interface AppService {
-
-import {
-  Psychologist,
-  Room,
-  Customer,
-  Appointment,
-  BillingBatch,
-  Plan,
-  Subscription,
-  Payment,
-  Expense,
-  Repasse,
-  Settings,
-  Holiday,
-  ClinicClosure,
-  WaitingListEntry,
-  User,
-  PortfolioItem,
-} from './models';
-  AuditLogEntry,
-
+import { AuditLogEntry } from './audit';
 
 export interface AppService {
   // NFS-e / Invoices

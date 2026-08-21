@@ -60,20 +60,6 @@ export const mockMiscHandlers = {
     return { success: true, message: 'Operação revertida (mock)!' };
   },
 
-    return updated;
-
-  // ── Audit Logs ─────────────────────────────────────────────────────────────
-  getFinancialAuditLogs: async (_limit: number = 200) => {
-    await delay(300);
-    return [];
-  },
-  revertFinancialAuditLog: async (_auditId: string) => {
-    await delay(500);
-    return { success: true, message: 'Operação revertida (mock)!' };
-  },
-
-  },
-
   // ── Waiting List ──────────────────────────────────────────────────────────
   getWaitingList: async (): Promise<WaitingListEntry[]> => {
     await delay(250);
