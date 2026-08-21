@@ -16,6 +16,7 @@ import {
   FileText,
   RotateCcw,
   AlertCircle,
+  ShieldAlert,
 } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -23,7 +24,156 @@ import {
   AppointmentType,
   Repasse,
   RepasseStatus,
+  UserRole,
 } from '../services/types';
+import { api } from '../services/api';
+import { Button } from '../components/Button';
+import { MonthSelector } from '../components/MonthSelector';
+import { useRepasseData } from '../hooks/useRepasseData';
+import { getRepassValue, getBatchYearMonth } from './repasse/repasseHelpers';
+
+const fmt = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
+
+export const RepassePage = () => {
+
+import React from 'react';
+import {
+  AlertTriangle,
+  ArrowRightLeft,
+  Calendar,
+  CheckCircle2,
+  Clock,
+  Loader2,
+  Plus,
+  Trash2,
+  Filter,
+  User,
+  X,
+  ChevronDown,
+  ChevronUp,
+  FileText,
+  RotateCcw,
+  AlertCircle,
+  ShieldAlert,
+} from 'lucide-react';
+import { format } from 'date-fns';
+
+import {
+  AppointmentType,
+  Repasse,
+  RepasseStatus,
+  UserRole,
+} from '../services/types';
+import { api } from '../services/api';
+import { Button } from '../components/Button';
+import { MonthSelector } from '../components/MonthSelector';
+import { useRepasseData } from '../hooks/useRepasseData';
+import { getRepassValue, getBatchYearMonth } from './repasse/repasseHelpers';
+
+const fmt = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
+
+export const RepassePage = () => {
+
+import React from 'react';
+import {
+  AlertTriangle,
+  ArrowRightLeft,
+  Calendar,
+  CheckCircle2,
+  Clock,
+  Loader2,
+  Plus,
+  Trash2,
+  Filter,
+  User,
+  X,
+  ChevronDown,
+  ChevronUp,
+  FileText,
+  RotateCcw,
+  AlertCircle,
+  ShieldAlert,
+} from 'lucide-react';
+import { format } from 'date-fns';
+
+import {
+  AppointmentType,
+  Repasse,
+  RepasseStatus,
+  UserRole,
+} from '../services/types';
+import { api } from '../services/api';
+import { Button } from '../components/Button';
+import { MonthSelector } from '../components/MonthSelector';
+import { useRepasseData } from '../hooks/useRepasseData';
+import { getRepassValue, getBatchYearMonth } from './repasse/repasseHelpers';
+
+const fmt = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
+
+import React from 'react';
+import {
+  AlertTriangle,
+  ArrowRightLeft,
+  Calendar,
+  CheckCircle2,
+  Clock,
+  Loader2,
+  Plus,
+  Trash2,
+  Filter,
+  User,
+  X,
+  ChevronDown,
+  ChevronUp,
+  FileText,
+  RotateCcw,
+  AlertCircle,
+  ShieldAlert,
+
+} from 'lucide-react';
+import { format } from 'date-fns';
+
+import {
+  AppointmentType,
+  Repasse,
+  RepasseStatus,
+  UserRole,
+} from '../services/types';
+import { api } from '../services/api';
+
+import {
+  AppointmentType,
+  Repasse,
+  RepasseStatus,
+  UserRole,
+} from '../services/types';
+import { api } from '../services/api';
+
+import {
+  AppointmentType,
+  Repasse,
+  RepasseStatus,
+  UserRole,
+} from '../services/types';
+import { api } from '../services/api';
+
+import {
+  AppointmentType,
+  Repasse,
+  RepasseStatus,
+  UserRole,
+} from '../services/types';
+import { api } from '../services/api';
+
+import {
+  AppointmentType,
+  Repasse,
+  RepasseStatus,
+} from '../services/types';
+  UserRole,
+import { api } from '../services/api';
+
+
 import { Button } from '../components/Button';
 import { MonthSelector } from '../components/MonthSelector';
 import { useRepasseData } from '../hooks/useRepasseData';
@@ -80,6 +230,30 @@ export const RepassePage = () => {
           <h1 className="text-3xl font-bold text-priori-navy tracking-tight">Repasses</h1>
           <p className="text-zinc-500 mt-1">Gerencie pagamentos aos psicólogos após recebimento dos planos</p>
         </div>
+        <div className="flex items-center gap-2">
+          {api.getCurrentUser()?.role === UserRole.ADMIN && (
+            <Button
+              onClick={() => { window.location.hash = '/auditoria'; }}
+              variant="outline"
+              className="border-zinc-200 text-zinc-700 hover:bg-zinc-50 flex items-center gap-1.5 shadow-sm"
+            >
+              <ShieldAlert size={16} className="text-priori-navy" />
+              Auditar Alterações
+            </Button>
+          )}
+          <Button
+            onClick={() => setIsFiltersOpen(!isFiltersOpen)}
+            variant="outline"
+            className="border-zinc-200 text-zinc-700 hover:bg-zinc-50 flex items-center gap-2 shadow-sm"
+          >
+            <Filter size={16} />
+            {isFiltersOpen ? 'Ocultar Filtros' : 'Mostrar Filtros'}
+            {(filterMonth || filterPsyId || filterStatus) && (
+              <span className="w-2 h-2 rounded-full bg-priori-navy animate-pulse" />
+            )}
+          </Button>
+        </div>
+
         <Button
           onClick={() => setIsFiltersOpen(!isFiltersOpen)}
           variant="outline"

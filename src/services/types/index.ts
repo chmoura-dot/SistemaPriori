@@ -2,3 +2,5 @@
 export * from './enums';
 export * from './models';
 export * from './appService';
+export * from './audit';
+

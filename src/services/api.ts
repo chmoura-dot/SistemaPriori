@@ -142,6 +142,8 @@ const writes = {
   updateRepasse: invalidateAfter(supabaseService.updateRepasse, ['repasses']),
   deleteRepasse: invalidateAfter(supabaseService.deleteRepasse, ['repasses']),
 
+  revertFinancialAuditLog: invalidateAfter(supabaseService.revertFinancialAuditLog, ['billingBatches', 'repasses', 'appointments']),
+
   createHoliday: invalidateAfter(supabaseService.createHoliday, ['holidays']),
   updateHoliday: invalidateAfter(supabaseService.updateHoliday, ['holidays']),
   deleteHoliday: invalidateAfter(supabaseService.deleteHoliday, ['holidays']),

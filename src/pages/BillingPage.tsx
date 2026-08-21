@@ -1,4 +1,8 @@
 import React from 'react';
+import { Plus, Loader2, ShieldAlert } from 'lucide-react';
+import { api } from '../services/api';
+import { UserRole } from '../services/types';
+
 import { Plus, Loader2 } from 'lucide-react';
 import { useBillingData } from '../hooks/useBillingData';
 import { BillingSummaryCards } from '../components/billing/BillingSummaryCards';
@@ -29,6 +33,26 @@ export const BillingPage = () => {
           <h1 className="text-3xl font-bold text-priori-navy tracking-tight">Faturamento</h1>
           <p className="text-zinc-500 mt-1">Gerencie lotes e envios para operadoras</p>
         </div>
+        <div className="flex items-center gap-2">
+          {api.getCurrentUser()?.role === UserRole.ADMIN && (
+            <Button
+              onClick={() => { window.location.hash = '/auditoria'; }}
+              variant="outline"
+              className="border-zinc-200 text-zinc-700 hover:bg-zinc-50 flex items-center gap-1.5 shadow-sm"
+            >
+              <ShieldAlert size={16} className="text-priori-navy" />
+              Auditar Alterações
+            </Button>
+          )}
+          <Button
+            onClick={() => billing.openCreateModal()}
+            className="bg-priori-navy hover:bg-priori-navy/90 shadow-sm"
+          >
+            <Plus size={20} className="mr-2" />
+            Novo Lote
+          </Button>
+        </div>
+
         <Button
           onClick={() => billing.openCreateModal()}
           className="bg-priori-navy hover:bg-priori-navy/90 shadow-sm"

@@ -15,7 +15,31 @@ import {
   WaitingListEntry,
   User,
   PortfolioItem,
+  AuditLogEntry,
 } from './models';
+
+export interface AppService {
+
+import {
+  Psychologist,
+  Room,
+  Customer,
+  Appointment,
+  BillingBatch,
+  Plan,
+  Subscription,
+  Payment,
+  Expense,
+  Repasse,
+  Settings,
+  Holiday,
+  ClinicClosure,
+  WaitingListEntry,
+  User,
+  PortfolioItem,
+} from './models';
+  AuditLogEntry,
+
 
 export interface AppService {
   // NFS-e / Invoices
@@ -147,5 +171,10 @@ export interface AppService {
   deleteClinicClosure: (id: string) => Promise<void>;
 
   // Portfolio Management
+
+  // Audit Logs
+  getFinancialAuditLogs: (limit?: number) => Promise<AuditLogEntry[]>;
+  revertFinancialAuditLog: (auditId: string) => Promise<{ success: boolean; message: string }>;
+
   getPsychologistPortfolio: (referenceDate?: string) => Promise<PortfolioItem[]>;
 }

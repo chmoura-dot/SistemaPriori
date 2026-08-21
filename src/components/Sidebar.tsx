@@ -21,6 +21,8 @@ import {
   CalendarSearch,
   User as UserIcon,
   UserCheck,
+  ShieldAlert,
+
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { api } from '../services/api';
@@ -61,6 +63,8 @@ const menuGroups: MenuGroup[] = [
       { icon: FileText, label: 'Gestão Neuropsicológica', path: '/relatorio-neuro', adminOnly: true },
       { icon: BarChart3, label: 'Capacidade', path: '/capacidade' },
       { icon: FileText, label: 'NFS-e', path: '/nfse' },
+      { icon: ShieldAlert, label: 'Auditoria Financeira', path: '/auditoria', adminOnly: true },
+
     ]
   },
   {

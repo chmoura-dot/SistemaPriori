@@ -16,6 +16,8 @@ import { appointmentWriteService } from './supabase/appointmentWriteService';
 import { customerService } from './supabase/customerService';
 import { financeService } from './supabase/financeService';
 import { configService } from './supabase/configService';
+import { auditService } from './supabase/auditService';
+
 
 export const supabaseService: AppService = {
   ...authService,
@@ -24,5 +26,7 @@ export const supabaseService: AppService = {
   ...appointmentWriteService,
   ...customerService,
   ...financeService,
+  ...auditService,
+
   ...configService,
 };
