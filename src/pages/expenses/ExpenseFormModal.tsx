@@ -50,6 +50,28 @@ export const ExpenseFormModal = ({
       />
 
       <div className="grid grid-cols-2 gap-4">
+        <Input
+          label="Razão Social"
+          placeholder="Ex: Empresa Prestadora LTDA"
+          value={formData.razaoSocial}
+          onChange={(e) => setFormData({ ...formData, razaoSocial: e.target.value })}
+        />
+        <Input
+          label="Nome Fantasia"
+          placeholder="Ex: Nome Comercial"
+          value={formData.nomeFantasia}
+          onChange={(e) => setFormData({ ...formData, nomeFantasia: e.target.value })}
+        />
+      </div>
+
+      <Input
+        label="Descrição do Produto / Serviço"
+        placeholder="Ex: Mensalidade, Emissão: 01/01/2025"
+        value={formData.productDescription}
+        onChange={(e) => setFormData({ ...formData, productDescription: e.target.value })}
+      />
+
+      <div className="grid grid-cols-2 gap-4">
         <div className="space-y-1.5">
           <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest ml-1">Categoria</label>
           <select

@@ -38,13 +38,21 @@ serve(async (req: Request) => {
       );
     }
 
-    const prompt = `Analise o texto extraído de um PDF de boleto ou nota fiscal e extraia exatamente estas 4 informações em formato JSON (não inclua marcações de markdown, apenas o json puro):
+    const prompt = `Analise o texto extraído de um PDF de boleto ou nota fiscal e extraia exatamente estas informações em formato JSON (não inclua marcações de markdown, apenas o json puro):
     {
-      "cnpj": "CNPJ do emissor formatado (ex: 00.000.000/0000-00)",
-      "emissao": "Data de emissão no formato DD/MM/AAAA",
-      "vencimento": "Data de vencimento no formato AAAA-MM-DD",
-      "valor": número decimal representando o valor total (ex: 150.00)
+      "cnpj": "CNPJ do emissor/prestador formatado (ex: 00.000.000/0000-00), ou \"\" se não encontrado",
+      "razaoSocial": "Razão social completa da empresa emissora/prestadora do serviço, ou \"\" se não encontrado",
+      "nomeFantasia": "Nome fantasia da empresa emissora/prestadora (se diferente da razão social), ou \"\" se não encontrado",
+      "descricaoServico": "Descrição resumida do produto ou serviço prestado (ex: Mensalidade Software X, Aluguel Sala 2), ou \"\" se não encontrado",
+      "emissao": "Data de emissão no formato DD/MM/AAAA, ou \"\" se não encontrado",
+      "vencimento": "Data de vencimento no formato AAAA-MM-DD, ou \"\" se não encontrado",
+      "valor": número decimal representando o valor total a pagar (ex: 150.00), sem separador de milhar e usando ponto como separador decimal
     }
+
+    Regras importantes:
+    - Nunca invente dados. Se não encontrar uma informação, retorne string vazia "" (ou 0 para valor).
+    - "valor" deve ser o valor total do documento (procure por termos como "Valor Total", "Valor do Documento", "Valor Cobrado", "Total a Pagar"), nunca valores de multa, juros ou linha digitável.
+    - "razaoSocial" e "nomeFantasia" referem-se a quem EMITE/PRESTA o serviço (beneficiário/cedente/prestador), nunca ao pagador/sacado.
 
     Texto extraído:
     ${text}`;
@@ -71,12 +79,38 @@ serve(async (req: Request) => {
 
     const geminiData = await geminiRes.json();
     const rawText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
-    const jsonText = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
+    let jsonText = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
 
-    const extracted = JSON.parse(jsonText);
+    // Blindagem: extrai apenas o bloco { ... } caso a IA retorne texto extra ao redor do JSON
+    const jsonMatch = jsonText.match(/\{[\s\S]*\}/);
+    if (jsonMatch) jsonText = jsonMatch[0];
+
+    let extracted: Record<string, unknown>;
+    try {
+      extracted = JSON.parse(jsonText);
+    } catch (parseErr) {
+      console.error('Falha ao parsear JSON da Gemini:', jsonText, parseErr);
+      return new Response(
+        JSON.stringify({ error: 'Resposta da IA em formato inválido', detail: jsonText }),
+        { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Normalização defensiva dos campos (evita undefined/null propagando para o front)
+    const normalized = {
+      cnpj: typeof extracted.cnpj === 'string' ? extracted.cnpj : '',
+      razaoSocial: typeof extracted.razaoSocial === 'string' ? extracted.razaoSocial : '',
+      nomeFantasia: typeof extracted.nomeFantasia === 'string' ? extracted.nomeFantasia : '',
+      descricaoServico: typeof extracted.descricaoServico === 'string' ? extracted.descricaoServico : '',
+      emissao: typeof extracted.emissao === 'string' ? extracted.emissao : '',
+      vencimento: typeof extracted.vencimento === 'string' ? extracted.vencimento : '',
+      valor: typeof extracted.valor === 'number'
+        ? extracted.valor
+        : parseFloat(String(extracted.valor ?? '0').replace(/\./g, '').replace(',', '.')) || 0,
+    };
 
     return new Response(
-      JSON.stringify({ data: extracted }),
+      JSON.stringify({ data: normalized }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
