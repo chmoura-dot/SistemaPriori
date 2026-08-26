@@ -6,6 +6,7 @@ import {
   Psychologist,
 } from '../../services/types';
 import { formatCurrency } from '../../lib/utils';
+import { format } from 'date-fns';
 
 export const FINANCIAL_APPOINTMENT_FIELDS = [
   'billing_batch_id',
@@ -20,6 +21,79 @@ export const FINANCIAL_APPOINTMENT_FIELDS = [
   'denial_resolution',
   'procedure_code',
 ];
+
+// Campos cujo valor bruto é um timestamp e deve ser exibido formatado (não ISO cru)
+const DATE_FIELDS = new Set(['paid_at', 'sent_at', 'billing_ignored_at']);
+
+// Campos monetários que devem ser exibidos com formatCurrency
+const CURRENCY_FIELDS = new Set(['custom_price', 'custom_repass_amount', 'total_amount']);
+
+// Campos booleanos que devem ser exibidos como Sim/Não
+const BOOLEAN_FIELDS = new Set(['billing_ignored']);
+
+/**
+ * Compara dois valores vindos do audit_log (JSONB) de forma tolerante,
+ * evitando "falsos positivos" de diff causados por null vs undefined vs '',
+ * diferenças de formatação de timestamp ou tipo string/number.
+ */
+function valuesAreEquivalent(field: string, a: any, b: any): boolean {
+  const normA = a === undefined || a === null || a === '' ? null : a;
+  const normB = b === undefined || b === null || b === '' ? null : b;
+
+  if (normA === null && normB === null) return true;
+  if (normA === null || normB === null) return false;
+
+  if (DATE_FIELDS.has(field)) {
+    const tA = new Date(normA).getTime();
+    const tB = new Date(normB).getTime();
+    if (!Number.isNaN(tA) && !Number.isNaN(tB)) return tA === tB;
+  }
+
+  if (CURRENCY_FIELDS.has(field) || typeof normA === 'number' || typeof normB === 'number') {
+    const nA = Number(normA);
+    const nB = Number(normB);
+    if (!Number.isNaN(nA) && !Number.isNaN(nB)) return nA === nB;
+  }
+
+  return normA === normB;
+}
+
+/** Compara arrays (ex: appointment_ids) ignorando a ordem dos itens. */
+function arraysAreEquivalent(a: any[] | null | undefined, b: any[] | null | undefined): boolean {
+  const arrA = Array.isArray(a) ? [...a].sort() : [];
+  const arrB = Array.isArray(b) ? [...b].sort() : [];
+  if (arrA.length !== arrB.length) return false;
+  return arrA.every((v, i) => v === arrB[i]);
+}
+
+/** Formata o valor de um campo para exibição no diff, de acordo com seu tipo semântico. */
+function formatValueForDisplay(field: string, value: any): any {
+  if (value === undefined || value === null || value === '') return null;
+
+  if (DATE_FIELDS.has(field)) {
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? value : format(d, 'dd/MM/yyyy HH:mm');
+  }
+  if (CURRENCY_FIELDS.has(field)) {
+    return formatCurrency(Number(value));
+  }
+  if (BOOLEAN_FIELDS.has(field)) {
+    return value ? 'Sim' : 'Não';
+  }
+  return value;
+}
+
+// Campos técnicos que, para determinadas ações já traduzidas em `actionLabel`/
+// `extractedReason`, seriam redundantes se também aparecessem em "Campos Modificados".
+const REDUNDANT_APPOINTMENT_FIELDS_BY_ACTION: Record<string, string[]> = {
+  'Remoção do Lote': ['billing_batch_id', 'billing_ignored', 'billing_ignored_reason', 'billing_ignored_at'],
+  'Inclusão em Lote': ['billing_batch_id'],
+  'Desconsiderado de Faturamento': ['billing_ignored', 'billing_ignored_reason'],
+  'Restaurado para Faturamento': ['billing_ignored', 'billing_ignored_reason', 'billing_ignored_at'],
+  'Atendimento Marcado como Pago': ['billing_status'],
+  'Pagamento Desfeito': ['billing_status'],
+  'Atendimento Glosado': ['billing_status', 'denial_reason'],
+};
 
 export const FIELD_LABELS: Record<string, string> = {
   billing_batch_id: 'Lote de Faturamento',
@@ -120,7 +194,7 @@ export function enrichAuditLogs(
         actionLabel = 'Atendimento Glosado';
         extractedReason = newD.denial_reason || 'Sem motivo registrado';
       } else {
-        const hasFinancialDiff = FINANCIAL_APPOINTMENT_FIELDS.some(f => oldD[f] !== newD[f]);
+        const hasFinancialDiff = FINANCIAL_APPOINTMENT_FIELDS.some(f => !valuesAreEquivalent(f, oldD[f], newD[f]));
         if (!hasFinancialDiff && log.action === 'UPDATE') {
           isRelevant = false;
         } else {
@@ -129,13 +203,15 @@ export function enrichAuditLogs(
       }
 
       if (isRelevant) {
+        const redundantFields = REDUNDANT_APPOINTMENT_FIELDS_BY_ACTION[actionLabel] || [];
         FINANCIAL_APPOINTMENT_FIELDS.forEach(f => {
-          if (oldD[f] !== newD[f]) {
+          if (redundantFields.includes(f)) return;
+          if (!valuesAreEquivalent(f, oldD[f], newD[f])) {
             fieldDiffs.push({
               field: f,
               label: FIELD_LABELS[f] || f,
-              oldValue: f === 'billing_batch_id' && oldD[f] ? (batchMap.get(oldD[f]) || oldD[f]) : oldD[f],
-              newValue: f === 'billing_batch_id' && newD[f] ? (batchMap.get(newD[f]) || newD[f]) : newD[f],
+              oldValue: f === 'billing_batch_id' && oldD[f] ? (batchMap.get(oldD[f]) || oldD[f]) : formatValueForDisplay(f, oldD[f]),
+              newValue: f === 'billing_batch_id' && newD[f] ? (batchMap.get(newD[f]) || newD[f]) : formatValueForDisplay(f, newD[f]),
             });
           }
         });
@@ -162,15 +238,25 @@ export function enrichAuditLogs(
         }
       }
 
-      ['status', 'total_amount', 'health_plan', 'batch_number', 'paid_at', 'sent_at', 'appointment_ids'].forEach(f => {
-        const oldVal = f === 'appointment_ids' ? (oldD[f]?.length ?? 0) : oldD[f];
-        const newVal = f === 'appointment_ids' ? (newD[f]?.length ?? 0) : newD[f];
-        if (JSON.stringify(oldD[f]) !== JSON.stringify(newD[f])) {
+      // 'status' é omitido aqui pois já está traduzido no actionLabel acima.
+      ['total_amount', 'health_plan', 'batch_number', 'paid_at', 'sent_at', 'appointment_ids'].forEach(f => {
+        if (f === 'appointment_ids') {
+          if (!arraysAreEquivalent(oldD[f], newD[f])) {
+            fieldDiffs.push({
+              field: f,
+              label: 'Qtd. Atendimentos',
+              oldValue: oldD[f]?.length ?? 0,
+              newValue: newD[f]?.length ?? 0,
+            });
+          }
+          return;
+        }
+        if (!valuesAreEquivalent(f, oldD[f], newD[f])) {
           fieldDiffs.push({
             field: f,
-            label: f === 'appointment_ids' ? 'Qtd. Atendimentos' : (FIELD_LABELS[f] || f),
-            oldValue: f === 'total_amount' && oldVal != null ? formatCurrency(Number(oldVal)) : oldVal,
-            newValue: f === 'total_amount' && newVal != null ? formatCurrency(Number(newVal)) : newVal,
+            label: FIELD_LABELS[f] || f,
+            oldValue: formatValueForDisplay(f, oldD[f]),
+            newValue: formatValueForDisplay(f, newD[f]),
           });
         }
       });
@@ -194,15 +280,25 @@ export function enrichAuditLogs(
         }
       }
 
-      ['status', 'total_amount', 'paid_at', 'notes', 'appointment_ids'].forEach(f => {
-        const oldVal = f === 'appointment_ids' ? (oldD[f]?.length ?? 0) : oldD[f];
-        const newVal = f === 'appointment_ids' ? (newD[f]?.length ?? 0) : newD[f];
-        if (JSON.stringify(oldD[f]) !== JSON.stringify(newD[f])) {
+      // 'status' é omitido aqui pois já está traduzido no actionLabel acima.
+      ['total_amount', 'paid_at', 'notes', 'appointment_ids'].forEach(f => {
+        if (f === 'appointment_ids') {
+          if (!arraysAreEquivalent(oldD[f], newD[f])) {
+            fieldDiffs.push({
+              field: f,
+              label: 'Qtd. Atendimentos',
+              oldValue: oldD[f]?.length ?? 0,
+              newValue: newD[f]?.length ?? 0,
+            });
+          }
+          return;
+        }
+        if (!valuesAreEquivalent(f, oldD[f], newD[f])) {
           fieldDiffs.push({
             field: f,
-            label: f === 'appointment_ids' ? 'Qtd. Atendimentos' : (FIELD_LABELS[f] || f),
-            oldValue: f === 'total_amount' && oldVal != null ? formatCurrency(Number(oldVal)) : oldVal,
-            newValue: f === 'total_amount' && newVal != null ? formatCurrency(Number(newVal)) : newVal,
+            label: FIELD_LABELS[f] || f,
+            oldValue: formatValueForDisplay(f, oldD[f]),
+            newValue: formatValueForDisplay(f, newD[f]),
           });
         }
       });
