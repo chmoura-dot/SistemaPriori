@@ -9,6 +9,7 @@ interface Props {
   totalDenied: number;
   draftCount: number;
   totalDraftAmount: number;
+  onOpenDenied?: () => void;
 }
 
 export const BillingSummaryCards: React.FC<Props> = ({
@@ -18,6 +19,7 @@ export const BillingSummaryCards: React.FC<Props> = ({
   totalDenied,
   draftCount,
   totalDraftAmount,
+  onOpenDenied,
 }) => (
   <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6">
     {/* Lotes Previstos */}
@@ -66,7 +68,13 @@ export const BillingSummaryCards: React.FC<Props> = ({
     </div>
 
     {/* Glosas */}
-    <div className="bg-white rounded-2xl border border-zinc-100 p-6 shadow-sm flex items-start gap-4">
+    <button
+      type="button"
+      onClick={onOpenDenied}
+      disabled={!onOpenDenied}
+      className="bg-white rounded-2xl border border-zinc-100 p-6 shadow-sm flex items-start gap-4 text-left transition-colors enabled:hover:bg-red-50/40 enabled:hover:border-red-200 enabled:cursor-pointer disabled:cursor-default"
+      title={onOpenDenied ? 'Ver detalhes das glosas' : undefined}
+    >
       <div className="p-3 bg-red-50 text-red-600 rounded-xl">
         <AlertCircle size={24} />
       </div>
@@ -75,7 +83,10 @@ export const BillingSummaryCards: React.FC<Props> = ({
         <h3 className="text-2xl font-bold text-priori-navy">
           {totalDenied} {totalDenied === 1 ? 'atendimento' : 'atendimentos'}
         </h3>
+        {onOpenDenied && (
+          <p className="text-xs text-red-600 mt-0.5">Ver motivos e status &rarr;</p>
+        )}
       </div>
-    </div>
+    </button>
   </div>
 );

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { api } from '../services/api';
 import { logger } from '../lib/logger';
 import {
@@ -49,6 +49,9 @@ export function useBillingData() {
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [batchToPay, setBatchToPay]                 = useState<BillingBatch | null>(null);
   const [appointmentStatuses, setAppointmentStatuses] = useState<Record<string, AppointmentPaymentStatus>>({});
+
+  // ─── Estado do modal "Central de Glosas" ──────────────────────────────────
+  const [isDeniedModalOpen, setIsDeniedModalOpen] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -238,6 +241,19 @@ export function useBillingData() {
   const totalDenied = appointments.filter(a => a.billingStatus === 'denied').length;
   const totalDraftAmount = draftBatches.reduce((acc, b) => acc + b.totalAmount, 0);
 
+  // Todos os atendimentos glosados do sistema (independente do status atual do
+  // lote pai — inclusive lotes já fechados como PAID), já enriquecidos com o
+  // lote correspondente para permitir navegação direta ("Ver lote").
+  const deniedAppointments = useMemo(() => {
+    return appointments
+      .filter(a => a.billingStatus === 'denied')
+      .map(a => ({
+        appointment: a,
+        batch: a.billingBatchId ? batches.find(b => b.id === a.billingBatchId) : undefined,
+      }))
+      .sort((x, y) => y.appointment.date.localeCompare(x.appointment.date));
+  }, [appointments, batches]);
+
   return {
     batches, appointments, customers, psychologists, plans, isLoading, autoSaveStatus,
     draftBatches, pendingBatches, totalPendingAmount, totalPaidAmount, totalDenied, totalDraftAmount,
@@ -249,6 +265,7 @@ export function useBillingData() {
     includeNextMonth, setIncludeNextMonth, selectedBatch, setSelectedBatch, openBatchDetails,
     isPaymentModalOpen, setIsPaymentModalOpen, batchToPay, appointmentStatuses,
     updateAppointmentPaymentStatus,
+    isDeniedModalOpen, setIsDeniedModalOpen, deniedAppointments,
     ...helpers,
     ...actions,
     handlePlanChange, handleMonthFilterChange, toggleAppointmentSelection,

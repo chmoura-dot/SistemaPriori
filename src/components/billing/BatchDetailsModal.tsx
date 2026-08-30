@@ -346,14 +346,14 @@ export const BatchDetailsModal: React.FC<Props> = ({
                             {app.billingStatus === 'paid' ? 'Pago' : 'Glosa'}
                           </span>
                         )}
-                        {app.billingStatus === 'paid' && onUnmarkPaid && (
+                        {!!app.billingStatus && onUnmarkPaid && (
                           <button
                             onClick={() => onUnmarkPaid(id)}
                             className="flex items-center gap-1 text-[11px] font-medium text-zinc-400 hover:text-red-500 hover:bg-red-50 px-2 py-1 rounded-lg transition-colors"
-                            title="Desfazer pagamento deste atendimento"
+                            title={app.billingStatus === 'denied' ? 'Reverter esta glosa (volta a pendente)' : 'Desfazer pagamento deste atendimento'}
                           >
                             <RotateCcw size={12} />
-                            Desfazer
+                            {app.billingStatus === 'denied' ? 'Reverter glosa' : 'Desfazer'}
                           </button>
                         )}
                         {!app.billingStatus && onMarkPaid && (

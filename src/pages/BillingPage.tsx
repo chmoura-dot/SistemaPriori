@@ -8,6 +8,7 @@ import { BillingBatchTable } from '../components/billing/BillingBatchTable';
 import { CreateBatchModal } from '../components/billing/CreateBatchModal';
 import { BatchDetailsModal } from '../components/billing/BatchDetailsModal';
 import { RegisterPaymentModal } from '../components/billing/RegisterPaymentModal';
+import { DeniedAppointmentsModal } from '../components/billing/DeniedAppointmentsModal';
 import { Button } from '../components/Button';
 
 export const BillingPage = () => {
@@ -68,6 +69,7 @@ export const BillingPage = () => {
         totalDenied={billing.totalDenied}
         draftCount={billing.draftBatches.length}
         totalDraftAmount={billing.totalDraftAmount}
+        onOpenDenied={() => billing.setIsDeniedModalOpen(true)}
       />
 
       {/* Tabela de Lotes */}
@@ -165,6 +167,20 @@ export const BillingPage = () => {
         onUpdateStatus={billing.updateAppointmentPaymentStatus}
         onClose={() => billing.setIsPaymentModalOpen(false)}
         onSubmit={billing.submitPayment}
+      />
+
+      {/* Modal: Central de Glosas */}
+      <DeniedAppointmentsModal
+        isOpen={billing.isDeniedModalOpen}
+        entries={billing.deniedAppointments}
+        customers={billing.customers}
+        getAppPrice={billing.getAppPrice}
+        onClose={() => billing.setIsDeniedModalOpen(false)}
+        onOpenBatch={(batch) => {
+          billing.setIsDeniedModalOpen(false);
+          billing.openBatchDetails(batch);
+        }}
+        onRevert={billing.handleUnmarkAppointmentPaid}
       />
     </div>
   );
