@@ -7,7 +7,7 @@ import {
   CLINIC_CLOSURE_COLUMNS,
   NFSE_INVOICE_COLUMNS,
 } from './helpers';
-import { WaitingListEntry, Holiday, ClinicClosure } from '../types';
+import { WaitingListEntry, Holiday, ClinicClosure, AppointmentType, HealthPlan } from '../types';
 
 interface DBWaitingList {
   id: string;
@@ -19,6 +19,26 @@ interface DBWaitingList {
   notes: string | null;
   status: 'pending' | 'called' | 'resolved' | 'canceled';
   created_at: string;
+  appointment_type: string | null;
+  health_plan: string | null;
+  session_duration_minutes: number | null;
+}
+
+function toWaitingListEntry(row: DBWaitingList): WaitingListEntry {
+  return {
+    id: row.id,
+    customerName: row.customer_name,
+    phone: row.phone,
+    preferredDays: (row.preferred_days ?? []).map(Number),
+    preferredHours: row.preferred_hours ?? [],
+    psychologistId: row.psychologist_id ?? undefined,
+    notes: row.notes ?? undefined,
+    status: row.status,
+    createdAt: row.created_at,
+    appointmentType: (row.appointment_type as AppointmentType) ?? undefined,
+    healthPlan: (row.health_plan as HealthPlan) ?? undefined,
+    sessionDurationMinutes: row.session_duration_minutes ?? 60,
+  };
 }
 
 interface DBHoliday {
@@ -59,17 +79,7 @@ export const configService = {
       .order('created_at', { ascending: false });
     if (error) throw new Error(error.message);
     const rows = (data ?? []) as unknown as DBWaitingList[];
-    return rows.map((row): WaitingListEntry => ({
-      id: row.id,
-      customerName: row.customer_name,
-      phone: row.phone,
-      preferredDays: (row.preferred_days ?? []).map(Number),
-      preferredHours: row.preferred_hours ?? [],
-      psychologistId: row.psychologist_id,
-      notes: row.notes,
-      status: row.status,
-      createdAt: row.created_at,
-    }));
+    return rows.map(toWaitingListEntry);
   },
 
   createWaitingListEntry: async (e: Omit<WaitingListEntry, 'id' | 'createdAt'>): Promise<WaitingListEntry> => {
@@ -82,9 +92,12 @@ export const configService = {
         psychologist_id: e.psychologistId,
         notes: e.notes,
         status: e.status,
+        appointment_type: e.appointmentType ?? null,
+        health_plan: e.healthPlan ?? null,
+        session_duration_minutes: e.sessionDurationMinutes ?? 60,
       }).select(WAITING_LIST_COLUMNS).single()
     ) as unknown as DBWaitingList;
-    return { id: row.id, customerName: row.customer_name, phone: row.phone, preferredDays: (row.preferred_days ?? []).map(Number), preferredHours: row.preferred_hours ?? [], psychologistId: row.psychologist_id, notes: row.notes, status: row.status, createdAt: row.created_at };
+    return toWaitingListEntry(row);
   },
 
   updateWaitingListEntry: async (id: string, e: Partial<WaitingListEntry>): Promise<WaitingListEntry> => {
@@ -96,10 +109,13 @@ export const configService = {
     if (e.psychologistId !== undefined) updates.psychologist_id = e.psychologistId;
     if (e.notes !== undefined) updates.notes = e.notes;
     if (e.status !== undefined) updates.status = e.status;
+    if (e.appointmentType !== undefined) updates.appointment_type = e.appointmentType;
+    if (e.healthPlan !== undefined) updates.health_plan = e.healthPlan;
+    if (e.sessionDurationMinutes !== undefined) updates.session_duration_minutes = e.sessionDurationMinutes;
     const row = await throwOnError(
       supabase.from('waiting_list').update(updates).eq('id', id).select(WAITING_LIST_COLUMNS).single()
     ) as unknown as DBWaitingList;
-    return { id: row.id, customerName: row.customer_name, phone: row.phone, preferredDays: (row.preferred_days ?? []).map(Number), preferredHours: row.preferred_hours ?? [], psychologistId: row.psychologist_id, notes: row.notes, status: row.status, createdAt: row.created_at };
+    return toWaitingListEntry(row);
   },
 
   deleteWaitingListEntry: async (id: string): Promise<void> => {

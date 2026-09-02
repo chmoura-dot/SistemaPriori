@@ -23,6 +23,7 @@ export const psychologistService = {
           repass_fixed_amount: p.repassFixedAmount,
           pix_key_type: p.pixKeyType ?? null,
           pix_key: p.pixKey ?? null,
+          accepted_health_plans: p.acceptedHealthPlans ?? [],
         })
         .select()
         .single()
@@ -51,6 +52,7 @@ export const psychologistService = {
     if (p.repassFixedAmount !== undefined) updates.repass_fixed_amount = p.repassFixedAmount;
     if (p.pixKeyType !== undefined) updates.pix_key_type = p.pixKeyType || null;
     if (p.pixKey !== undefined) updates.pix_key = p.pixKey || null;
+    if (p.acceptedHealthPlans !== undefined) updates.accepted_health_plans = p.acceptedHealthPlans;
 
     const row = await throwOnError(
       supabase.from('psychologists').update(updates).eq('id', id).select().single()

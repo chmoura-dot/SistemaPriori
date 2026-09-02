@@ -1,15 +1,18 @@
 import React from 'react';
-import { Phone, User, Calendar, Clock, AlertCircle, CheckCircle2, PhoneCall, Check, Edit2, Trash2 } from 'lucide-react';
+import { Phone, User, Calendar, Clock, AlertCircle, CheckCircle2, PhoneCall, Check, Edit2, Trash2, BellRing } from 'lucide-react';
 import { WaitingListEntry, Psychologist } from '../../services/types';
+import { WaitingListMatch } from '../../lib/waitingListMatch';
 
 const DAYS_OF_WEEK = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
 
 interface Props {
   entry: WaitingListEntry;
   psychologist?: Psychologist;
+  match?: WaitingListMatch;
   onEdit: (entry: WaitingListEntry) => void;
   onDelete: (id: string) => void;
   onUpdateStatus: (id: string, status: 'pending' | 'called' | 'resolved' | 'canceled') => void;
+  onNavigateToAgenda: (date: string) => void;
 }
 
 const StatusBadge: React.FC<{ status: string }> = ({ status }) => {
@@ -22,7 +25,7 @@ const StatusBadge: React.FC<{ status: string }> = ({ status }) => {
   }
 };
 
-export const WaitingListCard: React.FC<Props> = ({ entry, psychologist, onEdit, onDelete, onUpdateStatus }) => (
+export const WaitingListCard: React.FC<Props> = ({ entry, psychologist, match, onEdit, onDelete, onUpdateStatus, onNavigateToAgenda }) => (
   <div className="bg-white border border-zinc-100 rounded-2xl p-5 flex flex-col hover:border-priori-gold/30 shadow-sm transition-all relative group">
     <div className="absolute top-5 right-5">
       <StatusBadge status={entry.status} />
@@ -39,6 +42,25 @@ export const WaitingListCard: React.FC<Props> = ({ entry, psychologist, onEdit, 
         </div>
       </div>
     </div>
+
+    {match && match.slots.length > 0 && (
+      <div className="mb-4 p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl">
+        <p className="text-[11px] font-bold text-emerald-700 flex items-center gap-1.5">
+          <BellRing size={12} className="shrink-0" />
+          Vaga disponível: {DAYS_OF_WEEK[match.slots[0].dayOfWeek].substring(0, 3)} {match.slots[0].startTime} — {match.slots[0].psychologistName}
+        </p>
+        <button
+          type="button"
+          onClick={() => onNavigateToAgenda(match.slots[0].nextDate)}
+          className="mt-1 text-[10px] font-bold text-emerald-700 underline hover:text-emerald-900"
+        >
+          Ver na Agenda →
+        </button>
+        {match.slots.length > 1 && (
+          <p className="text-[10px] text-emerald-600 mt-0.5">+{match.slots.length - 1} outro(s) horário(s) compatível(is)</p>
+        )}
+      </div>
+    )}
 
     <div className="space-y-3 flex-1 mb-4 bg-zinc-50 p-3 rounded-xl border border-zinc-100">
       {entry.psychologistId && (

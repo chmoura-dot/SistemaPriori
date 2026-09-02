@@ -33,6 +33,9 @@ export interface Psychologist {
   repassOverridesPlan?: boolean;
   pixKeyType?: 'telefone' | 'email' | 'cpf' | 'aleatoria';
   pixKey?: string;
+  // Convênios atendidos por este profissional. Vazio/undefined = atende todos
+  // (usado no matching de disponibilidade da Fila de Espera).
+  acceptedHealthPlans?: HealthPlan[];
 }
 
 export interface Room {
@@ -253,6 +256,15 @@ export interface WaitingListEntry {
   notes?: string;
   status: 'pending' | 'called' | 'resolved' | 'canceled';
   createdAt: string;
+  // Tipo de atendimento desejado. Apenas informativo (exibição/priorização),
+  // não filtra candidatos no matching de vaga disponível.
+  appointmentType?: AppointmentType;
+  // Convênio/Particular desejado. Filtra psicólogos candidatos via
+  // Psychologist.acceptedHealthPlans no matching de vaga disponível.
+  healthPlan?: HealthPlan;
+  // Duração assumida da sessão (minutos) para checar sobreposição na agenda.
+  // Padrão 60min, editável pela secretária no formulário.
+  sessionDurationMinutes: number;
 }
 
 export interface User {

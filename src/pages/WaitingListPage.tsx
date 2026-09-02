@@ -6,10 +6,12 @@ import { Button } from '../components/Button';
 import { cn } from '../lib/utils';
 import { WaitingListCard } from './waitingList/WaitingListCard';
 import { WaitingListFormModal, WaitingFormData } from './waitingList/WaitingListFormModal';
+import { useWaitingListMatches } from '../hooks/waitingList/useWaitingListMatches';
 
 const DEFAULT_FORM: WaitingFormData = {
   customerName: '', phone: '', preferredDays: [], preferredHours: [],
-  psychologistId: '', notes: '', status: 'pending'
+  psychologistId: '', notes: '', status: 'pending',
+  appointmentType: '', healthPlan: '', sessionDurationMinutes: 60,
 };
 
 export const WaitingListPage = () => {
@@ -22,6 +24,7 @@ export const WaitingListPage = () => {
   const [editingEntry, setEditingEntry] = useState<WaitingListEntry | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [formData, setFormData] = useState<WaitingFormData>(DEFAULT_FORM);
+  const { matches: waitingMatches, reload: reloadMatches } = useWaitingListMatches();
 
   const loadData = async () => {
     setIsLoading(true);
@@ -41,7 +44,13 @@ export const WaitingListPage = () => {
   const handleOpenModal = (entry?: WaitingListEntry) => {
     if (entry) {
       setEditingEntry(entry);
-      setFormData({ customerName: entry.customerName, phone: entry.phone || '', preferredDays: entry.preferredDays || [], preferredHours: entry.preferredHours || [], psychologistId: entry.psychologistId || '', notes: entry.notes || '', status: entry.status });
+      setFormData({
+        customerName: entry.customerName, phone: entry.phone || '',
+        preferredDays: entry.preferredDays || [], preferredHours: entry.preferredHours || [],
+        psychologistId: entry.psychologistId || '', notes: entry.notes || '', status: entry.status,
+        appointmentType: entry.appointmentType || '', healthPlan: entry.healthPlan || '',
+        sessionDurationMinutes: entry.sessionDurationMinutes ?? 60,
+      });
     } else {
       setEditingEntry(null);
       setFormData(DEFAULT_FORM);
@@ -53,13 +62,23 @@ export const WaitingListPage = () => {
     e.preventDefault();
     setIsSaving(true);
     try {
-      const payload = { ...formData, psychologistId: formData.psychologistId || undefined };
+      const payload = {
+        ...formData,
+        psychologistId: formData.psychologistId || undefined,
+        appointmentType: formData.appointmentType || undefined,
+        healthPlan: formData.healthPlan || undefined,
+      };
       if (editingEntry) { await api.updateWaitingListEntry(editingEntry.id, payload); }
       else { await api.createWaitingListEntry(payload); }
       await loadData();
+      await reloadMatches();
       setIsModalOpen(false);
     } catch { alert('Erro ao salvar registro na fila de espera'); }
     finally { setIsSaving(false); }
+  };
+
+  const handleNavigateToAgenda = (date: string) => {
+    window.location.href = `/agenda?date=${date}`;
   };
 
   const handleDelete = async (id: string) => {
@@ -133,9 +152,11 @@ export const WaitingListPage = () => {
             key={entry.id}
             entry={entry}
             psychologist={psychologists.find(p => p.id === entry.psychologistId)}
+            match={waitingMatches.find(m => m.entry.id === entry.id)}
             onEdit={handleOpenModal}
             onDelete={handleDelete}
             onUpdateStatus={updateStatus}
+            onNavigateToAgenda={handleNavigateToAgenda}
           />
         ))}
       </div>

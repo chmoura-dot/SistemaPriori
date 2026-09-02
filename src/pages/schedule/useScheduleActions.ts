@@ -7,11 +7,46 @@ import { supabase } from '../../lib/supabase';
 import { logger } from '../../lib/logger';
 import { hasTimeOverlap } from '../../lib/timeUtils';
 import { resolvePsychologistAbsenceBilling } from '../../lib/pricing';
+import { toastInfo } from '../../lib/toast';
+import { findWaitingListMatches, MATCH_HORIZON_DAYS } from '../../lib/waitingListMatch';
 
 import { useScheduleData, makeDefaultForm } from './useScheduleData';
 import { ScheduleFormData } from './scheduleUtils';
 
 type ScheduleData = ReturnType<typeof useScheduleData>;
+
+/**
+ * Checa, após um cancelamento ESTRUTURAL (fim de tratamento — toda a série
+ * futura foi cancelada, não apenas uma ocorrência isolada), se a vaga que
+ * sobrou é compatível com algum interessado 'pending' da Fila de Espera.
+ * Dispara um toast informativo para quem estiver com o sistema aberto.
+ *
+ * IMPORTANTE: nunca deve ser chamada em cancelamento de uma única sessão
+ * (scope 'single'), pois a próxima ocorrência da série ainda existe como
+ * linha ATIVA no banco — não é uma vaga real.
+ */
+async function notifyIfWaitingListMatch(psychologistId: string, fromDate: string): Promise<void> {
+  try {
+    const horizonEnd = new Date(fromDate + 'T12:00:00');
+    horizonEnd.setDate(horizonEnd.getDate() + MATCH_HORIZON_DAYS);
+    const [waitingList, psychologists, appointments, holidays, closures] = await Promise.all([
+      api.getWaitingList(),
+      api.getPsychologists(),
+      api.getAppointmentsByRange(fromDate, horizonEnd.toISOString().split('T')[0]),
+      api.getHolidays(),
+      api.getClinicClosures(),
+    ]);
+    const matches = findWaitingListMatches(waitingList, psychologists, appointments, holidays, closures)
+      .filter(m => m.slots.some(sl => sl.psychologistId === psychologistId));
+    if (matches.length > 0) {
+      const psychName = psychologists.find(p => p.id === psychologistId)?.name ?? 'o profissional';
+      toastInfo(`🔔 Vaga aberta com ${psychName} — compatível com ${matches.length} interessado${matches.length > 1 ? 's' : ''} na Fila de Espera.`);
+      window.dispatchEvent(new CustomEvent('waiting-match-updated'));
+    }
+  } catch (e) {
+    logger.warn('[WaitingMatch] Falha ao checar vagas compatíveis', e);
+  }
+}
 
 export const useScheduleActions = (s: ScheduleData) => {
   const resetForm = () => s.setFormData(makeDefaultForm(s.date));
@@ -188,6 +223,9 @@ export const useScheduleActions = (s: ScheduleData) => {
       } catch { logger.error('Erro ao notificar cancelamento'); }
       if (appointment.isRecurring && appointment.recurrenceGroupId && s.updateFuture) {
         await api.deleteFutureAppointments(appointment.recurrenceGroupId, appointment.date);
+        // Exclusão de "todos os futuros" libera a vaga estruturalmente —
+        // checa a Fila de Espera.
+        notifyIfWaitingListMatch(appointment.psychologistId, appointment.date);
       } else {
         await api.deleteAppointment(appointment.id);
       }
@@ -235,6 +273,9 @@ export const useScheduleActions = (s: ScheduleData) => {
         apiCache.invalidate('appointments');
         apiCache.invalidate('customers');
         apiCache.invalidate('subscriptions');
+        // Encerramento de tratamento libera a vaga estruturalmente (nenhuma
+        // sessão futura reivindica mais o horário) — checa a Fila de Espera.
+        notifyIfWaitingListMatch(appointment.psychologistId, appointment.date);
       } else if (billingMode === 'psychologist_absence') {
         // Falta do psicólogo → NUNCA repassa. A cobrança depende do plano:
         // AMS/Particular isentam ('none'); demais convênios cobram ('plan'),

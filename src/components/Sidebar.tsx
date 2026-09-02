@@ -27,6 +27,7 @@ import {
 import { cn } from '../lib/utils';
 import { api } from '../services/api';
 import { UserRole } from '../services/types';
+import { useWaitingListMatches } from '../hooks/waitingList/useWaitingListMatches';
 
 interface MenuItem {
   icon: React.ComponentType<{ size?: number; className?: string }>;
@@ -93,6 +94,8 @@ interface SidebarProps {
 export const Sidebar = ({ currentPath, onNavigate }: SidebarProps) => {
   const [isOpen, setIsOpen] = useState(false);
   const [renewalCount, setRenewalCount] = useState(0);
+  const { matches: waitingMatches } = useWaitingListMatches();
+  const waitingMatchCount = waitingMatches.length;
   const user = api.getCurrentUser();
 
   useEffect(() => {
@@ -189,6 +192,7 @@ export const Sidebar = ({ currentPath, onNavigate }: SidebarProps) => {
                 </p>
                 {visibleItems.map((item, index) => {
                   const isAgenda = item.path === '/agenda';
+                  const isWaitingList = item.path === '/fila-espera';
                   const isActive = currentPath === item.path;
                   return (
                     <button
@@ -218,6 +222,17 @@ export const Sidebar = ({ currentPath, onNavigate }: SidebarProps) => {
                           )}
                         >
                           {renewalCount > 9 ? '9+' : renewalCount}
+                        </span>
+                      )}
+                      {isWaitingList && waitingMatchCount > 0 && (
+                        <span
+                          title={`${waitingMatchCount} interessado${waitingMatchCount > 1 ? 's' : ''} com vaga compatível disponível na agenda`}
+                          className={cn(
+                            "ml-auto flex items-center justify-center min-w-[18px] h-4 px-1 rounded-full text-[9px] font-bold cursor-help",
+                            isActive ? "bg-priori-navy text-white" : "bg-emerald-500 text-white animate-pulse"
+                          )}
+                        >
+                          {waitingMatchCount > 9 ? '9+' : waitingMatchCount}
                         </span>
                       )}
                     </button>

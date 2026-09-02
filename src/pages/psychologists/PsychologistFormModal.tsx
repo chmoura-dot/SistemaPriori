@@ -1,8 +1,9 @@
 import React from 'react';
 import { Plus, Trash2, Globe, Home, Layers } from 'lucide-react';
-import { Psychologist, PsychologistAvailability } from '../../services/types';
+import { HealthPlan, Psychologist, PsychologistAvailability } from '../../services/types';
 import { Button } from '../../components/Button';
 import { Modal } from '../../components/Modal';
+import { cn } from '../../lib/utils';
 
 const DAYS_OF_WEEK = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
 
@@ -17,6 +18,7 @@ export interface PsyFormData {
   repassFixedAmount: number | undefined;
   pixKeyType: 'telefone' | 'email' | 'cpf' | 'aleatoria' | '';
   pixKey: string;
+  acceptedHealthPlans: HealthPlan[];
 }
 
 interface Props {
@@ -143,6 +145,28 @@ export const PsychologistFormModal: React.FC<Props> = ({
                 <button type="button" onClick={() => removeSpecialty(idx)} className="text-zinc-400 hover:text-red-500">✕</button>
               </span>
             ))}
+          </div>
+        </div>
+        <div className="space-y-2">
+          <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Convênios Atendidos</label>
+          <p className="text-[10px] text-zinc-400">Nenhum selecionado = atende todos os convênios. Usado para sugerir vagas compatíveis na Fila de Espera.</p>
+          <div className="flex flex-wrap gap-2">
+            {Object.values(HealthPlan).map(plan => {
+              const isSelected = formData.acceptedHealthPlans.includes(plan);
+              return (
+                <button key={plan} type="button"
+                  onClick={() => setFormData(prev => ({
+                    ...prev,
+                    acceptedHealthPlans: isSelected
+                      ? prev.acceptedHealthPlans.filter(p => p !== plan)
+                      : [...prev.acceptedHealthPlans, plan],
+                  }))}
+                  className={cn('px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors',
+                    isSelected ? 'bg-priori-navy border-priori-navy text-white shadow-sm' : 'bg-white border-zinc-200 text-zinc-500 hover:border-priori-navy/50')}>
+                  {plan}
+                </button>
+              );
+            })}
           </div>
         </div>
         <div className="space-y-4">

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Psychologist, WaitingListEntry } from '../../services/types';
+import { AppointmentType, HealthPlan, Psychologist, WaitingListEntry } from '../../services/types';
 import { Button } from '../../components/Button';
 import { Modal } from '../../components/Modal';
 import { cn } from '../../lib/utils';
@@ -15,6 +15,9 @@ export interface WaitingFormData {
   psychologistId: string;
   notes: string;
   status: 'pending' | 'called' | 'resolved' | 'canceled';
+  appointmentType: AppointmentType | '';
+  healthPlan: HealthPlan | '';
+  sessionDurationMinutes: number;
 }
 
 interface Props {
@@ -78,6 +81,27 @@ export const WaitingListFormModal: React.FC<Props> = ({
               <option value="">Qualquer profissional</option>
               {psychologists.map(psy => <option key={psy.id} value={psy.id}>{psy.name}</option>)}
             </select>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Tipo de Atendimento</label>
+              <select className="w-full bg-white border border-zinc-100 rounded-xl px-4 py-3 text-sm text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/5" value={formData.appointmentType} onChange={e => setFormData({ ...formData, appointmentType: e.target.value as AppointmentType | '' })}>
+                <option value="">Não especificado</option>
+                {Object.values(AppointmentType).map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Convênio / Particular</label>
+              <select className="w-full bg-white border border-zinc-100 rounded-xl px-4 py-3 text-sm text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/5" value={formData.healthPlan} onChange={e => setFormData({ ...formData, healthPlan: e.target.value as HealthPlan | '' })}>
+                <option value="">Não especificado</option>
+                {Object.values(HealthPlan).map(h => <option key={h} value={h}>{h}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Duração da Sessão (minutos)</label>
+            <input type="number" min={10} step={5} className="w-full bg-white border border-zinc-100 rounded-xl px-4 py-3 text-sm text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/5" value={formData.sessionDurationMinutes} onChange={e => setFormData({ ...formData, sessionDurationMinutes: Number(e.target.value) || 60 })} />
+            <p className="text-[10px] text-zinc-400">Usada para checar se o horário está livre na agenda. Ajustável conforme a necessidade (padrão 60min).</p>
           </div>
           <div className="p-4 bg-zinc-50 rounded-2xl border border-zinc-100 space-y-4">
             <div className="space-y-2">

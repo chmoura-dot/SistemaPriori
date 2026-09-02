@@ -68,7 +68,12 @@ export const mockMiscHandlers = {
   createWaitingListEntry: async (entry: Omit<WaitingListEntry, 'id' | 'createdAt'>): Promise<WaitingListEntry> => {
     await delay(400);
     const list = getFromStorage<WaitingListEntry>(STORAGE_KEYS.WAITING_LIST);
-    const item: WaitingListEntry = { ...entry, id: Math.random().toString(36).substr(2, 9), createdAt: new Date().toISOString() };
+    const item: WaitingListEntry = {
+      ...entry,
+      sessionDurationMinutes: entry.sessionDurationMinutes ?? 60,
+      id: Math.random().toString(36).substr(2, 9),
+      createdAt: new Date().toISOString(),
+    };
     saveToStorage(STORAGE_KEYS.WAITING_LIST, [...list, item]);
     return item;
   },

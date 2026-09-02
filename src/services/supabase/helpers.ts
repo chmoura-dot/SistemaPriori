@@ -53,7 +53,8 @@ export const CUSTOMER_COLUMNS = [
 export const PSYCHOLOGIST_COLUMNS = [
   'id', 'name', 'email', 'phone', 'specialties', 'active',
   'availability', 'repass_rate', 'repass_fixed_amount',
-  'repass_overrides_plan', 'pix_key_type', 'pix_key'
+  'repass_overrides_plan', 'pix_key_type', 'pix_key',
+  'accepted_health_plans'
 ].join(', ');
 
 export const ROOM_COLUMNS = [
@@ -62,7 +63,8 @@ export const ROOM_COLUMNS = [
 
 export const WAITING_LIST_COLUMNS = [
   'id', 'customer_name', 'phone', 'preferred_days', 'preferred_hours',
-  'psychologist_id', 'notes', 'status', 'created_at'
+  'psychologist_id', 'notes', 'status', 'created_at',
+  'appointment_type', 'health_plan', 'session_duration_minutes'
 ].join(', ');
 
 export const HOLIDAY_COLUMNS = [
@@ -110,6 +112,7 @@ export function toPsychologist(row: any): Psychologist {
     repassOverridesPlan: row.repass_overrides_plan ?? false,
     pixKeyType: row.pix_key_type ?? undefined,
     pixKey: row.pix_key ?? undefined,
+    acceptedHealthPlans: row.accepted_health_plans ?? [],
   };
 }
 
