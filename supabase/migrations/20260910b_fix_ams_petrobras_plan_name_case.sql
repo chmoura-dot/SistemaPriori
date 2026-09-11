@@ -1,13 +1,33 @@
--- ============================================================
--- FASE 4 — get_appointment_price + validate_price_parity (Shadow Calculation)
--- ============================================================
--- Rode este script no SQL Editor do Supabase (produção).
--- É idempotente (CREATE OR REPLACE) — seguro reexecutar.
--- Conteúdo idêntico às migrations 20260717_get_appointment_price.sql +
--- 20260814_fix_empty_procedure_code_parity.sql +
--- 20260910b_fix_ams_petrobras_plan_name_case.sql (TRIM de procedure_code
--- vazio + comparação de plano normalizada para maiúscula).
--- ============================================================
+-- ============================================================================
+-- Migration: Corrige dois bugs em get_appointment_price que desativavam por
+--   completo a regra especial de Avaliacao Neuropsicologica da AMS Petrobras
+--   nesta funcao (usada apenas pela auditoria "espelho" validate_price_parity/
+--   auditPriceParity -- a cobranca real usa getAppPrice/
+--   getAmsNeuropsicoSessionIndex em src/lib/pricing.ts, que sempre esteve correta).
+-- Data: 2026-09-10
+--
+-- Bug 1 (nome do plano): v_is_ams comparava plans.name (armazenado como
+--   'AMS PETROBRAS', tudo maiusculo) contra o literal 'AMS Petrobras' (misto).
+--   Como '=' em texto e sensivel a caixa, v_is_ams era SEMPRE falso.
+--   Correcao: normaliza para maiuscula antes de comparar, igual ja e feito no
+--   frontend (matchPlanByHealthPlan usa .toUpperCase() dos dois lados).
+--
+-- Bug 2 (tipo de sessao): todas as comparacoes internas usavam o literal
+--   'NEUROPSICOLOGICA' (chave do enum em inglês), mas o valor real armazenado
+--   em appointments.type e enviado pelo frontend como p_session_type e o
+--   texto do enum AppointmentType.NEUROPSICOLOGICA = 'Avaliação
+--   Neuropsicológica'. Ou seja, mesmo corrigindo o Bug 1, a condicao
+--   "p_session_type = 'NEUROPSICOLOGICA'" nunca era verdadeira, entao o bloco
+--   especial da AMS jamais era executado.
+--   Correcao: troca todos os literais 'NEUROPSICOLOGICA' por
+--   'Avaliação Neuropsicológica'.
+--
+-- Juntos, os dois bugs faziam a auditoria cair sempre na regra generica de
+-- outros planos (bloqueio de 180 dias entre avaliacoes), o que gerava alertas
+-- criticos falsos de divergencia de preco a cada faturamento de Avaliacao
+-- Neuropsicologica da AMS Petrobras (confirmado: 17 dos 21 alertas de
+-- 'pricing.parityMismatch' ja registrados eram exatamente este caso).
+-- ============================================================================
 
 CREATE OR REPLACE FUNCTION get_appointment_price(
   p_appointment_id  uuid,
@@ -56,10 +76,8 @@ BEGIN
   SELECT name, procedures INTO v_plan_name, v_procedures
     FROM plans WHERE id = p_plan_id;
 
-  -- Comparação normalizada para maiúscula (igual ao matchPlanByHealthPlan do
-  -- frontend) — plans.name é armazenado como 'AMS PETROBRAS' (tudo
-  -- maiúsculo), então uma comparação sensível a caixa nunca reconhecia o
-  -- plano corretamente.
+  -- Correção cirúrgica: comparação normalizada para maiúscula (igual ao
+  -- matchPlanByHealthPlan do frontend) — não é mais sensível a caixa.
   v_is_ams        := (UPPER(v_plan_name) = 'AMS PETROBRAS');
   v_is_particular := (UPPER(v_plan_name) = 'PARTICULAR' OR v_plan_name IS NULL);
 
@@ -176,64 +194,3 @@ END;
 $$;
 
 GRANT EXECUTE ON FUNCTION get_appointment_price(uuid, uuid, uuid, date, text) TO authenticated;
-
-
--- ⚠️ Necessário: uma versão anterior pode existir com nome de parâmetro diferente
--- (o Postgres não permite renomear parâmetros de entrada via CREATE OR REPLACE).
-DROP FUNCTION IF EXISTS validate_price_parity(uuid, uuid, uuid, date, text, numeric);
-
-CREATE OR REPLACE FUNCTION validate_price_parity(
-  p_appointment_id      uuid,
-  p_psychologist_id     uuid,
-  p_plan_id             uuid,
-  p_date                date,
-  p_session_type        text,
-  p_price_from_frontend numeric
-)
-RETURNS jsonb
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE
-  v_result  record;
-  v_diff    numeric;
-  v_matched boolean;
-BEGIN
-  SELECT * INTO v_result
-    FROM get_appointment_price(p_appointment_id, p_psychologist_id, p_plan_id, p_date, p_session_type);
-
-  v_diff    := ABS(COALESCE(v_result.final_price, 0) - COALESCE(p_price_from_frontend, 0));
-  v_matched := v_diff < 1;
-
-  IF NOT v_matched THEN
-    PERFORM log_operation_failure(
-      'pricing.parityMismatch',
-      format('Divergência de preço: frontend=%s servidor=%s (appointment=%s)',
-             p_price_from_frontend, v_result.final_price, p_appointment_id),
-      jsonb_build_object(
-        'appointment_id', p_appointment_id,
-        'frontend_price', p_price_from_frontend,
-        'server_price', v_result.final_price,
-        'base_price', v_result.base_price,
-        'applied_rules', v_result.applied_rules
-      ),
-      'critical'
-    );
-  END IF;
-
-  RETURN jsonb_build_object(
-    'matched', v_matched,
-    'base_price', v_result.base_price,
-    'final_price', v_result.final_price,
-    'applied_rules', v_result.applied_rules
-  );
-END;
-$$;
-
-GRANT EXECUTE ON FUNCTION validate_price_parity(uuid, uuid, uuid, date, text, numeric) TO authenticated;
-
--- Verificação
-SELECT proname FROM pg_proc
- WHERE proname IN ('get_appointment_price', 'validate_price_parity')
- ORDER BY proname;
