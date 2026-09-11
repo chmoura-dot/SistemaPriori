@@ -6,6 +6,7 @@ import { apiCache } from '../services/apiCache';
 import { Appointment, Psychologist, Customer, AppointmentStatus } from '../services/types';
 import { cn } from '../lib/utils';
 import { resolvePsychologistAbsenceBilling } from '../lib/pricing';
+import { getTodayISO } from '../lib/dateUtils';
 import { PsychologistConfirmationGroup } from './pendingConfirmations/PsychologistConfirmationGroup';
 
 import { CancellationBillingModal } from './pendingConfirmations/CancellationBillingModal';
@@ -37,7 +38,7 @@ export const PendingConfirmationsPage = () => {
         const today = new Date();
         const past  = new Date(today.getFullYear() - 1, today.getMonth(), 1);
         startDate   = past.toISOString().split('T')[0];
-        endDate     = today.toISOString().split('T')[0];
+        endDate     = getTodayISO();
       } else {
         const [year, month] = monthFilter.split('-').map(Number);
         startDate = `${monthFilter}-01`;

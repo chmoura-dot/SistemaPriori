@@ -12,6 +12,7 @@ import { CustomerInactivationModal } from './customers/CustomerInactivationModal
 import { CustomerBulkModal } from './customers/CustomerBulkModal';
 import { CustomerImportModal } from './customers/CustomerImportModal';
 import { getIncompleteFields, inferGenderByName, formatDate, calculateAge } from './customers/customerUtils';
+import { getTodayISO, toISODateLocal } from '../lib/dateUtils';
 
 const ITEMS_PER_PAGE = 20;
 
@@ -90,7 +91,7 @@ export const CustomersPage = () => {
     } else if (filterStatus === 'inactive_60d' || filterStatus === 'admin_queue') {
       const sixtyDaysAgo = new Date();
       sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
-      const sixtyDaysAgoStr = sixtyDaysAgo.toISOString().split('T')[0];
+      const sixtyDaysAgoStr = toISODateLocal(sixtyDaysAgo);
 
       list = list.filter(c => {
         if (c.status !== CustomerStatus.ACTIVE) return false;
@@ -188,7 +189,7 @@ export const CustomersPage = () => {
               .is('billing_batch_id', null);
 
             if (retroScope === 'future') {
-              const today = new Date().toISOString().split('T')[0];
+              const today = getTodayISO();
               query = query.gte('date', today);
             }
 

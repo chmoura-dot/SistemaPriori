@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { AlertCircle, Calendar, User, XCircle, Clock, ChevronLeft, ChevronRight, MapPin, Users } from 'lucide-react';
 import { api } from '../services/api';
+import { getTodayISO, toISODateLocal } from '../lib/dateUtils';
 import { Appointment, AppointmentStatus, AttendanceMode } from '../services/types';
 import { Modal } from './Modal';
 import { Button } from './Button';
@@ -30,13 +31,13 @@ export const DuplicateAppointmentAlert: React.FC<DuplicateAppointmentAlertProps>
   const [currentIndex, setCurrentIndex] = useState(0);
 
   const isAlertDismissedForToday = () => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = getTodayISO();
     const key = `duplicate_alert_dismissed_${today}`;
     return localStorage.getItem(key) === 'true';
   };
 
   const dismissForToday = () => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = getTodayISO();
     const key = `duplicate_alert_dismissed_${today}`;
     localStorage.setItem(key, 'true');
     setIsDismissedSession(true);
@@ -57,8 +58,8 @@ export const DuplicateAppointmentAlert: React.FC<DuplicateAppointmentAlertProps>
       const end = new Date(today);
       end.setDate(end.getDate() + 14); // Próximas 2 semanas
       
-      const startStr = today.toISOString().split('T')[0];
-      const endStr = end.toISOString().split('T')[0];
+      const startStr = toISODateLocal(today);
+      const endStr = toISODateLocal(end);
 
       const [appointmentsData, customersData, psychologistsData, roomsData] = await Promise.all([
         api.getAppointmentsByRange(startStr, endStr),

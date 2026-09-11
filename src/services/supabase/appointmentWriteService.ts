@@ -1,6 +1,7 @@
 // Métodos de criação e atualização de agendamentos
 import { supabase, toAppointment, generateUUID } from './helpers';
 import { logger } from '../../lib/logger';
+import { getTodayISO } from '../../lib/dateUtils';
 import { Appointment, RecurrenceFrequency } from '../types';
 
 type AppointmentInput = Omit<Appointment, 'id' | 'createdAt' | 'confirmedPatient' | 'confirmedPsychologist'>;
@@ -64,11 +65,6 @@ function buildRecurringRows(a: AppointmentInput, groupId: string): any[] {
   if (rows.length > 0) rows[rows.length - 1].needs_renewal = true;
 
   return rows;
-}
-
-function getTodayISO(): string {
-  return new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })
-    .split('/').reverse().join('-');
 }
 
 export const appointmentWriteService = {

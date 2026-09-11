@@ -1,5 +1,6 @@
 // Métodos de leitura e exclusão de agendamentos
 import { supabase, toAppointment, APPOINTMENT_COLUMNS } from './helpers';
+import { toISODateLocal } from '../../lib/dateUtils';
 import { Appointment, AppointmentType } from '../types';
 
 export const appointmentReadService = {
@@ -105,7 +106,7 @@ export const appointmentReadService = {
   },
 
   getAppointmentsNeedingRenewal: async (): Promise<Appointment[]> => {
-    const sixtyDaysAgo = new Date(Date.now() - 60 * 86400000).toISOString().split('T')[0];
+    const sixtyDaysAgo = toISODateLocal(new Date(Date.now() - 60 * 86400000));
     const { data, error } = await supabase
       .from('appointments')
       .select(APPOINTMENT_COLUMNS)

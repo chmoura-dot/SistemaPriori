@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { api } from '../services/api';
+import { getTodayISO } from '../lib/dateUtils';
 import { Appointment, Customer, Psychologist } from '../services/types';
 
 export interface NeuroReportItem {
@@ -83,7 +84,7 @@ export function useNeuroReportData() {
 
     console.log('[useNeuroReportData] Grupos formados:', groups.size, Array.from(groups.keys()));
 
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = getTodayISO();
     const todayMs = new Date(todayStr + 'T00:00:00').getTime();
 
     const items: NeuroReportItem[] = [];

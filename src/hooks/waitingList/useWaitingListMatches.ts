@@ -9,6 +9,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '../../services/api';
 import { logger } from '../../lib/logger';
+import { toISODateLocal } from '../../lib/dateUtils';
 import { findWaitingListMatches, WaitingListMatch, MATCH_HORIZON_DAYS } from '../../lib/waitingListMatch';
 
 export function useWaitingListMatches() {
@@ -25,7 +26,7 @@ export function useWaitingListMatches() {
       const [waitingList, psychologists, appointments, holidays, closures] = await Promise.all([
         api.getWaitingList(),
         api.getPsychologists(),
-        api.getAppointmentsByRange(today.toISOString().split('T')[0], horizonEnd.toISOString().split('T')[0]),
+        api.getAppointmentsByRange(toISODateLocal(today), toISODateLocal(horizonEnd)),
         api.getHolidays(),
         api.getClinicClosures(),
       ]);

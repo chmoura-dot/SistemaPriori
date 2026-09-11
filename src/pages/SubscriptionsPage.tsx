@@ -10,6 +10,7 @@ import {
 import { Button } from '../components/Button';
 import { Modal } from '../components/Modal';
 import { cn } from '../lib/utils';
+import { getTodayISO, toISODateLocal } from '../lib/dateUtils';
 
 export const SubscriptionsPage = () => {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
@@ -24,8 +25,8 @@ export const SubscriptionsPage = () => {
   const [formData, setFormData] = useState({
     customerId: '',
     planId: '',
-    startDate: new Date().toISOString().split('T')[0],
-    nextRenewal: new Date(new Date().setDate(new Date().getDate() + 30)).toISOString().split('T')[0],
+    startDate: getTodayISO(),
+    nextRenewal: toISODateLocal(new Date(new Date().setDate(new Date().getDate() + 30))),
     status: SubscriptionStatus.ACTIVE
   });
 
@@ -61,8 +62,8 @@ export const SubscriptionsPage = () => {
       setFormData({
         customerId: '',
         planId: '',
-        startDate: new Date().toISOString().split('T')[0],
-        nextRenewal: new Date(new Date().setDate(new Date().getDate() + 30)).toISOString().split('T')[0],
+        startDate: getTodayISO(),
+        nextRenewal: toISODateLocal(new Date(new Date().setDate(new Date().getDate() + 30))),
         status: SubscriptionStatus.ACTIVE
       });
     }
@@ -101,7 +102,7 @@ export const SubscriptionsPage = () => {
           subscriptionId: sub.id,
           amount: price,
           repassAmount: repass,
-          paidAt: new Date().toISOString().split('T')[0]
+          paidAt: getTodayISO()
         });
         await loadData();
         alert('Pagamento registrado com sucesso!');

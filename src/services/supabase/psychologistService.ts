@@ -1,4 +1,5 @@
 import { supabase, toPsychologist, toRoom, throwOnError, PSYCHOLOGIST_COLUMNS, ROOM_COLUMNS } from './helpers';
+import { getTodayISO } from '../../lib/dateUtils';
 import { Psychologist, Room, PortfolioItem } from '../types';
 
 export const psychologistService = {
@@ -78,7 +79,7 @@ export const psychologistService = {
   },
 
   getPsychologistPortfolio: async (referenceDate?: string): Promise<PortfolioItem[]> => {
-    const today = referenceDate || new Date().toISOString().split('T')[0];
+    const today = referenceDate || getTodayISO();
     const { data, error } = await supabase.rpc('get_portfolio_by_psychologist', {
       p_reference_date: today,
     });

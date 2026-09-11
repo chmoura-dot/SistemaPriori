@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { api } from '../../services/api';
 import { logger } from '../../lib/logger';
+import { getTodayISO } from '../../lib/dateUtils';
 import {
   Appointment, Room, Psychologist, Customer, Plan,
   AttendanceMode, AppointmentType, RecurrenceFrequency,
@@ -34,7 +35,7 @@ export const useScheduleData = () => {
     const params = new URLSearchParams(window.location.search);
     const d = params.get('date');
     if (d && /^\d{4}-\d{2}-\d{2}$/.test(d)) return d;
-    return new Date().toISOString().split('T')[0];
+    return getTodayISO();
   });
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [rooms, setRooms] = useState<Room[]>([]);

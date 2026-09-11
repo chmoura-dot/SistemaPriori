@@ -7,6 +7,7 @@ import { Button } from '../components/Button';
 import { cn } from '../lib/utils';
 import { PlanFormModal, PlanFormData } from './plans/PlanFormModal';
 import { BulkAdjustmentModal, BulkData } from './plans/BulkAdjustmentModal';
+import { getTodayISO } from '../lib/dateUtils';
 
 export const PlansPage = () => {
   const [plans, setPlans] = useState<Plan[]>([]);
@@ -17,7 +18,7 @@ export const PlansPage = () => {
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
   const [bulkData, setBulkData] = useState<BulkData>({
     amount: 0, adjustPrice: true, adjustRepass: true,
-    selectedPlanIds: [], effectiveDate: new Date().toISOString().split('T')[0]
+    selectedPlanIds: [], effectiveDate: getTodayISO()
   });
   const [formData, setFormData] = useState<PlanFormData>({ name: '', procedures: [], active: true });
 
@@ -49,7 +50,7 @@ export const PlansPage = () => {
   };
 
   const handleOpenBulkModal = () => {
-    setBulkData({ amount: 0, adjustPrice: true, adjustRepass: true, selectedPlanIds: plans.filter(p => p.active).map(p => p.id), effectiveDate: new Date().toISOString().split('T')[0] });
+    setBulkData({ amount: 0, adjustPrice: true, adjustRepass: true, selectedPlanIds: plans.filter(p => p.active).map(p => p.id), effectiveDate: getTodayISO() });
     setIsBulkModalOpen(true);
   };
 

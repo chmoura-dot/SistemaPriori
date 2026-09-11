@@ -25,6 +25,7 @@ import {
 } from '../services/types';
 import { hasTimeOverlap, toMinutes } from './timeUtils';
 import { addMinutes } from '../pages/schedule/scheduleUtils';
+import { toISODateLocal } from './dateUtils';
 
 /** Horizonte de checagem: mesmo teto usado em buildRecurringRows (~2 meses de séries recorrentes). */
 export const MATCH_HORIZON_DAYS = 60;
@@ -59,12 +60,12 @@ function getNextOpenDateForDayOfWeek(
   const d = new Date(reference);
   for (let i = 0; i < 45; i++) {
     if (d.getDay() === dayOfWeek) {
-      const dateStr = d.toISOString().split('T')[0];
+      const dateStr = toISODateLocal(d);
       if (isClinicOpen(dateStr, holidays, closures)) return dateStr;
     }
     d.setDate(d.getDate() + 1);
   }
-  return reference.toISOString().split('T')[0]; // fallback improvável (45 dias sem abertura)
+  return toISODateLocal(reference); // fallback improvável (45 dias sem abertura)
 }
 
 /** Gera marcas de hora cheia dentro do bloco de disponibilidade que caibam a duração informada. */
@@ -91,10 +92,10 @@ export function findWaitingListMatches(
   closures: ClinicClosure[],
   referenceDate: Date = new Date(),
 ): WaitingListMatch[] {
-  const today = referenceDate.toISOString().split('T')[0];
+  const today = toISODateLocal(referenceDate);
   const horizonEnd = new Date(referenceDate);
   horizonEnd.setDate(horizonEnd.getDate() + MATCH_HORIZON_DAYS);
-  const horizonEndStr = horizonEnd.toISOString().split('T')[0];
+  const horizonEndStr = toISODateLocal(horizonEnd);
 
   // Índice O(1): apenas linhas ATIVAS dentro do horizonte, por psicólogo.
   const activeByPsy = new Map<string, Appointment[]>();

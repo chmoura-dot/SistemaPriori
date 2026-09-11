@@ -3,6 +3,7 @@
  * Utilitários de extração de dados de despesas a partir de PDFs e IA.
  */
 import { supabase } from '../../lib/supabase';
+import { getTodayISO } from '../../lib/dateUtils';
 
 /** Formato normalizado retornado pela Edge Function `extract-expense-ai`. */
 export interface AiExtractedExpense {
@@ -82,7 +83,7 @@ export const parsePdfContent = async (text: string): Promise<ParsedExpense> => {
     const productDescription = [descricaoServico, emissaoInfo].filter(Boolean).join(' — ');
 
     return {
-      date: isValidIsoDate(aiData.vencimento) ? aiData.vencimento : new Date().toISOString().split('T')[0],
+      date: isValidIsoDate(aiData.vencimento) ? aiData.vencimento : getTodayISO(),
       amount: toSafeAmount(aiData.valor),
       description: supplierName,
       beneficiary: supplierName,
@@ -95,7 +96,7 @@ export const parsePdfContent = async (text: string): Promise<ParsedExpense> => {
   // ── Tentativa 2: Regex (Plano B) ─────────────────────────────────────────
   const dateRegex = /(\d{2})[/-|\.](\d{2})[/-|\.](\d{2,4})/g;
   const dateMatches = Array.from(text.matchAll(dateRegex));
-  let extractedDate = new Date().toISOString().split('T')[0];
+  let extractedDate = getTodayISO();
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 

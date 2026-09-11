@@ -4,6 +4,23 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.7";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
+// Deno Deploy roda em UTC. new Date().toISOString().split('T')[0] retornaria
+// a data de amanhã entre 21h e 23h59 no horário de Brasília, todos os dias.
+function toISODateBR(date: Date): string {
+  const brDate = new Intl.DateTimeFormat("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+  const [day, month, year] = brDate.split("/");
+  return `${year}-${month}-${day}`;
+}
+
+function getTodayBR(): string {
+  return toISODateBR(new Date());
+}
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -97,7 +114,7 @@ Deno.serve(async (req) => {
         query = query.eq('date', tokenData.date);
       } else {
         // Para links de resumo (Nag), buscamos apenas os NÃO confirmados e NÃO cancelados de qualquer data anterior ou hoje
-        const today = new Date().toISOString().split('T')[0];
+        const today = getTodayBR();
         query = query.lte('date', today).eq('confirmed_psychologist', false).neq('status', 'canceled');
       }
 
@@ -110,7 +127,7 @@ Deno.serve(async (req) => {
       try {
         const sixtyDaysAgo = new Date();
         sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
-        const sixtyDaysStr = sixtyDaysAgo.toISOString().split('T')[0];
+        const sixtyDaysStr = toISODateBR(sixtyDaysAgo);
 
         // 1. Buscar todos os pacientes ativos do psicólogo
         const { data: actCustomers, error: actCustErr } = await supabase
@@ -325,7 +342,7 @@ Deno.serve(async (req) => {
             .from('appointments')
             .update({ status: 'canceled', cancellation_billing: 'none' })
             .eq('customer_id', customerId)
-            .gte('date', new Date().toISOString().split('T')[0])
+            .gte('date', getTodayBR())
             .in('status', ['active', 'released']);
 
           // Pause subscriptions
@@ -346,7 +363,7 @@ Deno.serve(async (req) => {
             .from('appointments')
             .update({ status: 'canceled', cancellation_billing: 'none' })
             .eq('customer_id', customerId)
-            .gte('date', new Date().toISOString().split('T')[0])
+            .gte('date', getTodayBR())
             .in('status', ['active', 'released']);
 
           // Pause subscriptions
@@ -432,7 +449,7 @@ Deno.serve(async (req) => {
         if (cancelErr) throw new Error(cancelErr.message);
 
         // 3. Cancelar todos os agendamentos futuros do mesmo paciente+psicólogo
-        const today = new Date().toISOString().split('T')[0];
+        const today = getTodayBR();
         const { data: futureApps, error: futureErr } = await supabase
           .from('appointments')
           .select('id')

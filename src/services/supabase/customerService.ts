@@ -1,4 +1,5 @@
 import { supabase, toCustomer, toPlan, toSubscription, toPayment, throwOnError, CUSTOMER_COLUMNS } from './helpers';
+import { getTodayISO } from '../../lib/dateUtils';
 import { Customer, Plan, Subscription, Payment } from '../types';
 
 export const customerService = {
@@ -14,7 +15,7 @@ export const customerService = {
       .in('status', ['active']);
     if (appError) throw new Error(appError.message);
 
-    const today = new Date().toISOString().split('T')[0];
+    const today = getTodayISO();
     const appsByCustomer = new Map<string, { customer_id: string; date: string; status: string }[]>();
     for (const app of (appData || [])) {
       const list = appsByCustomer.get(app.customer_id);

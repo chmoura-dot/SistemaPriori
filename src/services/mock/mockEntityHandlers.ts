@@ -3,6 +3,7 @@ import {
   Psychologist, Room, Expense, User, UserRole,
 } from '../types';
 import { STORAGE_KEYS, delay, getFromStorage, saveToStorage } from './mockData';
+import { getTodayISO, toISODateLocal } from '../../lib/dateUtils';
 
 export const mockEntityHandlers = {
   // ── Auth ──────────────────────────────────────────────────────────────────
@@ -127,7 +128,7 @@ export const mockEntityHandlers = {
   getSubscriptions: async (): Promise<Subscription[]> => {
     await delay(300);
     const subs = getFromStorage<Subscription>(STORAGE_KEYS.SUBSCRIPTIONS);
-    const today = new Date().toISOString().split('T')[0];
+    const today = getTodayISO();
     let changed = false;
     const updated = subs.map(s => {
       if (s.status === SubscriptionStatus.ACTIVE && today > s.nextRenewal) {
@@ -179,7 +180,7 @@ export const mockEntityHandlers = {
       const sub = subs[subIdx];
       const nextDate = new Date(sub.nextRenewal);
       nextDate.setDate(nextDate.getDate() + 30);
-      subs[subIdx] = { ...sub, status: SubscriptionStatus.ACTIVE, nextRenewal: nextDate.toISOString().split('T')[0] };
+      subs[subIdx] = { ...sub, status: SubscriptionStatus.ACTIVE, nextRenewal: toISODateLocal(nextDate) };
       saveToStorage(STORAGE_KEYS.SUBSCRIPTIONS, subs);
     }
     return item;

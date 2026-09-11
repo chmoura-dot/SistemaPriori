@@ -22,6 +22,7 @@ import {
 } from '../services/types';
 import { cn } from '../lib/utils';
 import { Button } from '../components/Button';
+import { getTodayISO } from '../lib/dateUtils';
 
 const DAYS_OF_WEEK = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
 
@@ -39,7 +40,7 @@ type SlotStatus = 'occupied' | 'available' | 'bottleneck';
 type SlotStatusMap = Record<string, Record<string, Record<string, SlotStatus>>>;
 
 export const CapacityPage = () => {
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState(getTodayISO());
   const [viewMode, setViewMode] = useState<'daily' | 'weekly'>('daily');
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [rooms, setRooms] = useState<Room[]>([]);

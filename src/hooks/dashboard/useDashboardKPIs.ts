@@ -9,6 +9,7 @@ import {
   AppointmentStatus, SubscriptionStatus, CustomerStatus,
 } from '../../services/types';
 import { calcRepass } from '../../lib/repassRules';
+import { toISODateLocal } from '../../lib/dateUtils';
 
 interface DashboardKPIsParams {
   appointments: Appointment[];
@@ -234,7 +235,7 @@ export function useDashboardKPIs({
   );
   const inactivePatients = useMemo(() => {
     const sixtyDaysAgo = new Date(today.getTime() - 60 * 24 * 60 * 60 * 1000);
-    const sixtyDaysAgoStr = sixtyDaysAgo.toISOString().split('T')[0];
+    const sixtyDaysAgoStr = toISODateLocal(sixtyDaysAgo);
 
     return customers.filter(c => {
       if (c.status !== CustomerStatus.ACTIVE) return false;

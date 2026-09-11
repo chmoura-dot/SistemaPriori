@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { api } from '../services/api';
 import { toastError } from '../lib/toast';
+import { getTodayISO } from '../lib/dateUtils';
 // pdfjs-dist é importado dinamicamente dentro de handlePdfUpload
 // para não inflar o bundle inicial (~1.5MB carregado só quando necessário)
 import { Expense, ExpenseCategory } from '../services/types';
@@ -28,7 +29,7 @@ const DEFAULT_FORM: ExpenseFormData = {
   productDescription: '',
   amount: 0,
   category: ExpenseCategory.OTHER,
-  date: new Date().toISOString().split('T')[0],
+  date: getTodayISO(),
   isRecurring: false,
 };
 
@@ -110,7 +111,7 @@ export const ExpensesPage = () => {
       productDescription: expense.productDescription || '',
       amount: expense.amount,
       category: expense.category,
-      date: new Date().toISOString().split('T')[0],
+      date: getTodayISO(),
       isRecurring: expense.isRecurring,
     });
     setAmountInput(expense.amount > 0 ? expense.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '');
