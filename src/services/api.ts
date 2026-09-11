@@ -137,6 +137,7 @@ const writes = {
   createBillingBatch: invalidateAfter(supabaseService.createBillingBatch, ['billingBatches']),
   updateBillingBatch: invalidateAfter(supabaseService.updateBillingBatch, ['billingBatches']),
   deleteBillingBatch: invalidateAfter(supabaseService.deleteBillingBatch, ['billingBatches', 'appointments']),
+  syncBillingBatchAppointments: invalidateAfter(supabaseService.syncBillingBatchAppointments, ['billingBatches', 'appointments']),
 
   createRepasse: invalidateAfter(supabaseService.createRepasse, ['repasses']),
   updateRepasse: invalidateAfter(supabaseService.updateRepasse, ['repasses']),

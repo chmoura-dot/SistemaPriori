@@ -210,4 +210,57 @@ export const mockAppointmentHandlers = {
       return a;
     }));
   },
+
+  // Equivalente mock da RPC sync_billing_batch_appointments (ver
+  // 20260910_billing_batch_atomic_rpcs.sql) — aqui é apenas local/síncrono via
+  // localStorage, então não há risco real de falha parcial como no Supabase.
+  syncBillingBatchAppointments: async (params: {
+    batchId: string;
+    appointmentIds: string[];
+    totalAmount: number;
+    status?: BillingBatch['status'];
+    batchNumber?: string;
+    sentAt?: string;
+    paidAt?: string | null;
+    ignoredIds?: string[];
+    ignoredReason?: string;
+  }): Promise<{ added: string[]; removed: string[] }> => {
+    await delay(500);
+    const batches = getFromStorage<BillingBatch>(STORAGE_KEYS.BILLING_BATCHES);
+    const idx = batches.findIndex(b => b.id === params.batchId);
+    if (idx === -1) throw new Error('Billing batch not found');
+
+    const oldIds = batches[idx].appointmentIds ?? [];
+    const added = params.appointmentIds.filter(i => !oldIds.includes(i));
+    const removed = oldIds.filter(i => !params.appointmentIds.includes(i));
+    const ignoredSet = new Set(params.ignoredIds ?? []);
+
+    batches[idx] = {
+      ...batches[idx],
+      appointmentIds: params.appointmentIds,
+      totalAmount: params.totalAmount,
+      status: params.status ?? batches[idx].status,
+      batchNumber: params.batchNumber ?? batches[idx].batchNumber,
+      sentAt: params.sentAt ?? batches[idx].sentAt,
+      paidAt: params.paidAt ?? batches[idx].paidAt,
+    };
+    saveToStorage(STORAGE_KEYS.BILLING_BATCHES, batches);
+
+    const appointments = getFromStorage<Appointment>(STORAGE_KEYS.APPOINTMENTS);
+    saveToStorage(STORAGE_KEYS.APPOINTMENTS, appointments.map(a => {
+      if (added.includes(a.id)) return { ...a, billingBatchId: params.batchId };
+      if (removed.includes(a.id) && a.billingBatchId === params.batchId) {
+        return {
+          ...a,
+          billingBatchId: undefined,
+          ...(ignoredSet.has(a.id)
+            ? { billingIgnored: true, billingIgnoredReason: params.ignoredReason, billingIgnoredAt: new Date().toISOString() }
+            : {}),
+        };
+      }
+      return a;
+    }));
+
+    return { added, removed };
+  },
 };

@@ -118,6 +118,20 @@ export interface AppService {
   createBillingBatch: (batch: Omit<BillingBatch, 'id' | 'createdAt'>) => Promise<BillingBatch>;
   updateBillingBatch: (id: string, batch: Partial<BillingBatch>) => Promise<BillingBatch>;
   deleteBillingBatch: (id: string) => Promise<void>;
+  // Sincroniza atomicamente (via RPC) o array appointment_ids de um lote com a
+  // coluna appointments.billing_batch_id dos IDs afetados — ver
+  // 20260910_billing_batch_atomic_rpcs.sql.
+  syncBillingBatchAppointments: (params: {
+    batchId: string;
+    appointmentIds: string[];
+    totalAmount: number;
+    status?: BillingBatch['status'];
+    batchNumber?: string;
+    sentAt?: string;
+    paidAt?: string | null;
+    ignoredIds?: string[];
+    ignoredReason?: string;
+  }) => Promise<{ added: string[]; removed: string[] }>;
 
   // Repasses
   getRepasses: () => Promise<Repasse[]>;

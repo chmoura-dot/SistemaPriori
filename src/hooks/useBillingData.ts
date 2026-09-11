@@ -5,7 +5,7 @@ import {
   BillingBatch, BillingBatchStatus, Appointment, AppointmentStatus,
   Customer, Plan, Psychologist, HealthPlan,
 } from '../services/types';
-import { createBillingHelpers, syncAppointmentsBatch, AppointmentPaymentStatus } from './billing/billingHelpers';
+import { createBillingHelpers, AppointmentPaymentStatus } from './billing/billingHelpers';
 import { createBillingActions } from './billing/billingActions';
 
 export type { AppointmentPaymentStatus } from './billing/billingHelpers';
@@ -74,8 +74,11 @@ export function useBillingData() {
         const totalAmount = appointments
           .filter(a => selectedAppointmentIds.includes(a.id))
           .reduce((sum, a) => sum + Math.round(price(a) * 100), 0) / 100;
-        await syncAppointmentsBatch(editingDraftBatch.id, editingDraftBatch.appointmentIds, selectedAppointmentIds);
-        await api.updateBillingBatch(editingDraftBatch.id, { appointmentIds: selectedAppointmentIds, totalAmount });
+        await api.syncBillingBatchAppointments({
+          batchId: editingDraftBatch.id,
+          appointmentIds: selectedAppointmentIds,
+          totalAmount,
+        });
         setEditingDraftBatch(prev => prev ? { ...prev, appointmentIds: [...selectedAppointmentIds] } : prev);
         setAutoSaveStatus('saved');
         setTimeout(() => setAutoSaveStatus('idle'), 2500);

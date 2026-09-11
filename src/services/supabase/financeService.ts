@@ -94,15 +94,38 @@ export const financeService = {
   },
 
   deleteBillingBatch: async (id: string): Promise<void> => {
-    const { error: appError } = await supabase
-      .from('appointments')
-      .update({ billing_batch_id: null, billing_status: null, denial_reason: null, denial_resolution: null, paid_at: null })
+    const { error } = await supabase.rpc('delete_billing_batch', { p_batch_id: id });
+    if (error) throw new Error(error.message);
+  },
 
-      .eq('billing_batch_id', id);
-    if (appError) throw new Error(appError.message);
-
-    const { error: batchError } = await supabase.from('billing_batches').delete().eq('id', id);
-    if (batchError) throw new Error(batchError.message);
+  // Sincroniza atomicamente o array appointment_ids de um lote com a coluna
+  // appointments.billing_batch_id dos IDs afetados (RPC transacional — ver
+  // 20260910_billing_batch_atomic_rpcs.sql). Substitui o padrão anterior de
+  // updateBillingBatch + N updateAppointment em chamadas separadas.
+  syncBillingBatchAppointments: async (params: {
+    batchId: string;
+    appointmentIds: string[];
+    totalAmount: number;
+    status?: BillingBatch['status'];
+    batchNumber?: string;
+    sentAt?: string;
+    paidAt?: string | null;
+    ignoredIds?: string[];
+    ignoredReason?: string;
+  }): Promise<{ added: string[]; removed: string[] }> => {
+    const { data, error } = await supabase.rpc('sync_billing_batch_appointments', {
+      p_batch_id: params.batchId,
+      p_appointment_ids: params.appointmentIds,
+      p_total_amount: params.totalAmount,
+      p_status: params.status ?? null,
+      p_batch_number: params.batchNumber ?? null,
+      p_sent_at: params.sentAt ?? null,
+      p_paid_at: params.paidAt ?? null,
+      p_ignored_ids: params.ignoredIds ?? null,
+      p_ignored_reason: params.ignoredReason ?? null,
+    });
+    if (error) throw new Error(error.message);
+    return { added: data?.added ?? [], removed: data?.removed ?? [] };
   },
 
   // ── Repasses ───────────────────────────────────────────────────────────────

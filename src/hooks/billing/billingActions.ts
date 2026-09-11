@@ -13,7 +13,7 @@ import {
   Appointment, Customer, Psychologist, BillingBatch,
   AppointmentStatus, BillingBatchStatus, HealthPlan, Plan,
 } from '../../services/types';
-import { AppointmentPaymentStatus, syncAppointmentsBatch, auditPriceParity } from './billingHelpers';
+import { AppointmentPaymentStatus, auditPriceParity } from './billingHelpers';
 
 interface BillingActionsContext {
   batches: BillingBatch[];
@@ -64,7 +64,8 @@ export function createBillingActions({
       const remainingTotal = appointments
         .filter(a => remainingIds.includes(a.id))
         .reduce((sum, a) => sum + Math.round(getAppPrice(a) * 100), 0) / 100;
-      await api.updateBillingBatch(draft.id, {
+      await api.syncBillingBatchAppointments({
+        batchId: draft.id,
         appointmentIds: remainingIds,
         totalAmount: remainingTotal,
       });
@@ -103,11 +104,15 @@ export function createBillingActions({
       const batch = await api.createBillingBatch({
         batchNumber, sentAt: new Date().toISOString(),
         status: BillingBatchStatus.SENT, healthPlan: selectedPlan,
-        totalAmount, appointmentIds: selectedAppointmentIds,
+        totalAmount, appointmentIds: [],
       });
       await releaseFromOtherDrafts(selectedAppointmentIds, batch.id);
-      await syncAppointmentsBatch(batch.id, [], selectedAppointmentIds);
-      
+      await api.syncBillingBatchAppointments({
+        batchId: batch.id,
+        appointmentIds: selectedAppointmentIds,
+        totalAmount,
+      });
+
       // Auditoria de paridade
       auditPriceParity(selectedAppointmentIds, appointments, customers, plans, getAppPrice);
       
@@ -132,8 +137,11 @@ export function createBillingActions({
     try {
       if (editingDraftBatch) {
         await releaseFromOtherDrafts(selectedAppointmentIds, editingDraftBatch.id);
-        await syncAppointmentsBatch(editingDraftBatch.id, editingDraftBatch.appointmentIds, selectedAppointmentIds);
-        await api.updateBillingBatch(editingDraftBatch.id, { appointmentIds: selectedAppointmentIds, totalAmount });
+        await api.syncBillingBatchAppointments({
+          batchId: editingDraftBatch.id,
+          appointmentIds: selectedAppointmentIds,
+          totalAmount,
+        });
         setEditingDraftBatch(prev =>
           prev ? { ...prev, appointmentIds: [...selectedAppointmentIds], totalAmount } : prev
         );
@@ -147,8 +155,11 @@ export function createBillingActions({
           const mergedIds   = [...new Set([...existingDraft.appointmentIds, ...selectedAppointmentIds])];
           const mergedTotal = appointments.filter(a => mergedIds.includes(a.id)).reduce((sum, a) => sum + Math.round(getAppPrice(a) * 100), 0) / 100;
           await releaseFromOtherDrafts(selectedAppointmentIds, existingDraft.id);
-          await syncAppointmentsBatch(existingDraft.id, existingDraft.appointmentIds, mergedIds);
-          await api.updateBillingBatch(existingDraft.id, { appointmentIds: mergedIds, totalAmount: mergedTotal });
+          await api.syncBillingBatchAppointments({
+            batchId: existingDraft.id,
+            appointmentIds: mergedIds,
+            totalAmount: mergedTotal,
+          });
           toastSuccess('Atendimentos adicionados ao lote previsto existente!');
         } else {
           const draftBatchNumber = generateBatchNumber(selectedPlan, monthFilter, true);
@@ -156,10 +167,14 @@ export function createBillingActions({
             batchNumber: draftBatchNumber,
             sentAt: monthFilter + '-01T00:00:00.000Z',
             status: BillingBatchStatus.DRAFT, healthPlan: selectedPlan,
-            totalAmount, appointmentIds: selectedAppointmentIds,
+            totalAmount, appointmentIds: [],
           });
           await releaseFromOtherDrafts(selectedAppointmentIds, batch.id);
-          await syncAppointmentsBatch(batch.id, [], selectedAppointmentIds);
+          await api.syncBillingBatchAppointments({
+            batchId: batch.id,
+            appointmentIds: selectedAppointmentIds,
+            totalAmount,
+          });
           toastSuccess('Lote Previsto salvo!');
         }
         setIsCreateModalOpen(false);
@@ -182,24 +197,34 @@ export function createBillingActions({
       b => b.status === BillingBatchStatus.DRAFT && b.healthPlan === selectedPlan && b.sentAt.startsWith(monthFilter)
     );
     try {
+      let targetBatchId: string;
       if (existingDraft) {
         if (existingDraft.appointmentIds.includes(appId)) { toastError('Este atendimento já está no lote previsto!'); return; }
+        targetBatchId = existingDraft.id;
         const newIds = [...existingDraft.appointmentIds, appId];
-        await api.updateBillingBatch(existingDraft.id, { appointmentIds: newIds, totalAmount: existingDraft.totalAmount + appPrice });
-        await api.updateAppointment(appId, { billingBatchId: existingDraft.id });
+        await api.syncBillingBatchAppointments({
+          batchId: existingDraft.id,
+          appointmentIds: newIds,
+          totalAmount: existingDraft.totalAmount + appPrice,
+        });
         toastSuccess('Adicionado ao lote previsto!');
       } else {
         const draftBatchNumber = generateBatchNumber(selectedPlan, monthFilter, true);
         const batch = await api.createBillingBatch({
           batchNumber: draftBatchNumber, sentAt: monthFilter + '-01T00:00:00.000Z',
           status: BillingBatchStatus.DRAFT, healthPlan: selectedPlan,
-          totalAmount: appPrice, appointmentIds: [appId],
+          totalAmount: appPrice, appointmentIds: [],
         });
-        await api.updateAppointment(appId, { billingBatchId: batch.id });
+        targetBatchId = batch.id;
+        await api.syncBillingBatchAppointments({
+          batchId: batch.id,
+          appointmentIds: [appId],
+          totalAmount: appPrice,
+        });
         toastSuccess('Lote Previsto criado!');
       }
       setAppointments(prev =>
-        prev.map(a => a.id === appId ? { ...a, billingBatchId: existingDraft?.id || 'pending-refresh' } : a)
+        prev.map(a => a.id === appId ? { ...a, billingBatchId: targetBatchId } : a)
       );
       fetchData();
     } catch (error) {
@@ -215,12 +240,16 @@ export function createBillingActions({
       ? generateBatchNumber(selectedPlan, monthFilter, false) : batchNumber;
     try {
       await snapshotParticularPrices(selectedAppointmentIds);
-      await syncAppointmentsBatch(editingDraftBatch.id, editingDraftBatch.appointmentIds, selectedAppointmentIds);
-      await api.updateBillingBatch(editingDraftBatch.id, {
-        batchNumber: finalBatchNumber, sentAt: new Date().toISOString(),
-        status: BillingBatchStatus.SENT, appointmentIds: selectedAppointmentIds, totalAmount,
+      await api.syncBillingBatchAppointments({
+        batchId: editingDraftBatch.id,
+        appointmentIds: selectedAppointmentIds,
+        totalAmount,
+        status: BillingBatchStatus.SENT,
+        batchNumber: finalBatchNumber,
+        sentAt: new Date().toISOString(),
       });
-      
+
+
       auditPriceParity(selectedAppointmentIds, appointments, customers, plans, getAppPrice);
 
       setIsCreateModalOpen(false);
@@ -452,23 +481,21 @@ export function createBillingActions({
         paidAt: newStatus === BillingBatchStatus.PAID ? new Date().toISOString() : undefined,
       };
 
-      // 1. Solta o atendimento do lote (volta a ser elegível para faturamento).
-      //    Se mode === 'ignore_permanently', também marca billingIgnored com a
-      //    justificativa e o timestamp — o atendimento nunca mais será sugerido
-      //    em getEligibleAppointments/getAvailableAppointmentsToAddToBatch.
+      // Solta o atendimento do lote e atualiza o lote (nova lista, total e
+      // status) numa única transação. Se mode === 'ignore_permanently', também
+      // marca billingIgnored com a justificativa e o timestamp — o atendimento
+      // nunca mais será sugerido em getEligibleAppointments/
+      // getAvailableAppointmentsToAddToBatch.
       const isPermanentIgnore = mode === 'ignore_permanently';
-      await api.updateAppointment(appId, {
-        billingBatchId: null,
-        ...(isPermanentIgnore
-          ? {
-              billingIgnored: true,
-              billingIgnoredReason: reason!.trim(),
-              billingIgnoredAt: new Date().toISOString(),
-            }
-          : {}),
+      await api.syncBillingBatchAppointments({
+        batchId: batch.id,
+        appointmentIds: remainingIds,
+        totalAmount: newTotal,
+        status: newStatus,
+        paidAt: batchUpdates.paidAt,
+        ignoredIds: isPermanentIgnore ? [appId] : undefined,
+        ignoredReason: isPermanentIgnore ? reason!.trim() : undefined,
       });
-      // 2. Atualiza o lote (nova lista, total e status).
-      await api.updateBillingBatch(batch.id, batchUpdates);
 
       setAppointments(prev => prev.map(a => a.id === appId ? {
         ...a,
@@ -567,8 +594,13 @@ export function createBillingActions({
 
       // Se for particular sem customPrice, congela o valor (mesma regra da criação de lote).
       await snapshotParticularPrices([appId]);
-      await api.updateAppointment(appId, { billingBatchId: batch.id });
-      await api.updateBillingBatch(batch.id, batchUpdates);
+      await api.syncBillingBatchAppointments({
+        batchId: batch.id,
+        appointmentIds: newIds,
+        totalAmount: newTotal,
+        status: newStatus,
+        paidAt: batchUpdates.paidAt,
+      });
 
       setAppointments(prev => prev.map(a => a.id === appId ? { ...a, billingBatchId: batch.id } : a));
       setSelectedBatch(prev =>

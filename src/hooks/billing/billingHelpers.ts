@@ -1,5 +1,5 @@
-import { api } from '../../services/api';
 import { matchPlanByHealthPlan, supabase } from '../../services/supabase/helpers';
+import { getTodayISO } from '../../lib/dateUtils';
 import {
   getAppPrice as sharedGetAppPrice,
   getAmsNeuropsicoSessionIndex as sharedGetAmsNeuropsicoSessionIndex,
@@ -110,7 +110,7 @@ export function createBillingHelpers({
   };
 
   const getEligibleAppointments = (): Appointment[] => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = getTodayISO();
     const editingDraftId = editingDraftBatch?.id;
     const draftBatchIds = new Set(batches.filter(b => b.status === BillingBatchStatus.DRAFT).map(b => b.id));
     const billedAppointmentIds = new Set(batches.filter(b => b.status !== BillingBatchStatus.DRAFT).flatMap(b => b.appointmentIds));
@@ -133,7 +133,7 @@ export function createBillingHelpers({
   const calculateTotalSelectedAmount = () => appointments.filter(a => selectedAppointmentIds.includes(a.id)).reduce((sum, a) => sum + Math.round(getAppPrice(a) * 100), 0) / 100;
 
   const getPendingCountByPlan = () => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = getTodayISO();
     const counts = new Map<HealthPlan, number>();
     const billedIds = new Set(batches.filter(b => b.status !== BillingBatchStatus.DRAFT).flatMap(b => b.appointmentIds));
     for (const a of appointments) {
@@ -150,7 +150,7 @@ export function createBillingHelpers({
   // Regras: mesmo plano do lote, cobrável (valor > 0), realizado (date <= hoje),
   // não interno e ainda não vinculado a nenhum lote (ou já vinculado a este).
   const getAvailableAppointmentsToAddToBatch = (batch: BillingBatch): Appointment[] => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = getTodayISO();
     const billedAppointmentIds = new Set(
       batches
         .filter(b => b.status !== BillingBatchStatus.DRAFT && b.id !== batch.id)
@@ -177,12 +177,6 @@ export function createBillingHelpers({
   return { getNeuropsicoStatus, getAmsNeuropsicoSessionIndex, getAppPrice, getTussCode, getPlanProcedures, generateBatchNumber, getPlansWithEarlierDrafts, getEligibleAppointments, calculateTotalSelectedAmount, getPendingCountByPlan, getAvailableAppointmentsToAddToBatch };
 }
 
-
-export async function syncAppointmentsBatch(batchId: string, prevIds: string[], nextIds: string[]) {
-  const toAdd = nextIds.filter(id => !prevIds.includes(id));
-  const toRemove = prevIds.filter(id => !nextIds.includes(id));
-  await Promise.all([...toAdd.map(id => api.updateAppointment(id, { billingBatchId: batchId })), ...toRemove.map(id => api.updateAppointment(id, { billingBatchId: null }))]);
-}
 
 export async function auditPriceParity(appIds: string[], appointments: Appointment[], customers: Customer[], plans: Plan[], getAppPrice: (app: Appointment) => number): Promise<void> {
   const jobs = appIds.map(async (id) => {
