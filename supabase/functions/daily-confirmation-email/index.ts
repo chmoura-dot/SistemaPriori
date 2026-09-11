@@ -10,6 +10,23 @@ const SITE_URL = "https://sistema-priori.vercel.app";
 
 const resend = new Resend(RESEND_API_KEY);
 
+// Envolve qualquer chamada Supabase com retry, para absorver Gateway Timeouts
+// transitórios em QUALQUER consulta da função (não só a primeira).
+async function withRetry<T>(
+  label: string,
+  fn: () => Promise<{ data: T | null; error: any }>,
+  attempts = 3,
+): Promise<{ data: T | null; error: any }> {
+  let result: { data: T | null; error: any } = { data: null, error: null };
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    result = await fn();
+    if (!result.error) return result;
+    console.error(`[DailyConfirmation] ${label}: tentativa ${attempt} falhou, tentando novamente...`, result.error);
+    if (attempt < attempts) await new Promise((resolve) => setTimeout(resolve, attempt * 1000));
+  }
+  return result;
+}
+
 Deno.serve(async (req) => {
   try {
     const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
@@ -29,23 +46,14 @@ Deno.serve(async (req) => {
     console.log(`[DailyConfirmation] Processando confirmações para: ${todayStr} (Data local BR)`);
 
     // 2. Buscar psicólogos ativos com e-mail configurado (com retry para absorver Gateway Timeouts transitórios)
-    let psychologists: { id: string; name: string; email: string }[] | null = null;
-    let psychError: any = null;
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      const { data, error } = await supabase
+    const { data: psychologists, error: psychError } = await withRetry(
+      'buscar psicólogos',
+      () => supabase
         .from('psychologists')
         .select('id, name, email')
         .eq('active', true)
-        .neq('email', '');
-
-      psychologists = data;
-      psychError = error;
-
-      if (!error) break;
-
-      console.error(`[DailyConfirmation] Tentativa ${attempt} de buscar psicólogos falhou, tentando novamente...`, error);
-      if (attempt < 3) await new Promise((resolve) => setTimeout(resolve, attempt * 1000));
-    }
+        .neq('email', ''),
+    );
 
     if (psychError) throw psychError;
 
@@ -56,12 +64,15 @@ Deno.serve(async (req) => {
       if (!psy.email || psy.email.trim() === '') continue;
 
       // 3a. Verificar se já não enviamos o e-mail hoje (evitar duplicidade no cron frequente)
-      const { data: existingToken, error: checkError } = await supabase
-        .from('appointment_tokens')
-        .select('id')
-        .eq('psychologist_id', psy.id)
-        .eq('date', todayStr)
-        .limit(1);
+      const { data: existingToken, error: checkError } = await withRetry(
+        `verificar token existente (${psy.name})`,
+        () => supabase
+          .from('appointment_tokens')
+          .select('id')
+          .eq('psychologist_id', psy.id)
+          .eq('date', todayStr)
+          .limit(1),
+      );
 
       if (checkError) {
         results.push({ psychologist: psy.name, status: "error_checking_existing", error: checkError.message });
@@ -73,24 +84,27 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      const { data: appointments, error: appError } = await supabase
-        .from('appointments')
-        .select(`
-          id,
-          start_time,
-          end_time,
-          mode,
-          type,
-          status,
-          confirmed_psychologist,
-          customer:customers (name, health_plan),
-          room:rooms (name)
-        `)
-        .eq('psychologist_id', psy.id)
-        .eq('date', todayStr)
-        .neq('status', 'canceled') // Ignora os cancelados
-        .eq('is_internal', false)
-        .order('start_time');
+      const { data: appointments, error: appError } = await withRetry(
+        `buscar agendamentos (${psy.name})`,
+        () => supabase
+          .from('appointments')
+          .select(`
+            id,
+            start_time,
+            end_time,
+            mode,
+            type,
+            status,
+            confirmed_psychologist,
+            customer:customers (name, health_plan),
+            room:rooms (name)
+          `)
+          .eq('psychologist_id', psy.id)
+          .eq('date', todayStr)
+          .neq('status', 'canceled') // Ignora os cancelados
+          .eq('is_internal', false)
+          .order('start_time'),
+      );
 
       if (appError) {
         results.push({ psychologist: psy.name, status: "error", error: appError.message });
@@ -127,13 +141,20 @@ Deno.serve(async (req) => {
       // Se não houver pendências para confirmar, não envia e-mail para não gerar SPAM
       // No entanto, criamos o token para marcar o dia como processado
       if (pendingAppointments.length === 0) {
-      const expiresAt = new Date();
-      expiresAt.setHours(expiresAt.getHours() + 240);
-      await supabase.from('appointment_tokens').insert({
-          psychologist_id: psy.id,
-          date: todayStr,
-          expires_at: expiresAt.toISOString()
-        });
+        const expiresAt = new Date();
+        expiresAt.setHours(expiresAt.getHours() + 240);
+        const { error: markDoneError } = await withRetry(
+          `marcar dia sem pendências (${psy.name})`,
+          () => supabase.from('appointment_tokens').insert({
+            psychologist_id: psy.id,
+            date: todayStr,
+            expires_at: expiresAt.toISOString()
+          }),
+        );
+        if (markDoneError) {
+          results.push({ psychologist: psy.name, status: "error_marking_done", error: markDoneError.message });
+          continue;
+        }
         results.push({ psychologist: psy.name, status: "no_pending_confirmations_marked_as_done" });
         continue;
       }
@@ -142,15 +163,18 @@ Deno.serve(async (req) => {
       const expiresAt = new Date();
       expiresAt.setHours(expiresAt.getHours() + 240); // Link válido por 10 dias
 
-      const { data: tokenRecord, error: tokenError } = await supabase
-        .from('appointment_tokens')
-        .insert({
-          psychologist_id: psy.id,
-          date: todayStr,
-          expires_at: expiresAt.toISOString()
-        })
-        .select()
-        .single();
+      const { data: tokenRecord, error: tokenError } = await withRetry(
+        `criar token de confirmação (${psy.name})`,
+        () => supabase
+          .from('appointment_tokens')
+          .insert({
+            psychologist_id: psy.id,
+            date: todayStr,
+            expires_at: expiresAt.toISOString()
+          })
+          .select()
+          .single(),
+      );
       
       if (tokenError) {
         results.push({ psychologist: psy.name, status: "token_error", error: tokenError.message });

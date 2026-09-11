@@ -6,6 +6,23 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 // Forçamos a URL oficial para evitar redirecionamentos incorretos (ex: n8n)
 const APP_URL = "https://sistema-priori.vercel.app";
 
+// Envolve qualquer chamada Supabase com retry, para absorver Gateway Timeouts
+// transitórios em QUALQUER consulta da função (não só a de settings).
+async function withRetry<T>(
+  label: string,
+  fn: () => Promise<{ data: T | null; error: any }>,
+  attempts = 3,
+): Promise<{ data: T | null; error: any }> {
+  let result: { data: T | null; error: any } = { data: null, error: null };
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    result = await fn();
+    if (!result.error) return result;
+    console.error(`[WhatsAppReminder] ${label}: tentativa ${attempt} falhou, tentando novamente...`, result.error);
+    if (attempt < attempts) await new Promise((resolve) => setTimeout(resolve, attempt * 1000));
+  }
+  return result;
+}
+
 Deno.serve(async (req) => {
   try {
     const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
@@ -64,24 +81,35 @@ Deno.serve(async (req) => {
 
     console.log(`[WhatsAppReminder] Processando lembretes para o dia: ${todayStr} (Data local BR)`);
 
-    const { data: appointments, error } = await supabase
-      .from("appointments")
-      .select(`
-        id,
-        date,
-        start_time,
-        customer:customers (name, phone),
-        psychologist:psychologists (name)
-      `)
-      .eq("date", todayStr)
-      .eq("status", "active")
-      .eq("confirmation_status", "pending")
-      .eq("is_internal", false)
-      .is("reminder_sent_at", null);
+    const { data: appointments, error } = await withRetry(
+      "buscar agendamentos do dia",
+      () => supabase
+        .from("appointments")
+        .select(`
+          id,
+          date,
+          start_time,
+          customer:customers (name, phone),
+          psychologist:psychologists (name)
+        `)
+        .eq("date", todayStr)
+        .eq("status", "active")
+        .eq("confirmation_status", "pending")
+        .eq("is_internal", false)
+        .is("reminder_sent_at", null),
+    );
 
     if (error) throw error;
 
     const results = [];
+    const missingPhone: Array<{
+      appointmentId: string;
+      customerName: string;
+      psychologistName: string;
+      date: string;
+      time: string;
+      rawPhone: string | null;
+    }> = [];
 
     for (const app of (appointments || [])) {
       // Como o cron roda às 06:00 BRT, processamos todos agendamentos do dia de hoje
@@ -90,20 +118,31 @@ Deno.serve(async (req) => {
       const customer = Array.isArray(app.customer) ? app.customer[0] : app.customer;
       const psychologist = Array.isArray(app.psychologist) ? app.psychologist[0] : app.psychologist;
 
-      if (!customer?.phone) {
-        results.push({ id: app.id, status: "skipped", reason: "no_phone" });
-        continue;
-      }
+      const patientName = customer?.name || "Paciente sem nome";
 
-      const patientName = customer.name || "Paciente";
-      
       // Modo de Teste: Todas as mensagens serão enviadas para este número.
       // REMOVER ou COMENTAR esta linha para voltar ao envio normal.
-      let patientPhone = customer.phone.replace(/\D/g, "");
+      let patientPhone = (customer?.phone || "").replace(/\D/g, "");
       if (patientPhone.length > 0 && !patientPhone.startsWith("55")) {
         patientPhone = "55" + patientPhone;
       }
       //
+
+      // Cobre tanto telefone ausente quanto telefone cadastrado sem nenhum
+      // dígito válido (ex: "-", texto) — nos dois casos o strip acima zera a
+      // string e o envio para a Z-API falharia com "Phone is empty".
+      if (!patientPhone) {
+        missingPhone.push({
+          appointmentId: app.id,
+          customerName: patientName,
+          psychologistName: psychologist?.name || "Psicólogo",
+          date: app.date,
+          time: app.start_time,
+          rawPhone: customer?.phone ?? null,
+        });
+        results.push({ id: app.id, status: "skipped", reason: "missing_or_invalid_phone" });
+        continue;
+      }
 
       const psychName = psychologist?.name || "Psicólogo";
       const formattedDate = `${day.toString().padStart(2, "0")}/${month.toString().padStart(2, "0")}`;
@@ -138,11 +177,14 @@ Deno.serve(async (req) => {
         });
 
         if (response.ok) {
-          await supabase
-            .from("appointments")
-            .update({ reminder_sent_at: new Date().toISOString() })
-            .eq("id", app.id);
-          
+          await withRetry(
+            `marcar lembrete enviado (${app.id})`,
+            () => supabase
+              .from("appointments")
+              .update({ reminder_sent_at: new Date().toISOString() })
+              .eq("id", app.id),
+          );
+
           results.push({ id: app.id, status: "sent" });
         } else {
           const errorText = await response.text();
@@ -169,6 +211,23 @@ Deno.serve(async (req) => {
           p_context: 'whatsapp-reminder.execution',
           p_message: `Falha ao enviar ${failedCount} lembretes de WhatsApp para hoje.`,
           p_details: { failures: results.filter(r => r.status === "error" || r.status === "fetch_error") },
+          p_severity: 'critical'
+        });
+      } catch (dbErr) {
+        console.error("Falha ao registrar log no banco:", dbErr);
+      }
+    }
+
+    // Paciente(s) sem telefone válido cadastrado: não é uma falha de envio,
+    // é um problema de cadastro que precisa de ação humana. Registrado como
+    // 'critical' para cair no alerta por e-mail (critical-failure-alert, a
+    // cada 10 min) e aparecer no painel de Falhas do Sistema (Configurações).
+    if (missingPhone.length > 0) {
+      try {
+        await supabase.rpc('log_operation_failure', {
+          p_context: 'whatsapp-reminder.missingPhone',
+          p_message: `${missingPhone.length} lembrete(s) de WhatsApp não enviado(s) porque o paciente não tem telefone cadastrado (ou o número cadastrado é inválido). É necessário corrigir o cadastro do(s) paciente(s) abaixo.`,
+          p_details: { patients: missingPhone },
           p_severity: 'critical'
         });
       } catch (dbErr) {
