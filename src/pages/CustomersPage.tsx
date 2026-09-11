@@ -13,6 +13,7 @@ import { CustomerBulkModal } from './customers/CustomerBulkModal';
 import { CustomerImportModal } from './customers/CustomerImportModal';
 import { getIncompleteFields, inferGenderByName, formatDate, calculateAge } from './customers/customerUtils';
 import { getTodayISO, toISODateLocal } from '../lib/dateUtils';
+import { toastError } from '../lib/toast';
 
 const ITEMS_PER_PAGE = 20;
 
@@ -145,6 +146,19 @@ export const CustomersPage = () => {
     setRetroScope('none');
     setIsFormOpen(true);
   };
+
+  // Abre automaticamente o cadastro de um paciente específico, usado pelo
+  // alerta de renovação pendente da Agenda ("Ver Paciente"). Só processa
+  // depois que a lista de pacientes terminar de carregar.
+  useEffect(() => {
+    const openId = localStorage.getItem('customers_open_id');
+    if (!openId || customers.length === 0) return;
+    localStorage.removeItem('customers_open_id');
+    const customer = customers.find(c => c.id === openId);
+    if (customer) openEdit(customer);
+    else toastError('Paciente não encontrado no cadastro.');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customers]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

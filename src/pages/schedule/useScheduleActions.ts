@@ -205,14 +205,18 @@ export const useScheduleActions = (s: ScheduleData) => {
     await doSubmit();
   };
 
-  const handleEdit = (appointment: Appointment) => {
+  // `overrideDate`: usado pelo alerta de renovação para abrir a edição já
+  // apontando para a PRÓXIMA ocorrência conflitante (nextDate calculado no
+  // banner), em vez da data da última sessão gravada em `appointment.date`.
+  const handleEdit = (appointment: Appointment, overrideDate?: string) => {
+    const effectiveDate = overrideDate || appointment.date;
     s.setFormData({
       customerId: appointment.customerId,
       psychologistId: appointment.psychologistId,
       roomId: appointment.roomId || '',
       mode: appointment.mode,
       type: appointment.type,
-      date: appointment.date,
+      date: effectiveDate,
       startTime: appointment.startTime,
       endTime: appointment.endTime,
       procedureCode: appointment.procedureCode || '',
@@ -227,6 +231,7 @@ export const useScheduleActions = (s: ScheduleData) => {
     });
     s.setEditingId(appointment.id);
     s.setUpdateFuture(appointment.isRecurring);
+    if (overrideDate) s.setDate(overrideDate);
     s.setIsModalOpen(true);
   };
 

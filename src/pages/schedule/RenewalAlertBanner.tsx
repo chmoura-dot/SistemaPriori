@@ -1,14 +1,17 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { AlertTriangle, ChevronDown, ChevronUp, Eye, XCircle, RefreshCw, UserX, Clock } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ChevronUp, CalendarClock, XCircle, RefreshCw, UserX, Clock } from 'lucide-react';
 import { api } from '../../services/api';
-import { Appointment, Customer, Psychologist, RecurrenceFrequency } from '../../services/types';
+import { Appointment, Customer, CustomerStatus, Psychologist, RecurrenceFrequency } from '../../services/types';
 import { cn } from '../../lib/utils';
+import { toastError } from '../../lib/toast';
 
 interface RenewalAlertBannerProps {
-  customers: Customer[];
   psychologists: Psychologist[];
   allAppointments: Appointment[];
-  onNavigateToDate: (date: string) => void;
+  /** Abre o formulário de edição do agendamento já na data que precisa de ajuste. */
+  onResolveConflict: (appointment: Appointment, targetDate: string) => void;
+  /** Leva o usuário até o cadastro do paciente para reativá-lo ou encerrar a série. */
+  onViewCustomer: (customerId: string) => void;
 }
 
 interface ConflictInfo {
@@ -41,10 +44,10 @@ function timesOverlap(s1: string, e1: string, s2: string, e2: string): boolean {
 }
 
 export const RenewalAlertBanner: React.FC<RenewalAlertBannerProps> = ({
-  customers,
   psychologists,
   allAppointments,
-  onNavigateToDate,
+  onResolveConflict,
+  onViewCustomer,
 }) => {
   const [items, setItems] = useState<RenewalItem[]>([]);
   const [isExpanded, setIsExpanded] = useState(true);
@@ -54,21 +57,24 @@ export const RenewalAlertBanner: React.FC<RenewalAlertBannerProps> = ({
   const loadRenewals = useCallback(async () => {
     try {
       setIsLoading(true);
-      const renewalApps = await api.getAppointmentsNeedingRenewal();
+      const [renewalApps, allCustomers] = await Promise.all([
+        api.getAppointmentsNeedingRenewal(),
+        api.getCustomers(), // não filtrado — precisamos achar paciente mesmo se inativo
+      ]);
       if (renewalApps.length === 0) { setItems([]); return; }
 
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
       const mapped: RenewalItem[] = renewalApps.map(app => {
-        const customer = customers.find(c => c.id === app.customerId);
+        const customer = allCustomers.find(c => c.id === app.customerId);
         const psych = psychologists.find(p => p.id === app.psychologistId);
         const appDate = new Date(app.date + 'T12:00:00');
         appDate.setHours(0, 0, 0, 0);
         const daysUntil = Math.ceil((appDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 
-        // Detectar motivo: se paciente não está na lista de ativos, é inativo
-        const isInactive = !customer;
+        // Motivo: paciente não encontrado no cadastro OU cadastrado como inativo
+        const isInactive = !customer || customer.status !== CustomerStatus.ACTIVE;
 
         // Para conflitos: calcular a próxima data e encontrar quem está no horário
         let conflict: ConflictInfo | undefined;
@@ -84,7 +90,7 @@ export const RenewalAlertBanner: React.FC<RenewalAlertBannerProps> = ({
             timesOverlap(app.startTime, app.endTime, other.startTime, other.endTime)
           );
           if (conflicting) {
-            const conflictCustomer = customers.find(c => c.id === conflicting.customerId);
+            const conflictCustomer = allCustomers.find(c => c.id === conflicting.customerId);
             const conflictName = conflicting.isInternal
               ? (conflicting.internalTitle || 'Bloqueio Interno')
               : (conflictCustomer?.name || 'Outro paciente');
@@ -97,7 +103,7 @@ export const RenewalAlertBanner: React.FC<RenewalAlertBannerProps> = ({
         }
 
         // Determinar motivo correto:
-        // - inactive: paciente não está na lista de ativos
+        // - inactive: paciente não encontrado ou cadastrado como inativo
         // - conflict: conflito real detectado na próxima data
         // - pending: sem conflito detectado — o cron auto-renew vai resolver
         const reason: 'inactive' | 'conflict' | 'pending' = isInactive
@@ -125,15 +131,13 @@ export const RenewalAlertBanner: React.FC<RenewalAlertBannerProps> = ({
       actionable.sort((a, b) => a.daysUntil - b.daysUntil);
       setItems(actionable);
     } catch {
-      // silencioso
+      toastError('Não foi possível carregar os agendamentos com renovação pendente.');
     } finally {
       setIsLoading(false);
     }
-  }, [customers, psychologists, allAppointments]);
+  }, [psychologists, allAppointments]);
 
-  useEffect(() => {
-    if (customers.length > 0) loadRenewals();
-  }, [customers.length, loadRenewals]);
+  useEffect(() => { loadRenewals(); }, [loadRenewals]);
 
   const handleDismiss = async (appointmentId: string) => {
     setDismissing(appointmentId);
@@ -142,8 +146,8 @@ export const RenewalAlertBanner: React.FC<RenewalAlertBannerProps> = ({
       setItems(prev => prev.filter(i => i.appointment.id !== appointmentId));
       // Notifica Sidebar para atualizar badge imediatamente
       window.dispatchEvent(new CustomEvent('renewal-updated'));
-    } catch (err) {
-      console.warn('[RenewalBanner] Falha ao dispensar renovação:', err);
+    } catch {
+      toastError('Não foi possível ignorar este aviso. Tente novamente.');
     } finally {
       setDismissing(null);
     }
@@ -162,6 +166,8 @@ export const RenewalAlertBanner: React.FC<RenewalAlertBannerProps> = ({
       {/* Header */}
       <button
         onClick={() => setIsExpanded(!isExpanded)}
+        aria-expanded={isExpanded}
+        aria-controls="renewal-alert-list"
         className="w-full flex items-center justify-between px-4 py-3 hover:bg-amber-100/50 transition-colors"
       >
         <div className="flex items-center gap-2">
@@ -170,7 +176,7 @@ export const RenewalAlertBanner: React.FC<RenewalAlertBannerProps> = ({
             {items.length} agendamento(s) com renovação pendente
           </span>
           <span className="text-xs text-amber-600">
-            — o sistema automático não conseguiu renovar
+            — o sistema automático não conseguiu renovar, resolva abaixo
           </span>
         </div>
         {isExpanded ? <ChevronUp size={16} className="text-amber-600" /> : <ChevronDown size={16} className="text-amber-600" />}
@@ -178,14 +184,24 @@ export const RenewalAlertBanner: React.FC<RenewalAlertBannerProps> = ({
 
       {/* List */}
       {isExpanded && (
-        <div className="border-t border-amber-200">
+        <div id="renewal-alert-list" className="border-t border-amber-200">
           {items.map(item => {
             const urgency = urgencyLabel(item.daysUntil);
             const isInactive = item.reason === 'inactive';
+
+            const primaryAction = () => {
+              if (isInactive) onViewCustomer(item.appointment.customerId);
+              else onResolveConflict(item.appointment, item.nextDate ?? item.appointment.date);
+            };
+
             return (
               <div
                 key={item.appointment.id}
-                className="flex items-center gap-3 px-4 py-2.5 border-b border-amber-100 last:border-b-0 hover:bg-amber-50/80"
+                onClick={primaryAction}
+                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); primaryAction(); } }}
+                role="button"
+                tabIndex={0}
+                className="flex items-center gap-3 px-4 py-2.5 border-b border-amber-100 last:border-b-0 hover:bg-amber-100/60 cursor-pointer transition-colors"
               >
                 {/* Ícone do motivo */}
                 <div className={cn(
@@ -202,72 +218,74 @@ export const RenewalAlertBanner: React.FC<RenewalAlertBannerProps> = ({
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-black text-priori-navy truncate">
-                      {item.customer?.name || 'Paciente não encontrado'}
+                      {item.customer?.name || 'Paciente não encontrado no cadastro'}
                     </span>
                     <span className="text-[10px] text-zinc-400">({item.psychologistName})</span>
                     <span className={cn('text-[10px] font-bold', urgency.color)}>
                       {urgency.text}
                     </span>
                   </div>
-                  <div className="flex items-center gap-2 mt-0.5">
+                  {/* Frase de ação em destaque: o que aconteceu e o que fazer */}
+                  <div className="mt-0.5">
+                    {isInactive ? (
+                      <span className="text-[11px] font-bold text-red-700">
+                        ⛔ Paciente inativo no cadastro — clique para reativar ou encerrar a série.
+                      </span>
+                    ) : item.conflict ? (
+                      <span className="text-[11px] font-bold text-orange-700">
+                        ⚠️ Próxima sessão ({item.conflict.conflictDate}) colide com <strong>{item.conflict.conflictName}</strong> ({item.conflict.conflictTime}) — clique para reagendar.
+                      </span>
+                    ) : (
+                      <span className="text-[11px] font-bold text-yellow-700">
+                        ⚠️ Conflito de horário na próxima sessão — clique para reagendar.
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-0.5">
                     <span className="text-[10px] text-zinc-500">
                       Última sessão: {new Date(item.appointment.date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' })} às {item.appointment.startTime}
                     </span>
-                    <span className="text-[10px] text-zinc-300">•</span>
-                    <span className={cn(
-                      'text-[10px] font-bold px-1.5 py-0.5 rounded',
-                      isInactive
-                        ? 'bg-red-100 text-red-700'
-                        : 'bg-yellow-100 text-yellow-700'
-                    )}>
-                      {isInactive ? '⛔ Paciente inativo' : '⚠️ Conflito de horário'}
-                    </span>
                   </div>
-                  {/* Detalhe do conflito */}
-                  {!isInactive && item.conflict && (
-                    <div className="flex items-center gap-1.5 mt-1">
-                      <span className="text-[10px] text-orange-700 font-bold">
-                        → Próxima data ({item.conflict.conflictDate}) ocupada por: <strong>{item.conflict.conflictName}</strong> ({item.conflict.conflictTime})
-                      </span>
-                    </div>
-                  )}
-                  {!isInactive && !item.conflict && item.nextDate && (
-                    <div className="flex items-center gap-1.5 mt-1">
-                      <span className="text-[10px] text-zinc-500">
-                        → Próxima data: {new Date(item.nextDate + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' })} — ver na agenda para detalhes
-                      </span>
-                    </div>
-                  )}
                 </div>
 
                 {/* Actions */}
-                <div className="flex items-center gap-1.5 shrink-0">
-                  {!isInactive && (
+                <div className="flex items-center gap-1.5 shrink-0" onClick={e => e.stopPropagation()}>
+                  {isInactive ? (
                     <button
-                      onClick={() => onNavigateToDate(item.appointment.date)}
+                      onClick={() => onViewCustomer(item.appointment.customerId)}
                       className="flex items-center gap-1 px-2.5 py-1.5 text-[10px] font-bold bg-priori-navy text-white rounded-lg hover:bg-priori-navy/90 transition-colors"
-                      title="Ir para a data na agenda para resolver o conflito"
+                      title="Abrir o cadastro deste paciente para reativar ou encerrar a série"
                     >
-                      <Eye size={12} />
-                      Ver na Agenda
+                      <UserX size={12} />
+                      Ver Paciente
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => onResolveConflict(item.appointment, item.nextDate ?? item.appointment.date)}
+                      className="flex items-center gap-1 px-2.5 py-1.5 text-[10px] font-bold bg-priori-navy text-white rounded-lg hover:bg-priori-navy/90 transition-colors"
+                      title="Abrir a edição deste agendamento já na data do conflito"
+                    >
+                      <CalendarClock size={12} />
+                      Reagendar
                     </button>
                   )}
                   <button
                     onClick={() => handleDismiss(item.appointment.id)}
                     disabled={dismissing === item.appointment.id}
+                    aria-label={isInactive ? 'Encerrar alerta, a série já parou' : 'Ignorar aviso sem resolver'}
                     className={cn(
                       'flex items-center gap-1 px-2.5 py-1.5 text-[10px] font-bold rounded-lg transition-colors',
                       dismissing === item.appointment.id
                         ? 'bg-zinc-100 text-zinc-400'
                         : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
                     )}
-                    title={isInactive ? 'Encerrar alerta (série já parada)' : 'Dispensar alerta'}
+                    title={isInactive ? 'Encerrar alerta (série já parada) — não reativa o paciente' : 'Apenas oculta o aviso — não resolve o conflito'}
                   >
                     {dismissing === item.appointment.id
                       ? <RefreshCw size={12} className="animate-spin" />
                       : <XCircle size={12} />
                     }
-                    Dispensar
+                    Ignorar
                   </button>
                 </div>
               </div>

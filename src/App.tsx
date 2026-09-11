@@ -171,7 +171,7 @@ export default function App() {
       case '/dashboard':
         return <DashboardPage onNavigate={navigate} />;
       case '/agenda':
-        return <SchedulePage />;
+        return <SchedulePage onNavigate={navigate} />;
       case '/capacidade':
         return <CapacityPage />;
       case '/clientes':

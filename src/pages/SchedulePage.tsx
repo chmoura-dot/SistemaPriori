@@ -15,7 +15,11 @@ import { AmsNeuropsicoCycleAlert } from '../components/AmsNeuropsicoCycleAlert';
 import { useScheduleData } from './schedule/useScheduleData';
 import { useScheduleActions } from './schedule/useScheduleActions';
 
-export const SchedulePage = () => {
+interface SchedulePageProps {
+  onNavigate: (path: string) => void;
+}
+
+export const SchedulePage: React.FC<SchedulePageProps> = ({ onNavigate }) => {
   const s = useScheduleData();
   const {
     resetForm, handleCloseModal, handleSubmit, handleEdit,
@@ -92,10 +96,13 @@ export const SchedulePage = () => {
 
       {/* Alerta de renovações pendentes */}
       <RenewalAlertBanner
-        customers={s.customers}
         psychologists={s.psychologists}
         allAppointments={s.appointments}
-        onNavigateToDate={(date) => s.setDate(date)}
+        onResolveConflict={(appointment, targetDate) => handleEdit(appointment, targetDate)}
+        onViewCustomer={(customerId) => {
+          localStorage.setItem('customers_open_id', customerId);
+          onNavigate('/clientes');
+        }}
       />
 
       {/* Header */}
