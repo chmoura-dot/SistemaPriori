@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { AlertTriangle, ChevronDown, ChevronUp, CalendarClock, XCircle, RefreshCw, UserX, Clock } from 'lucide-react';
 import { api } from '../../services/api';
-import { Appointment, Customer, CustomerStatus, Psychologist, RecurrenceFrequency } from '../../services/types';
+import { Appointment, Customer, Psychologist } from '../../services/types';
 import { cn } from '../../lib/utils';
 import { toastError } from '../../lib/toast';
+import { classifyRenewalAppointment, RenewalConflictInfo } from '../../lib/renewalAlerts';
 
 interface RenewalAlertBannerProps {
   psychologists: Psychologist[];
@@ -14,33 +15,14 @@ interface RenewalAlertBannerProps {
   onViewCustomer: (customerId: string) => void;
 }
 
-interface ConflictInfo {
-  conflictName: string; // nome do paciente ou bloqueio conflitante
-  conflictTime: string; // ex: "14:00–15:00"
-  conflictDate: string; // data formatada
-}
-
 interface RenewalItem {
   appointment: Appointment;
   customer: Customer | undefined;
   psychologistName: string;
   reason: 'inactive' | 'conflict' | 'pending';
   daysUntil: number;
-  conflict?: ConflictInfo;
+  conflict?: RenewalConflictInfo;
   nextDate?: string; // YYYY-MM-DD da próxima ocorrência
-}
-
-/** Calcula a próxima data de ocorrência a partir da data base + frequência */
-function getNextOccurrenceDate(dateStr: string, frequency?: RecurrenceFrequency): string {
-  const d = new Date(dateStr + 'T12:00:00');
-  const interval = frequency === RecurrenceFrequency.QUINZENAL ? 14 : 7;
-  d.setDate(d.getDate() + interval);
-  return d.toISOString().split('T')[0];
-}
-
-/** Verifica se dois intervalos de tempo se sobrepõem */
-function timesOverlap(s1: string, e1: string, s2: string, e2: string): boolean {
-  return s1 < e2 && s2 < e1;
 }
 
 export const RenewalAlertBanner: React.FC<RenewalAlertBannerProps> = ({
@@ -73,44 +55,7 @@ export const RenewalAlertBanner: React.FC<RenewalAlertBannerProps> = ({
         appDate.setHours(0, 0, 0, 0);
         const daysUntil = Math.ceil((appDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 
-        // Motivo: paciente não encontrado no cadastro OU cadastrado como inativo
-        const isInactive = !customer || customer.status !== CustomerStatus.ACTIVE;
-
-        // Para conflitos: calcular a próxima data e encontrar quem está no horário
-        let conflict: ConflictInfo | undefined;
-        let nextDate: string | undefined;
-        if (!isInactive) {
-          nextDate = getNextOccurrenceDate(app.date, app.recurrenceFrequency);
-          // Buscar agendamento conflitante na próxima data
-          const conflicting = allAppointments.find(other =>
-            other.id !== app.id &&
-            other.psychologistId === app.psychologistId &&
-            other.date === nextDate &&
-            other.status !== 'canceled' &&
-            timesOverlap(app.startTime, app.endTime, other.startTime, other.endTime)
-          );
-          if (conflicting) {
-            const conflictCustomer = allCustomers.find(c => c.id === conflicting.customerId);
-            const conflictName = conflicting.isInternal
-              ? (conflicting.internalTitle || 'Bloqueio Interno')
-              : (conflictCustomer?.name || 'Outro paciente');
-            conflict = {
-              conflictName,
-              conflictTime: `${conflicting.startTime}–${conflicting.endTime}`,
-              conflictDate: new Date(nextDate + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' }),
-            };
-          }
-        }
-
-        // Determinar motivo correto:
-        // - inactive: paciente não encontrado ou cadastrado como inativo
-        // - conflict: conflito real detectado na próxima data
-        // - pending: sem conflito detectado — o cron auto-renew vai resolver
-        const reason: 'inactive' | 'conflict' | 'pending' = isInactive
-          ? 'inactive'
-          : conflict
-            ? 'conflict'
-            : 'pending';
+        const { reason, conflict, nextDate } = classifyRenewalAppointment(app, allCustomers, allAppointments);
 
         return {
           appointment: app,

@@ -28,6 +28,7 @@ import { cn } from '../lib/utils';
 import { api } from '../services/api';
 import { UserRole } from '../services/types';
 import { useWaitingListMatches } from '../hooks/waitingList/useWaitingListMatches';
+import { classifyRenewalAppointment, getNextOccurrenceDate } from '../lib/renewalAlerts';
 
 interface MenuItem {
   icon: React.ComponentType<{ size?: number; className?: string }>;
@@ -102,15 +103,31 @@ export const Sidebar = ({ currentPath, onNavigate }: SidebarProps) => {
     const loadRenewalCount = async () => {
       if (!api.isAuthenticated()) return;
       try {
-        const appointments = await api.getAppointmentsNeedingRenewal();
+        const candidates = await api.getAppointmentsNeedingRenewal();
+        if (candidates.length === 0) { setRenewalCount(0); return; }
+
+        // Precisa dos pacientes e dos agendamentos ao redor da próxima ocorrência
+        // de cada candidato para aplicar o mesmo critério do alerta da Agenda —
+        // senão a badge conta casos "pending" que o cron ainda vai resolver
+        // sozinho, e a secretária clica sem achar nada acionável.
+        const nextDates = candidates.map(c => getNextOccurrenceDate(c.date, c.recurrenceFrequency));
+        const minDate = nextDates.reduce((min, d) => (d < min ? d : min), nextDates[0]);
+        const maxDate = nextDates.reduce((max, d) => (d > max ? d : max), nextDates[0]);
+        const [allCustomers, nearbyAppointments] = await Promise.all([
+          api.getCustomers(),
+          api.getAppointmentsByRange(minDate, maxDate),
+        ]);
+
         const today = new Date();
         today.setHours(0, 0, 0, 0);
-        // Conta agendamentos que vencem em até 7 dias
-        const count = appointments.filter(app => {
+        // Conta só agendamentos que vencem em até 7 dias E exigem ação humana
+        // (paciente inativo ou conflito real) — mesmo critério do RenewalAlertBanner.
+        const count = candidates.filter(app => {
           const due = new Date(app.date + 'T12:00:00');
           due.setHours(0, 0, 0, 0);
           const daysUntil = Math.ceil((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-          return daysUntil <= 7;
+          if (daysUntil > 7) return false;
+          return classifyRenewalAppointment(app, allCustomers, nearbyAppointments).reason !== 'pending';
         }).length;
         setRenewalCount(count);
       } catch (err) {
