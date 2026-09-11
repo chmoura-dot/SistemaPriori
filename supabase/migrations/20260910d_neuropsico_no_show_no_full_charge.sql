@@ -1,20 +1,40 @@
--- ============================================================
--- FASE 4 — get_appointment_price + validate_price_parity (Shadow Calculation)
--- ============================================================
--- Rode este script no SQL Editor do Supabase (produção).
--- É idempotente (CREATE OR REPLACE) — seguro reexecutar.
--- Conteúdo idêntico às migrations 20260717_get_appointment_price.sql +
--- 20260814_fix_empty_procedure_code_parity.sql +
--- 20260910b_fix_ams_petrobras_plan_name_case.sql (TRIM de procedure_code
--- vazio + comparação de plano normalizada para maiúscula) +
--- 20260910c_ams_petrobras_no_show_billing_rule.sql (falta no ciclo AMS
--- neuropsico cobra 95090010, nunca integral, exceto o 1º comparecimento real
--- do ciclo; limite de 2 cobranças em 95090010 por ciclo, combinando faltas e
--- sessões reais) +
--- 20260910d_neuropsico_no_show_no_full_charge.sql (falta de Avaliação
--- Neuropsicológica fora da AMS Petrobras nunca cobra valor integral; falta
--- passa a contar como evento anterior no bloqueio de 180 dias).
--- ============================================================
+-- ============================================================================
+-- Migration: Falta de Avaliação Neuropsicológica fora da AMS Petrobras nunca
+--   cobra valor integral (auditoria "espelho" — a cobrança real usa
+--   getAppPrice/getNeuropsicoStatus em src/lib/pricing.ts, corrigida lá).
+-- Data: 2026-09-10
+--
+-- CONTEXTO DE NEGÓCIO
+-- --------------------------------------------------------------------------
+-- Caso real encontrado (paciente ISABELA PINTO MAGALHÃES, Particular):
+--   19/08/2026 — FALTA, marcada para cobrar (cancellation_billing='plan')
+--                → cobrava R$1.990 (valor integral da avaliação)
+--   26/08/2026 — 1ª sessão REALMENTE realizada
+--                → também cobrava R$1.990 (valor integral)
+-- Resultado: 2 cobranças integrais para uma única avaliação.
+--
+-- Causa raiz: uma falta marcada para cobrar (qualquer opção diferente de
+-- "Não Cobrar") não passava pelo bloqueio de reavaliação de 180 dias e,
+-- sendo a 1ª tentativa, caía no fallback de preço cheio — mesmo a avaliação
+-- nunca tendo sido entregue.
+--
+-- Correção: falta (do paciente OU do psicólogo) de Avaliação
+-- Neuropsicológica fora da AMS Petrobras sempre cobra R$0, independente da
+-- opção de cobrança marcada no cancelamento. A busca pela "sessão anterior"
+-- do bloqueio de 180 dias continua ignorando sessões canceladas (sem
+-- alteração) — assim a 1ª sessão REALMENTE realizada (26/08, no caso da
+-- Isabela) não é bloqueada por uma falta anterior e cobra o integral
+-- normalmente; só uma sessão real subsequente dentro de 180 dias é
+-- bloqueada, como já era o comportamento correto para sessões realizadas.
+--
+-- Achado adicional durante o teste: não existe registro de plano
+-- "Particular" cadastrado em produção, então v_plan_name fica NULL pra
+-- pacientes particulares e "UPPER(NULL) = 'AMS PETROBRAS'" resulta em NULL
+-- (não false) — e "NOT NULL" também é NULL, fazendo o Postgres pular
+-- SILENCIOSAMENTE qualquer "IF ... AND NOT v_is_ams", inclusive o bloqueio de
+-- 180 dias que já existia antes desta migration. Corrigido com
+-- COALESCE(..., false) em v_is_ams.
+-- ============================================================================
 
 CREATE OR REPLACE FUNCTION get_appointment_price(
   p_appointment_id  uuid,
@@ -230,63 +250,3 @@ END;
 $$;
 
 GRANT EXECUTE ON FUNCTION get_appointment_price(uuid, uuid, uuid, date, text) TO authenticated;
-
--- ⚠️ Necessário: uma versão anterior pode existir com nome de parâmetro diferente
--- (o Postgres não permite renomear parâmetros de entrada via CREATE OR REPLACE).
-DROP FUNCTION IF EXISTS validate_price_parity(uuid, uuid, uuid, date, text, numeric);
-
-CREATE OR REPLACE FUNCTION validate_price_parity(
-  p_appointment_id      uuid,
-  p_psychologist_id     uuid,
-  p_plan_id             uuid,
-  p_date                date,
-  p_session_type        text,
-  p_price_from_frontend numeric
-)
-RETURNS jsonb
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE
-  v_result  record;
-  v_diff    numeric;
-  v_matched boolean;
-BEGIN
-  SELECT * INTO v_result
-    FROM get_appointment_price(p_appointment_id, p_psychologist_id, p_plan_id, p_date, p_session_type);
-
-  v_diff    := ABS(COALESCE(v_result.final_price, 0) - COALESCE(p_price_from_frontend, 0));
-  v_matched := v_diff < 1;
-
-  IF NOT v_matched THEN
-    PERFORM log_operation_failure(
-      'pricing.parityMismatch',
-      format('Divergência de preço: frontend=%s servidor=%s (appointment=%s)',
-             p_price_from_frontend, v_result.final_price, p_appointment_id),
-      jsonb_build_object(
-        'appointment_id', p_appointment_id,
-        'frontend_price', p_price_from_frontend,
-        'server_price', v_result.final_price,
-        'base_price', v_result.base_price,
-        'applied_rules', v_result.applied_rules
-      ),
-      'critical'
-    );
-  END IF;
-
-  RETURN jsonb_build_object(
-    'matched', v_matched,
-    'base_price', v_result.base_price,
-    'final_price', v_result.final_price,
-    'applied_rules', v_result.applied_rules
-  );
-END;
-$$;
-
-GRANT EXECUTE ON FUNCTION validate_price_parity(uuid, uuid, uuid, date, text, numeric) TO authenticated;
-
--- Verificação
-SELECT proname FROM pg_proc
- WHERE proname IN ('get_appointment_price', 'validate_price_parity')
- ORDER BY proname;

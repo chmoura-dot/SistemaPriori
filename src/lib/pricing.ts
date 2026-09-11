@@ -242,6 +242,19 @@ export function getAppPrice(app: Appointment, ctx: PricingContext): number {
   const effectiveHealthPlan = (app.healthPlanAtTime ?? customer?.healthPlan) as HealthPlan | undefined;
   const isParticularPlan = !effectiveHealthPlan || effectiveHealthPlan === HealthPlan.PARTICULAR;
 
+  // Falta (falta do paciente OU do psicólogo) de Avaliação Neuropsicológica
+  // fora da AMS Petrobras nunca cobra o valor integral — a avaliação não foi
+  // entregue, independente de qual opção de cobrança foi marcada no
+  // cancelamento. AMS Petrobras tem sua própria regra de falta
+  // (getAmsNeuropsicoCharge), que cobra parcialmente via 95090010.
+  if (
+    app.status === AppointmentStatus.CANCELED &&
+    app.type === AppointmentType.NEUROPSICOLOGICA &&
+    effectiveHealthPlan !== HealthPlan.AMS_PETROBRAS
+  ) {
+    return 0;
+  }
+
   // Cancelado sem cobrança = R$0, EXCETO no caso "Falta do Paciente — Isento"
   // (cancellationFault='patient_exempt') de um paciente de CONVÊNIO: nesse
   // caso o convênio é cobrado normalmente (autorização já consumida), mas o
