@@ -10,18 +10,35 @@ Deno.serve(async (req) => {
   try {
     const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
 
-    // 0. Buscar configurações da Z-API
-    const { data: settings, error: settingsError } = await supabase
-      .from("settings")
-      .select("zapi_url, zapi_token")
-      .single();
+    // 0. Buscar configurações da Z-API (com retry para absorver instabilidades transitórias do DB/rede)
+    let settings: { zapi_url: string; zapi_token: string } | null = null;
+    let settingsError: any = null;
+    const SETTINGS_FETCH_ATTEMPTS = 3;
+
+    for (let attempt = 1; attempt <= SETTINGS_FETCH_ATTEMPTS; attempt++) {
+      const { data, error } = await supabase
+        .from("settings")
+        .select("zapi_url, zapi_token")
+        .single();
+
+      settings = data;
+      settingsError = error;
+
+      if (!error && data?.zapi_url) break;
+
+      if (attempt < SETTINGS_FETCH_ATTEMPTS) {
+        console.error(`[WhatsAppReminder] Tentativa ${attempt} de buscar settings falhou, tentando novamente...`, error);
+        await new Promise((resolve) => setTimeout(resolve, attempt * 1000));
+      }
+    }
 
     if (settingsError || !settings?.zapi_url) {
-      console.error("Configurações da Z-API não encontradas ou incompletas.");
+      const detail = settingsError?.message || "Nenhum registro de settings com zapi_url encontrado.";
+      console.error("Configurações da Z-API não encontradas ou incompletas.", detail);
       try {
         await supabase.rpc('log_operation_failure', {
           p_context: 'whatsapp-reminder.config',
-          p_message: 'Configurações da Z-API não encontradas ou incompletas.',
+          p_message: `Configurações da Z-API não encontradas ou incompletas após ${SETTINGS_FETCH_ATTEMPTS} tentativas: ${detail}`,
           p_severity: 'critical'
         });
       } catch (dbErr) {

@@ -28,12 +28,24 @@ Deno.serve(async (req) => {
 
     console.log(`[DailyConfirmation] Processando confirmações para: ${todayStr} (Data local BR)`);
 
-    // 2. Buscar psicólogos ativos com e-mail configurado
-    const { data: psychologists, error: psychError } = await supabase
-      .from('psychologists')
-      .select('id, name, email')
-      .eq('active', true)
-      .neq('email', '');
+    // 2. Buscar psicólogos ativos com e-mail configurado (com retry para absorver Gateway Timeouts transitórios)
+    let psychologists: { id: string; name: string; email: string }[] | null = null;
+    let psychError: any = null;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      const { data, error } = await supabase
+        .from('psychologists')
+        .select('id, name, email')
+        .eq('active', true)
+        .neq('email', '');
+
+      psychologists = data;
+      psychError = error;
+
+      if (!error) break;
+
+      console.error(`[DailyConfirmation] Tentativa ${attempt} de buscar psicólogos falhou, tentando novamente...`, error);
+      if (attempt < 3) await new Promise((resolve) => setTimeout(resolve, attempt * 1000));
+    }
 
     if (psychError) throw psychError;
 
