@@ -5,7 +5,7 @@ import { Appointment, AppointmentStatus } from '../../services/types';
 import { Button } from '../Button';
 import { cn, formatCurrency } from '../../lib/utils';
 import { PlanProcedureInfo } from '../../hooks/billing/billingHelpers';
-import { NeuropsicoStatus, isRepassBlocked } from '../../lib/pricing';
+import { NeuropsicoStatus, AmsNeuropsicoCharge, isRepassBlocked } from '../../lib/pricing';
 
 interface Props {
   app: Appointment;
@@ -21,8 +21,10 @@ interface Props {
   monthFilter: string;
   includePrevMonth: boolean;
   includeNextMonth: boolean;
-  /** Índice 0-based da sessão AMS neuropsico (-1 se não aplicável) */
+  /** Índice 0-based da tentativa no ciclo AMS neuropsico, só para exibição (-1 se não aplicável) */
   amsSessionIndex: number;
+  /** Como esta tentativa é cobrada no ciclo AMS neuropsico (null se não aplicável) */
+  amsCharge: AmsNeuropsicoCharge | null;
   /** Procedimentos do plano do paciente para override manual */
   planProcedures: PlanProcedureInfo[];
   onToggleSelection: (id: string) => void;
@@ -53,6 +55,7 @@ export const AppointmentRow: React.FC<Props> = memo(({
   includePrevMonth,
   includeNextMonth,
   amsSessionIndex,
+  amsCharge,
   planProcedures,
   onToggleSelection,
   onConfirmAppointment,
@@ -88,9 +91,9 @@ export const AppointmentRow: React.FC<Props> = memo(({
   const isFromOtherMonth = (includePrevMonth || includeNextMonth) && appMonth !== monthFilter;
 
   // Flags para regra AMS
-  const isAmsNeuropsico   = amsSessionIndex >= 0;
-  const isAmsAutoAltCode  = isAmsNeuropsico && (amsSessionIndex === 1 || amsSessionIndex === 2);
-  const isAmsBlocked      = isAmsNeuropsico && amsSessionIndex >= 3;
+  const isAmsNeuropsico   = amsCharge !== null;
+  const isAmsAutoAltCode  = amsCharge === 'code_95090010';
+  const isAmsBlocked      = amsCharge === 'blocked';
 
   return (
     <div className="flex flex-col last:border-0">

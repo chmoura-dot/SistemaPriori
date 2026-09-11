@@ -1,12 +1,12 @@
 import { api } from '../../services/api';
 import { apiCache } from '../../services/apiCache';
 import {
-  Appointment, AppointmentStatus, AttendanceMode, RecurrenceFrequency,
+  Appointment, AppointmentStatus, AppointmentType, AttendanceMode, HealthPlan, RecurrenceFrequency,
 } from '../../services/types';
 import { supabase } from '../../lib/supabase';
 import { logger } from '../../lib/logger';
 import { hasTimeOverlap } from '../../lib/timeUtils';
-import { resolvePsychologistAbsenceBilling } from '../../lib/pricing';
+import { resolvePsychologistAbsenceBilling, amsNeuropsicoCycleNeedsAttention } from '../../lib/pricing';
 import { toastInfo } from '../../lib/toast';
 import { findWaitingListMatches, MATCH_HORIZON_DAYS } from '../../lib/waitingListMatch';
 
@@ -55,6 +55,8 @@ export const useScheduleActions = (s: ScheduleData) => {
     s.setIsModalOpen(false);
     s.setEditingId(null);
     s.setRescheduleFromId(null);
+    s.setAmsAlertCustomerId(null);
+    s.setAmsAlertAcknowledged(false);
     resetForm();
   };
 
@@ -86,8 +88,7 @@ export const useScheduleActions = (s: ScheduleData) => {
     s.setIsModalOpen(true);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const doSubmit = async () => {
     s.setIsSaving(true);
     try {
       const { formData, appointments, editingId, date } = s;
@@ -160,6 +161,8 @@ export const useScheduleActions = (s: ScheduleData) => {
       s.setEditingId(null);
       s.setUpdateFuture(false);
       s.setRescheduleFromId(null);
+      s.setAmsAlertCustomerId(null);
+      s.setAmsAlertAcknowledged(false);
     } catch (error: any) {
       const msg = error?.message || '';
       if (msg.includes('conflitante') || msg.includes('já possui') || msg.includes('overlap') || msg.includes('duplicate')) {
@@ -170,6 +173,36 @@ export const useScheduleActions = (s: ScheduleData) => {
     } finally {
       s.setIsSaving(false);
     }
+  };
+
+  // Antes de marcar um NOVO atendimento (não edição/remanejamento) de
+  // Avaliação Neuropsicológica para um paciente AMS Petrobras cujo ciclo
+  // atual já esgotou as 3 tentativas sem nenhum comparecimento real, avisa a
+  // secretária (a avaliação nunca foi entregue, mas o agendamento sozinho não
+  // resolve a autorização/cobrança). É só um aviso — ao confirmar, o
+  // agendamento segue normalmente.
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!s.editingId && !s.rescheduleFromId && !s.amsAlertAcknowledged) {
+      const selectedCustomer = s.customers.find(c => c.id === s.formData.customerId);
+      if (
+        s.formData.type === AppointmentType.NEUROPSICOLOGICA &&
+        selectedCustomer?.healthPlan === HealthPlan.AMS_PETROBRAS &&
+        amsNeuropsicoCycleNeedsAttention(selectedCustomer.id, {
+          customers: s.customers, plans: s.plans, appointments: s.appointments,
+        })
+      ) {
+        s.setAmsAlertCustomerId(selectedCustomer.id);
+        return;
+      }
+    }
+    await doSubmit();
+  };
+
+  const handleAcknowledgeAmsAlert = async () => {
+    s.setAmsAlertCustomerId(null);
+    s.setAmsAlertAcknowledged(true);
+    await doSubmit();
   };
 
   const handleEdit = (appointment: Appointment) => {
@@ -338,7 +371,7 @@ export const useScheduleActions = (s: ScheduleData) => {
   return {
     resetForm, handleCloseModal, handleSubmit, handleEdit,
     handleDelete, confirmDelete, handleConfirm, handleReschedule,
-    handleCancelBillingChoice,
+    handleCancelBillingChoice, handleAcknowledgeAmsAlert,
     sendWhatsApp, handleReminder,
   };
 };

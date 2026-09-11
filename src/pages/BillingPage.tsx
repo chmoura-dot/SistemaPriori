@@ -105,6 +105,7 @@ export const BillingPage = () => {
         getAppPrice={billing.getAppPrice}
         getTussCode={billing.getTussCode}
         getAmsNeuropsicoSessionIndex={billing.getAmsNeuropsicoSessionIndex}
+        getAmsNeuropsicoCharge={billing.getAmsNeuropsicoCharge}
         getPlanProcedures={billing.getPlanProcedures}
         onClose={billing.closeCreateModal}
         onPlanChange={billing.handlePlanChange}

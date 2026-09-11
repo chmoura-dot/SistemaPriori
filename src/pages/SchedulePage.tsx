@@ -11,6 +11,7 @@ import { ScheduleFormModal } from './schedule/ScheduleFormModal';
 import { CancellationModals } from './schedule/CancellationModals';
 import { OnlineAppointmentsPanel } from './schedule/OnlineAppointmentsPanel';
 import { RenewalAlertBanner } from './schedule/RenewalAlertBanner';
+import { AmsNeuropsicoCycleAlert } from '../components/AmsNeuropsicoCycleAlert';
 import { useScheduleData } from './schedule/useScheduleData';
 import { useScheduleActions } from './schedule/useScheduleActions';
 
@@ -19,7 +20,7 @@ export const SchedulePage = () => {
   const {
     resetForm, handleCloseModal, handleSubmit, handleEdit,
     handleDelete, confirmDelete, handleConfirm, handleReschedule,
-    handleCancelBillingChoice,
+    handleCancelBillingChoice, handleAcknowledgeAmsAlert,
     sendWhatsApp, handleReminder,
   } = useScheduleActions(s);
 
@@ -222,6 +223,13 @@ export const SchedulePage = () => {
           if (appt) { await handleDelete(appt); handleCloseModal(); }
         }}
       />
+
+      {s.amsAlertCustomerId && (
+        <AmsNeuropsicoCycleAlert
+          customerName={s.customers.find(c => c.id === s.amsAlertCustomerId)?.name ?? 'Paciente'}
+          onAcknowledge={handleAcknowledgeAmsAlert}
+        />
+      )}
 
       {/* Cancellation + Delete Modals */}
       <CancellationModals

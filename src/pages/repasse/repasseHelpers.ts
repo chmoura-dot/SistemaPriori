@@ -13,7 +13,7 @@ import {
 import { calcRepass } from '../../lib/repassRules';
 import {
   getAppPrice,
-  getAmsNeuropsicoSessionIndex,
+  getAmsNeuropsicoCharge,
   isRepassBlocked,
   PricingContext,
 } from '../../lib/pricing';
@@ -68,8 +68,8 @@ export function getRepassValue(
     customer?.healthPlan === HealthPlan.AMS_PETROBRAS &&
     app.type === AppointmentType.NEUROPSICOLOGICA
   ) {
-    const sessionIdx = getAmsNeuropsicoSessionIndex(app, pricingCtx);
-    if (sessionIdx === 1 || sessionIdx === 2) {
+    const charge = getAmsNeuropsicoCharge(app, pricingCtx);
+    if (charge === 'code_95090010') {
       resolvedProcCode = '95090010';
     }
   }
@@ -137,8 +137,8 @@ export function getExpectedRepass(
     customer?.healthPlan === HealthPlan.AMS_PETROBRAS &&
     app.type === AppointmentType.NEUROPSICOLOGICA
   ) {
-    const sessionIdx = getAmsNeuropsicoSessionIndex(app, pricingCtx);
-    if (sessionIdx === 1 || sessionIdx === 2) resolvedProcCode = '95090010';
+    const charge = getAmsNeuropsicoCharge(app, pricingCtx);
+    if (charge === 'code_95090010') resolvedProcCode = '95090010';
   }
 
   const procedureByCode = resolvedProcCode
@@ -175,8 +175,8 @@ export function buildRepassItem(
       customer?.healthPlan === HealthPlan.AMS_PETROBRAS &&
       app.type === AppointmentType.NEUROPSICOLOGICA
     ) {
-      const sessionIdx = getAmsNeuropsicoSessionIndex(app, pricingCtx);
-      if (sessionIdx === 1 || sessionIdx === 2) resolvedProcCode = '95090010';
+      const charge = getAmsNeuropsicoCharge(app, pricingCtx);
+      if (charge === 'code_95090010') resolvedProcCode = '95090010';
     }
     const procedureByCode = resolvedProcCode
       ? plan?.procedures?.find(p => p.code === resolvedProcCode)
@@ -245,8 +245,8 @@ export function generateRepassePDF(
         customer?.healthPlan === HealthPlan.AMS_PETROBRAS &&
         app.type === AppointmentType.NEUROPSICOLOGICA
       ) {
-        const sessionIdx = getAmsNeuropsicoSessionIndex(app, pricingCtx);
-        if (sessionIdx === 1 || sessionIdx === 2) resolvedProcCode = '95090010';
+        const charge = getAmsNeuropsicoCharge(app, pricingCtx);
+        if (charge === 'code_95090010') resolvedProcCode = '95090010';
       }
 
       const procedureByCode = resolvedProcCode

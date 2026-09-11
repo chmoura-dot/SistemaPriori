@@ -18,47 +18,174 @@ export interface PricingContext {
 }
 
 /**
- * Retorna o índice (0-based) da sessão neuropsicológica para pacientes AMS Petrobras,
- * dentro do ciclo de 10 meses. Após 10 meses, um novo ciclo começa (índice volta a 0).
+ * Classificação de cobrança de uma tentativa (sessão real ou falta faturada)
+ * dentro do ciclo AMS Petrobras de Avaliação Neuropsicológica.
+ */
+export type AmsNeuropsicoCharge = 'integral' | 'code_95090010' | 'blocked';
+
+interface AmsNeuropsicoCycleResult {
+  position: number;
+  charge: AmsNeuropsicoCharge;
+}
+
+/**
+ * Uma falta (status CANCELED) "consome" posição no ciclo AMS quando ela
+ * efetivamente gera cobrança ao convênio — ou seja, quando não se enquadra na
+ * regra de isenção total de getAppPrice (cancellationBilling='none', exceto o
+ * caso 'patient_exempt' que também cobra o convênio). Falta totalmente isenta
+ * (sem cobrança nenhuma) não consome posição nem é considerada aqui.
+ */
+function isBilledFalta(a: Appointment): boolean {
+  if (a.status !== AppointmentStatus.CANCELED) return false;
+  if (a.cancellationBilling && a.cancellationBilling !== 'none') return true;
+  return a.cancellationFault === 'patient_exempt';
+}
+
+/**
+ * Percorre o ciclo (até 10 meses) de tentativas de Avaliação Neuropsicológica
+ * de um paciente AMS Petrobras — contando tanto sessões realmente realizadas
+ * quanto faltas que geram cobrança ao convênio (isBilledFalta) numa única fila
+ * cronológica compartilhada — e classifica cada uma:
+ *
+ *  - Posição ≥ 3 no ciclo → sempre bloqueada (R$0), comparecendo ou faltando.
+ *  - Comparecimento real, e o valor integral ainda não foi cobrado no ciclo
+ *    → cobra o integral (a 1ª vez que a avaliação é de fato entregue).
+ *  - Qualquer outro caso dentro do ciclo (falta, ou comparecimento com
+ *    integral já usado) → cobra o código 95090010, até no máximo 2 vezes por
+ *    ciclo; esgotado esse limite, também bloqueia (R$0).
+ *
+ * Retorna null se não for AMS Petrobras / Avaliação Neuropsicológica, ou se o
+ * agendamento não for encontrado na própria fila (ex.: falta isenta).
+ */
+function computeAmsNeuropsicoCycle(
+  app: Appointment,
+  ctx: PricingContext,
+): AmsNeuropsicoCycleResult | null {
+  if (app.type !== AppointmentType.NEUROPSICOLOGICA) return null;
+  const customer = ctx.customers.find(c => c.id === app.customerId);
+  if (customer?.healthPlan !== HealthPlan.AMS_PETROBRAS) return null;
+
+  const attempts = ctx.appointments
+    .filter(a =>
+      a.customerId === app.customerId &&
+      a.type === AppointmentType.NEUROPSICOLOGICA &&
+      (a.status !== AppointmentStatus.CANCELED || isBilledFalta(a))
+    )
+    .sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime));
+
+  let cycleStartDate: string | null = null;
+  let position = -1;
+  let integralUsed = false;
+  let code95090010Count = 0;
+
+  for (const attempt of attempts) {
+    const attended = attempt.status !== AppointmentStatus.CANCELED;
+
+    if (cycleStartDate === null) {
+      cycleStartDate = attempt.date;
+      position = 0;
+    } else {
+      const [sy, sm] = cycleStartDate.split('-').map(Number);
+      const [ey, em] = attempt.date.split('-').map(Number);
+      const monthsDiff = (ey - sy) * 12 + (em - sm);
+      if (monthsDiff >= 10) {
+        cycleStartDate = attempt.date;
+        position = 0;
+        integralUsed = false;
+        code95090010Count = 0;
+      } else {
+        position++;
+      }
+    }
+
+    let charge: AmsNeuropsicoCharge;
+    if (position >= 3) {
+      charge = 'blocked';
+    } else if (attended && !integralUsed) {
+      charge = 'integral';
+      integralUsed = true;
+    } else if (code95090010Count < 2) {
+      charge = 'code_95090010';
+      code95090010Count++;
+    } else {
+      charge = 'blocked';
+    }
+
+    if (attempt.id === app.id) return { position, charge };
+  }
+  return null;
+}
+
+/**
+ * Retorna o índice (0-based) da tentativa dentro do ciclo AMS Petrobras —
+ * conta sessões reais e faltas faturadas na mesma fila. Uso: exibição
+ * ("AMS 2ª") — para decidir o VALOR a cobrar, use getAmsNeuropsicoCharge.
  * Retorna -1 se não for AMS ou não for Avaliação Neuropsicológica.
  */
 export function getAmsNeuropsicoSessionIndex(
   app: Appointment,
   ctx: PricingContext,
 ): number {
-  if (app.type !== AppointmentType.NEUROPSICOLOGICA) return -1;
-  const customer = ctx.customers.find(c => c.id === app.customerId);
-  if (customer?.healthPlan !== HealthPlan.AMS_PETROBRAS) return -1;
+  return computeAmsNeuropsicoCycle(app, ctx)?.position ?? -1;
+}
 
-  const allSessions = ctx.appointments
+/**
+ * Retorna como cobrar esta tentativa no ciclo AMS Petrobras (ver regra em
+ * computeAmsNeuropsicoCycle). Retorna null se não for AMS/Avaliação
+ * Neuropsicológica.
+ */
+export function getAmsNeuropsicoCharge(
+  app: Appointment,
+  ctx: PricingContext,
+): AmsNeuropsicoCharge | null {
+  return computeAmsNeuropsicoCycle(app, ctx)?.charge ?? null;
+}
+
+/**
+ * Detecta se o ciclo AMS Petrobras ATUAL (o mais recente, ainda dentro da
+ * janela de 10 meses) de um paciente já esgotou as 3 tentativas sem que o
+ * paciente tenha comparecido nenhuma vez — ou seja, a avaliação nunca foi de
+ * fato entregue, mas o ciclo não tem mais posições cobráveis. Usado para
+ * alertar a secretária ao tentar marcar um novo atendimento para esse
+ * paciente, já que agendar não vai resolver a cobrança sozinho.
+ */
+export function amsNeuropsicoCycleNeedsAttention(
+  customerId: string,
+  ctx: PricingContext,
+): boolean {
+  const customer = ctx.customers.find(c => c.id === customerId);
+  if (customer?.healthPlan !== HealthPlan.AMS_PETROBRAS) return false;
+
+  const attempts = ctx.appointments
     .filter(a =>
-      a.customerId === app.customerId &&
+      a.customerId === customerId &&
       a.type === AppointmentType.NEUROPSICOLOGICA &&
-      a.status !== AppointmentStatus.CANCELED
+      (a.status !== AppointmentStatus.CANCELED || isBilledFalta(a))
     )
     .sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime));
 
   let cycleStartDate: string | null = null;
-  let indexInCycle = -1;
+  let cycleAttempts: Appointment[] = [];
 
-  for (const session of allSessions) {
+  for (const attempt of attempts) {
     if (cycleStartDate === null) {
-      cycleStartDate = session.date;
-      indexInCycle = 0;
+      cycleStartDate = attempt.date;
+      cycleAttempts = [attempt];
     } else {
       const [sy, sm] = cycleStartDate.split('-').map(Number);
-      const [ey, em] = session.date.split('-').map(Number);
+      const [ey, em] = attempt.date.split('-').map(Number);
       const monthsDiff = (ey - sy) * 12 + (em - sm);
       if (monthsDiff >= 10) {
-        cycleStartDate = session.date;
-        indexInCycle = 0;
+        cycleStartDate = attempt.date;
+        cycleAttempts = [attempt];
       } else {
-        indexInCycle++;
+        cycleAttempts.push(attempt);
       }
     }
-    if (session.id === app.id) return indexInCycle;
   }
-  return -1;
+
+  const everAttended = cycleAttempts.some(a => a.status !== AppointmentStatus.CANCELED);
+  return cycleAttempts.length >= 3 && !everAttended;
 }
 
 /**
@@ -129,9 +256,9 @@ export function getAppPrice(app: Appointment, ctx: PricingContext): number {
 
   // Regra específica AMS Petrobras para Avaliação Neuropsicológica
   if (effectiveHealthPlan === HealthPlan.AMS_PETROBRAS && app.type === AppointmentType.NEUROPSICOLOGICA) {
-    const sessionIdx = getAmsNeuropsicoSessionIndex(app, ctx);
-    if (sessionIdx >= 3) return 0;
-    if (sessionIdx === 1 || sessionIdx === 2) {
+    const charge = getAmsNeuropsicoCharge(app, ctx);
+    if (charge === 'blocked' || charge === null) return 0;
+    if (charge === 'code_95090010') {
       const proc95090010 = plan?.procedures?.find(p => p.code === '95090010');
       return app.customPrice ?? proc95090010?.price ?? customer?.customPrice ?? 0;
     }

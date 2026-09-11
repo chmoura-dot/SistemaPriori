@@ -69,6 +69,11 @@ export const useScheduleData = () => {
   const [cancellationScope, setCancellationScope] = useState<'single' | 'stop_treatment'>('single');
   const [deleteModalAppId, setDeleteModalAppId] = useState<string | null>(null);
 
+  // Alerta: ciclo AMS Petrobras de Avaliação Neuropsicológica já esgotado
+  // (3 tentativas) sem que o paciente tenha comparecido nenhuma vez.
+  const [amsAlertCustomerId, setAmsAlertCustomerId] = useState<string | null>(null);
+  const [amsAlertAcknowledged, setAmsAlertAcknowledged] = useState(false);
+
   // ── Data loading ───────────────────────────────────────────────────────
   const loadData = async (targetDateStr: string = date, forceRefresh = false) => {
     const d = new Date(targetDateStr + 'T12:00:00');
@@ -139,6 +144,8 @@ export const useScheduleData = () => {
     cancellationStep, setCancellationStep,
     cancellationScope, setCancellationScope,
     deleteModalAppId, setDeleteModalAppId,
+    amsAlertCustomerId, setAmsAlertCustomerId,
+    amsAlertAcknowledged, setAmsAlertAcknowledged,
     loadData,
   };
 };

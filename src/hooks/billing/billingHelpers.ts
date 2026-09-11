@@ -3,6 +3,7 @@ import { getTodayISO } from '../../lib/dateUtils';
 import {
   getAppPrice as sharedGetAppPrice,
   getAmsNeuropsicoSessionIndex as sharedGetAmsNeuropsicoSessionIndex,
+  getAmsNeuropsicoCharge as sharedGetAmsNeuropsicoCharge,
   getNeuropsicoStatus as sharedGetNeuropsicoStatus,
   PricingContext,
 } from '../../lib/pricing';
@@ -41,6 +42,7 @@ export function createBillingHelpers({
 
   const pricingCtx: PricingContext = { customers, plans, appointments };
   const getAmsNeuropsicoSessionIndex = (app: Appointment) => sharedGetAmsNeuropsicoSessionIndex(app, pricingCtx);
+  const getAmsNeuropsicoCharge = (app: Appointment) => sharedGetAmsNeuropsicoCharge(app, pricingCtx);
   const getNeuropsicoStatus = (app: Appointment) => sharedGetNeuropsicoStatus(app, pricingCtx);
   const getAppPrice = (app: Appointment) => sharedGetAppPrice(app, pricingCtx);
 
@@ -49,9 +51,9 @@ export function createBillingHelpers({
     const effectiveHP = app.healthPlanAtTime ?? customer?.healthPlan;
     const plan = matchPlanByHealthPlan(plans, effectiveHP);
     if (effectiveHP === HealthPlan.AMS_PETROBRAS && app.type === AppointmentType.NEUROPSICOLOGICA) {
-      const sessionIdx = getAmsNeuropsicoSessionIndex(app);
-      if (sessionIdx >= 3) return '';
-      if (sessionIdx === 1 || sessionIdx === 2) return '95090010';
+      const charge = getAmsNeuropsicoCharge(app);
+      if (charge === 'blocked' || charge === null) return '';
+      if (charge === 'code_95090010') return '95090010';
       return plan?.procedures?.find(p => p.type === AppointmentType.NEUROPSICOLOGICA)?.code || app.procedureCode || '';
     }
     return app.procedureCode || plan?.procedures?.find(p => p.type === app.type)?.code || '';
@@ -174,7 +176,7 @@ export function createBillingHelpers({
     }).sort((a, b) => a.date.localeCompare(b.date));
   };
 
-  return { getNeuropsicoStatus, getAmsNeuropsicoSessionIndex, getAppPrice, getTussCode, getPlanProcedures, generateBatchNumber, getPlansWithEarlierDrafts, getEligibleAppointments, calculateTotalSelectedAmount, getPendingCountByPlan, getAvailableAppointmentsToAddToBatch };
+  return { getNeuropsicoStatus, getAmsNeuropsicoSessionIndex, getAmsNeuropsicoCharge, getAppPrice, getTussCode, getPlanProcedures, generateBatchNumber, getPlansWithEarlierDrafts, getEligibleAppointments, calculateTotalSelectedAmount, getPendingCountByPlan, getAvailableAppointmentsToAddToBatch };
 }
 
 

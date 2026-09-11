@@ -5,7 +5,7 @@ import {
   AppointmentType, BillingBatch,
 } from '../../services/types';
 import { PlanProcedureInfo } from '../../hooks/billing/billingHelpers';
-import { NeuropsicoStatus } from '../../lib/pricing';
+import { NeuropsicoStatus, AmsNeuropsicoCharge } from '../../lib/pricing';
 import { Modal } from '../Modal';
 import { Button } from '../Button';
 import { Input } from '../Input';
@@ -40,6 +40,7 @@ interface Props {
   getAppPrice: (app: Appointment) => number;
   getTussCode: (app: Appointment) => string;
   getAmsNeuropsicoSessionIndex: (app: Appointment) => number;
+  getAmsNeuropsicoCharge: (app: Appointment) => AmsNeuropsicoCharge | null;
   getPlanProcedures: (app: Appointment) => PlanProcedureInfo[];
   onClose: () => void;
   onPlanChange: (plan: HealthPlan) => void;
@@ -76,7 +77,7 @@ export const CreateBatchModal: React.FC<Props> = ({
   selectedAppointmentIds, neuropsicoDecisions, customers, psychologists, plans,
   eligibleAppointments, totalSelectedAmount, editingDraftBatch, includePrevMonth, blockedPlans,
   pendingCountByPlan,
-  getNeuropsicoStatus, getAppPrice, getTussCode, getAmsNeuropsicoSessionIndex, getPlanProcedures,
+  getNeuropsicoStatus, getAppPrice, getTussCode, getAmsNeuropsicoSessionIndex, getAmsNeuropsicoCharge, getPlanProcedures,
   onClose, onPlanChange, onBatchNumberChange,
   onPatientFilterChange, onMonthFilterChange, onToggleSelection, onSelectAll,
   onConfirmAppointment, onIgnoreAppointment, onUnignoreAppointment, onToggleNeuropsico, onIncludePrevMonthChange,
@@ -230,6 +231,7 @@ export const CreateBatchModal: React.FC<Props> = ({
           psychologistMap={psychologistMap} getAppPrice={getAppPrice} getTussCode={getTussCode}
           getNeuropsicoStatus={getNeuropsicoStatus}
           getAmsNeuropsicoSessionIndex={getAmsNeuropsicoSessionIndex}
+          getAmsNeuropsicoCharge={getAmsNeuropsicoCharge}
           getPlanProcedures={getPlanProcedures}
           onPatientFilterChange={onPatientFilterChange} onSelectAll={onSelectAll}
           onToggleSelection={onToggleSelection} onConfirmAppointment={onConfirmAppointment}

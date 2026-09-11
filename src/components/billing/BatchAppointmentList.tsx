@@ -9,7 +9,7 @@ import { Appointment, Customer, Plan, BillingBatch, AppointmentType, HealthPlan 
 import { cn, formatCurrency } from '../../lib/utils';
 import { AppointmentRow } from './AppointmentRow';
 import { PlanProcedureInfo } from '../../hooks/billing/billingHelpers';
-import { NeuropsicoStatus, isRepassBlocked } from '../../lib/pricing';
+import { NeuropsicoStatus, AmsNeuropsicoCharge, isRepassBlocked } from '../../lib/pricing';
 
 interface SessionWarning {
   customerName: string;
@@ -43,6 +43,7 @@ interface Props {
   getTussCode: (app: Appointment) => string;
   getNeuropsicoStatus: (app: Appointment) => NeuropsicoStatus;
   getAmsNeuropsicoSessionIndex: (app: Appointment) => number;
+  getAmsNeuropsicoCharge: (app: Appointment) => AmsNeuropsicoCharge | null;
   getPlanProcedures: (app: Appointment) => PlanProcedureInfo[];
   onPatientFilterChange: (value: string) => void;
   onSelectAll: () => void;
@@ -63,7 +64,7 @@ export const BatchAppointmentList: React.FC<Props> = ({
   sessionLimitMap, selectedCountMap, duplicateKeys,
   isDraftMode, editingDraftBatch, uniquePatients, totalSelectedAmount, sessionWarnings,
   psychologistMap, getAppPrice, getTussCode, getNeuropsicoStatus,
-  getAmsNeuropsicoSessionIndex, getPlanProcedures,
+  getAmsNeuropsicoSessionIndex, getAmsNeuropsicoCharge, getPlanProcedures,
   onPatientFilterChange, onSelectAll, onToggleSelection,
   onConfirmAppointment, onIgnoreAppointment, onUnignoreAppointment, onToggleNeuropsico, onQuickAddToDraft,
   onOverrideProcedureCode, onOverridePrice,
@@ -177,6 +178,7 @@ export const BatchAppointmentList: React.FC<Props> = ({
                   includePrevMonth={includePrevMonth}
                   includeNextMonth={includeNextMonth}
                   amsSessionIndex={getAmsNeuropsicoSessionIndex(app)}
+                  amsCharge={getAmsNeuropsicoCharge(app)}
                   planProcedures={getPlanProcedures(app)}
                   onToggleSelection={onToggleSelection}
                   onConfirmAppointment={onConfirmAppointment}
