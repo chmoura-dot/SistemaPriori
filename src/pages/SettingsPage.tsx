@@ -82,7 +82,7 @@ export const SettingsPage = () => {
 
   const handleAckFailure = async (id: string) => {
     try {
-      await api.acknowledgeOperationFailure(id);
+      await api.resolveOperationFailure(id);
       await loadFailures();
     } catch (error: any) {
       alert(`Erro ao marcar como resolvido: ${error.message}`);
@@ -304,7 +304,7 @@ export const SettingsPage = () => {
             ) : (
               <div className="space-y-3 max-h-60 overflow-y-auto pr-2">
                 {failures.map((f) => (
-                  <div key={f.id} className={`p-3.5 rounded-xl border text-xs flex flex-col md:flex-row justify-between items-start md:items-center gap-3 ${f.acknowledged ? 'bg-zinc-50/50 border-zinc-100 text-zinc-500' : 'bg-red-50/40 border-red-100 text-zinc-800'}`}>
+                  <div key={f.id} className={`p-3.5 rounded-xl border text-xs flex flex-col md:flex-row justify-between items-start md:items-center gap-3 ${f.resolved ? 'bg-zinc-50/50 border-zinc-100 text-zinc-500' : 'bg-red-50/40 border-red-100 text-zinc-800'}`}>
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
                         <span className={`px-2 py-0.5 rounded-full font-bold text-[9px] ${f.severity === 'critical' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
@@ -325,7 +325,7 @@ export const SettingsPage = () => {
                         </details>
                       )}
                     </div>
-                    {!f.acknowledged && (
+                    {!f.resolved && (
                       <Button
                         onClick={() => handleAckFailure(f.id)}
                         className="text-[10px] py-1 px-2.5 bg-white border border-zinc-200 text-zinc-700 hover:bg-zinc-50 font-medium"

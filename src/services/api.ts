@@ -213,11 +213,11 @@ export const api = {
     if (error) throw new Error(error.message);
     return data;
   },
-  acknowledgeOperationFailure: async (id: string) => {
-    const { error } = await supabase
-      .from('operation_failures')
-      .update({ acknowledged: true })
-      .eq('id', id);
+  resolveOperationFailure: async (id: string) => {
+    const { data, error } = await supabase.functions.invoke('resolve-operation-failure', {
+      body: { id },
+    });
     if (error) throw new Error(error.message);
+    return data;
   },
 };
