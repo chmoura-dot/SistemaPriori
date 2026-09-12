@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { CheckCircle2, Clock, AlertCircle, Download, Trash2, Edit2, Send, FileText, ChevronDown } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, subMonths } from 'date-fns';
 import { BillingBatch, BillingBatchStatus, Appointment } from '../../services/types';
 import { Button } from '../Button';
 import { formatCurrency } from '../../lib/utils';
@@ -8,6 +8,7 @@ import { formatCurrency } from '../../lib/utils';
 interface Props {
   batches: BillingBatch[];
   appointments: Appointment[];
+  getAppPrice: (app: Appointment) => number;
   onDetails: (batch: BillingBatch) => void;
   onMarkAsPaid: (batch: BillingBatch) => void;
   onExport: (batch: BillingBatch) => void;
@@ -94,9 +95,20 @@ const MONTH_NAMES = [
   'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez',
 ];
 
+// ─── Filtro de período para o histórico de lotes pagos ─────────────────
+type PaidPeriodFilter = '3m' | '6m' | '1y' | 'all';
+
+const PAID_PERIOD_OPTIONS: { value: PaidPeriodFilter; label: string }[] = [
+  { value: '3m', label: 'Últimos 3 meses' },
+  { value: '6m', label: 'Últimos 6 meses' },
+  { value: '1y', label: 'Último ano' },
+  { value: 'all', label: 'Ver tudo' },
+];
+
 export const BillingBatchTable: React.FC<Props> = ({
   batches,
   appointments,
+  getAppPrice,
   onDetails,
   onMarkAsPaid,
   onExport,
@@ -108,6 +120,9 @@ export const BillingBatchTable: React.FC<Props> = ({
     [BillingBatchStatus.PAID]: true,
   });
 
+  // Filtro de período do histórico de lotes pagos, para não listar tudo de uma vez.
+  const [paidPeriod, setPaidPeriod] = useState<PaidPeriodFilter>('3m');
+
   const toggleSection = (status: BillingBatchStatus) =>
     setCollapsed(prev => ({ ...prev, [status]: !prev[status] }));
 
@@ -118,7 +133,7 @@ export const BillingBatchTable: React.FC<Props> = ({
   };
 
   // Competência = mês/ano dos ATENDIMENTOS do lote (não a data de geração do faturamento).
-  const formatCompetencia = (batch: BillingBatch): string => {
+  const getCompetenciaMonthKey = (batch: BillingBatch): string => {
     const batchApps = appointments.filter(a => batch.appointmentIds.includes(a.id));
     const monthCounts: Record<string, number> = {};
     for (const app of batchApps) {
@@ -128,13 +143,23 @@ export const BillingBatchTable: React.FC<Props> = ({
       }
     }
     const predominant = Object.entries(monthCounts).sort((a, b) => b[1] - a[1])[0]?.[0];
-    if (predominant) {
-      const label = formatMonthLabel(predominant);
-      if (label) return label;
-    }
-    const fallbackMonth = formatMonthLabel(batch.sentAt.substring(0, 7));
-    if (fallbackMonth) return fallbackMonth;
-    return format(new Date(batch.sentAt), 'dd/MM/yyyy');
+    if (predominant) return predominant;
+    const fallbackMonth = batch.sentAt.substring(0, 7);
+    if (/^\d{4}-\d{2}$/.test(fallbackMonth)) return fallbackMonth;
+    return format(new Date(batch.sentAt), 'yyyy-MM');
+  };
+
+  const formatCompetencia = (batch: BillingBatch): string => {
+    const monthKey = getCompetenciaMonthKey(batch);
+    return formatMonthLabel(monthKey) || format(new Date(batch.sentAt), 'dd/MM/yyyy');
+  };
+
+  // Filtra lotes pagos por período (competência) para evitar listar todo o histórico de uma vez.
+  const filterByPaidPeriod = (groupBatches: BillingBatch[]): BillingBatch[] => {
+    if (paidPeriod === 'all') return groupBatches;
+    const monthsBack = paidPeriod === '3m' ? 2 : paidPeriod === '6m' ? 5 : 11;
+    const cutoffKey = format(subMonths(new Date(), monthsBack), 'yyyy-MM');
+    return groupBatches.filter(b => getCompetenciaMonthKey(b) >= cutoffKey);
   };
 
   // ─── Renderiza uma linha de lote ─────────────────────────────────────
@@ -142,6 +167,10 @@ export const BillingBatchTable: React.FC<Props> = ({
     const isDraft = batch.status === BillingBatchStatus.DRAFT;
     const batchAppointments = appointments.filter(a => batch.appointmentIds.includes(a.id));
     const deniedCount = batchAppointments.filter(a => a.billingStatus === 'denied').length;
+    // Recalculado ao vivo (mesma lógica do modal de Detalhes) em vez de ler
+    // batch.totalAmount persistido, que pode ficar desatualizado se o preço
+    // de algum atendimento mudar após o lote ser criado/enviado.
+    const batchTotal = batchAppointments.reduce((sum, a) => sum + getAppPrice(a), 0);
 
     return (
       <tr
@@ -177,7 +206,7 @@ export const BillingBatchTable: React.FC<Props> = ({
         </td>
         <td className="px-6 py-4">
           <span className="text-sm font-semibold text-priori-navy">
-            {formatCurrency(batch.totalAmount)}
+            {formatCurrency(batchTotal)}
           </span>
           {isDraft && (
             <p className="text-[10px] text-amber-600 mt-0.5">Previsão</p>
@@ -289,13 +318,20 @@ export const BillingBatchTable: React.FC<Props> = ({
   return (
     <div className="space-y-4">
       {STATUS_ORDER.map((status) => {
-        const groupBatches = batches.filter(b => b.status === status);
-        if (groupBatches.length === 0) return null;
+        const allGroupBatches = batches.filter(b => b.status === status);
+        if (allGroupBatches.length === 0) return null;
+
+        const isPaidGroup = status === BillingBatchStatus.PAID;
+        const groupBatches = isPaidGroup ? filterByPaidPeriod(allGroupBatches) : allGroupBatches;
 
         const theme = STATUS_THEME[status];
         const isCollapsed = !!collapsed[status];
-        const groupTotal = groupBatches.reduce((sum, b) => sum + (b.totalAmount || 0), 0);
+        const groupTotal = groupBatches.reduce((sum, b) => {
+          const batchAppointments = appointments.filter(a => b.appointmentIds.includes(a.id));
+          return sum + batchAppointments.reduce((s, a) => s + getAppPrice(a), 0);
+        }, 0);
         const count = groupBatches.length;
+        const totalCount = allGroupBatches.length;
         const isDraftGroup = status === BillingBatchStatus.DRAFT;
 
         return (
@@ -304,20 +340,37 @@ export const BillingBatchTable: React.FC<Props> = ({
             className={`bg-white rounded-2xl border border-zinc-100 shadow-sm overflow-hidden border-l-4 ${theme.headerBorder}`}
           >
             {/* Cabeçalho clicável da seção */}
-            <button
+            <div
+              role="button"
+              tabIndex={0}
               onClick={() => toggleSection(status)}
-              className={`w-full flex items-center justify-between gap-4 px-5 py-4 transition-colors ${theme.headerBg}`}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleSection(status); } }}
+              className={`w-full flex items-center justify-between gap-4 px-5 py-4 transition-colors cursor-pointer ${theme.headerBg}`}
             >
               <div className="flex items-center gap-3">
                 <span className={`p-2 rounded-lg ${theme.iconWrap}`}>{theme.icon}</span>
                 <div className="text-left">
                   <p className={`text-sm font-bold ${theme.headerText}`}>{theme.label}</p>
                   <p className="text-xs text-zinc-500">
-                    {count} {count === 1 ? 'lote' : 'lotes'}
+                    {isPaidGroup && count !== totalCount
+                      ? `${count} de ${totalCount} ${totalCount === 1 ? 'lote' : 'lotes'}`
+                      : `${totalCount} ${totalCount === 1 ? 'lote' : 'lotes'}`}
                   </p>
                 </div>
               </div>
               <div className="flex items-center gap-4">
+                {isPaidGroup && !isCollapsed && (
+                  <select
+                    value={paidPeriod}
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={(e) => setPaidPeriod(e.target.value as PaidPeriodFilter)}
+                    className="text-xs font-medium text-zinc-600 bg-white border border-zinc-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-priori-navy/20"
+                  >
+                    {PAID_PERIOD_OPTIONS.map(opt => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                )}
                 <div className="text-right">
                   <p className="text-[10px] uppercase tracking-wider text-zinc-400 font-medium">
                     {isDraftGroup ? 'Previsão' : 'Subtotal'}
@@ -329,18 +382,30 @@ export const BillingBatchTable: React.FC<Props> = ({
                   className={`text-zinc-400 transition-transform ${isCollapsed ? '' : 'rotate-180'}`}
                 />
               </div>
-            </button>
+            </div>
 
             {/* Corpo da seção */}
             {!isCollapsed && (
-              <div className="overflow-x-auto border-t border-zinc-100">
-                <table className="w-full text-left border-collapse">
-                  <TableHead />
-                  <tbody className="divide-y divide-zinc-50">
-                    {groupBatches.map(renderRow)}
-                  </tbody>
-                </table>
-              </div>
+              groupBatches.length === 0 ? (
+                <div className="px-6 py-8 text-center border-t border-zinc-100">
+                  <p className="text-sm text-zinc-400">Nenhum lote pago neste período.</p>
+                  <button
+                    onClick={() => setPaidPeriod('all')}
+                    className="text-xs font-medium text-priori-navy hover:underline mt-1"
+                  >
+                    Ver todo o histórico
+                  </button>
+                </div>
+              ) : (
+                <div className="overflow-x-auto border-t border-zinc-100">
+                  <table className="w-full text-left border-collapse">
+                    <TableHead />
+                    <tbody className="divide-y divide-zinc-50">
+                      {groupBatches.map(renderRow)}
+                    </tbody>
+                  </table>
+                </div>
+              )
             )}
           </div>
         );

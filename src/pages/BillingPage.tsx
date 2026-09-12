@@ -76,6 +76,7 @@ export const BillingPage = () => {
       <BillingBatchTable
         batches={billing.batches}
         appointments={billing.appointments}
+        getAppPrice={billing.getAppPrice}
         onDetails={(batch) => billing.openBatchDetails(batch)}
         onMarkAsPaid={billing.handleMarkAsPaid}
         onExport={billing.handleExportBatch}
