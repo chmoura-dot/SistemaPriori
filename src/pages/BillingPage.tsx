@@ -52,14 +52,6 @@ export const BillingPage = () => {
             Novo Lote
           </Button>
         </div>
-
-        <Button
-          onClick={() => billing.openCreateModal()}
-          className="bg-priori-navy hover:bg-priori-navy/90 shadow-sm"
-        >
-          <Plus size={20} className="mr-2" />
-          Novo Lote
-        </Button>
       </div>
 
       {/* Cards de Resumo */}

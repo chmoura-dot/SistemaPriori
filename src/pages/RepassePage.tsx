@@ -140,18 +140,6 @@ export const RepassePage = () => {
             )}
           </Button>
         </div>
-
-        <Button
-          onClick={() => setIsFiltersOpen(!isFiltersOpen)}
-          variant="outline"
-          className="border-zinc-200 text-zinc-700 hover:bg-zinc-50 flex items-center gap-2 shadow-sm"
-        >
-          <Filter size={16} />
-          {isFiltersOpen ? 'Ocultar Filtros' : 'Mostrar Filtros'}
-          {(filterMonth || filterPsyId || filterStatus) && (
-            <span className="w-2 h-2 rounded-full bg-priori-navy animate-pulse" />
-          )}
-        </Button>
       </div>
 
       {/* Barra de Filtros */}
