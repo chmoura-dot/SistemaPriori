@@ -21,6 +21,13 @@ function getTodayBR(): string {
   return toISODateBR(new Date());
 }
 
+// Erros esperados de uso (link expirado, token errado, permissão etc.) não
+// são falhas do fluxo de negócio — acontecem o tempo todo em uso normal
+// (paciente demora a responder, clica de novo num link antigo). Só erros
+// inesperados (DB, exceção não tratada) merecem severidade 'critical' no
+// operation_failures e devem acordar alguém.
+class ExpectedError extends Error {}
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -69,7 +76,7 @@ Deno.serve(async (req) => {
           .single();
 
         if (appError || !appData) {
-          throw new Error('Link inválido ou expirado.');
+          throw new ExpectedError('Link inválido ou expirado.');
         }
 
         return new Response(JSON.stringify({ success: true, appointment: appData }), {
@@ -77,7 +84,7 @@ Deno.serve(async (req) => {
         });
       }
 
-      if (!token) throw new Error('Token ou Appointment ID é obrigatório.');
+      if (!token) throw new ExpectedError('Token ou Appointment ID é obrigatório.');
 
       // Validar token
       const { data: tokenData, error: tokenError } = await supabase
@@ -87,12 +94,12 @@ Deno.serve(async (req) => {
         .single();
       
       if (tokenError || !tokenData) {
-        throw new Error('Token inválido ou não encontrado.');
+        throw new ExpectedError('Token inválido ou não encontrado.');
       }
 
       // Verificar expiração
       if (new Date(tokenData.expires_at) < new Date()) {
-        throw new Error('Este link de confirmação expirou.');
+        throw new ExpectedError('Este link de confirmação expirou.');
       }
 
       // Buscar agendamentos. 
@@ -195,7 +202,7 @@ Deno.serve(async (req) => {
       let { appointmentId } = body;
 
       if (action !== 'release_patient' && !appointmentId) {
-        throw new Error('Appointment ID é obrigatório.');
+        throw new ExpectedError('Appointment ID é obrigatório.');
       }
 
       // CASO A: Resposta do Paciente (WhatsApp)
@@ -212,7 +219,7 @@ Deno.serve(async (req) => {
           .single();
 
         if (tokenLookupError || !tokenRow) {
-          throw new Error('Link inválido ou expirado.');
+          throw new ExpectedError('Link inválido ou expirado.');
         }
         appointmentId = tokenRow.id;
 
@@ -224,12 +231,12 @@ Deno.serve(async (req) => {
           .single();
 
         if (currentAppError || !currentApp) {
-          throw new Error('Agendamento não encontrado.');
+          throw new ExpectedError('Agendamento não encontrado.');
         }
 
         // Se o psicólogo já cancelou, não permitir que o paciente reabra
         if (currentApp.status === 'canceled' && patientResponse === 'confirmed') {
-          throw new Error('Este agendamento já foi cancelado e não pode ser reaberto pelo paciente.');
+          throw new ExpectedError('Este agendamento já foi cancelado e não pode ser reaberto pelo paciente.');
         }
 
         const { data: updatedApp, error: updateError } = await supabase
@@ -322,7 +329,7 @@ Deno.serve(async (req) => {
 
       // CASO B: Resposta do Psicólogo (via Token de E-mail)
       if (!token || !action) {
-        throw new Error('Token e Ação são obrigatórios para confirmação de profissional.');
+        throw new ExpectedError('Token e Ação são obrigatórios para confirmação de profissional.');
       }
 
       // 1. Validar token
@@ -332,13 +339,13 @@ Deno.serve(async (req) => {
         .eq('id', token)
         .single();
       
-      if (tokenError || !tokenData) throw new Error('Token inválido.');
-      if (new Date(tokenData.expires_at) < new Date()) throw new Error('Token expirado.');
+      if (tokenError || !tokenData) throw new ExpectedError('Token inválido.');
+      if (new Date(tokenData.expires_at) < new Date()) throw new ExpectedError('Token expirado.');
 
       // 1.1 Action Release Patient
       if (action === 'release_patient') {
         if (!customerId || !subAction) {
-          throw new Error('Customer ID e subAction são obrigatórios.');
+          throw new ExpectedError('Customer ID e subAction são obrigatórios.');
         }
 
         // Verificar se o paciente pertence a este psicólogo
@@ -348,9 +355,9 @@ Deno.serve(async (req) => {
           .eq('id', customerId)
           .single();
 
-        if (custErr || !customerCheck) throw new Error('Paciente não encontrado.');
+        if (custErr || !customerCheck) throw new ExpectedError('Paciente não encontrado.');
         if (customerCheck.psychologist_id !== tokenData.psychologist_id) {
-          throw new Error('Você não tem permissão para atualizar este paciente.');
+          throw new ExpectedError('Você não tem permissão para atualizar este paciente.');
         }
 
         if (subAction === 'alta') {
@@ -420,11 +427,11 @@ Deno.serve(async (req) => {
         .single();
 
       if (appCheckError || !appData) {
-        throw new Error('Agendamento não encontrado.');
+        throw new ExpectedError('Agendamento não encontrado.');
       }
 
       if (appData.psychologist_id !== tokenData.psychologist_id) {
-        throw new Error('Você não tem permissão para confirmar este agendamento.');
+        throw new ExpectedError('Você não tem permissão para confirmar este agendamento.');
       }
 
       // 3. Preparar atualizações
@@ -460,7 +467,7 @@ Deno.serve(async (req) => {
           .eq('id', appointmentId)
           .single();
 
-        if (fullAppErr || !fullApp) throw new Error('Agendamento não encontrado para alta.');
+        if (fullAppErr || !fullApp) throw new ExpectedError('Agendamento não encontrado para alta.');
 
         // 2. Cancelar o agendamento atual
         const { error: cancelErr } = await supabase
@@ -529,7 +536,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    throw new Error('Método não suportado');
+    throw new ExpectedError('Método não suportado');
 
   } catch (err: any) {
     console.error(`[ConfirmAppointment] Erro: ${err.message}`);
@@ -538,7 +545,9 @@ Deno.serve(async (req) => {
       await supabase.rpc('log_operation_failure', {
         p_context: 'confirm-appointment',
         p_message: `Erro ao processar confirmação de atendimento: ${err.message}`,
-        p_severity: 'critical'
+        // ExpectedError = uso normal (link expirado, permissão, etc.), não
+        // falha do sistema — não deve gerar alerta crítico.
+        p_severity: err instanceof ExpectedError ? 'warn' : 'critical'
       });
     } catch (dbErr) {
       console.error("Falha ao registrar log no banco:", dbErr);
