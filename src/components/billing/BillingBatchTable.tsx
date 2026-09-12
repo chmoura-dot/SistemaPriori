@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { CheckCircle2, Clock, AlertCircle, Download, Trash2, Edit2, Send, FileText, ChevronDown } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { CheckCircle2, Clock, AlertCircle, Download, Trash2, Edit2, Send, FileText, ChevronDown, Search, List, Building2 } from 'lucide-react';
 import { format, subMonths } from 'date-fns';
 import { BillingBatch, BillingBatchStatus, Appointment } from '../../services/types';
 import { Button } from '../Button';
@@ -25,6 +25,7 @@ type StatusTheme = {
   headerBorder: string;
   headerText: string;
   iconWrap: string;
+  chipCls: string;
 };
 
 const STATUS_THEME: Record<BillingBatchStatus, StatusTheme> = {
@@ -36,6 +37,7 @@ const STATUS_THEME: Record<BillingBatchStatus, StatusTheme> = {
     headerBorder: 'border-l-amber-400',
     headerText: 'text-amber-800',
     iconWrap: 'bg-amber-100 text-amber-600',
+    chipCls: 'bg-amber-50 text-amber-700 border-amber-200',
   },
   [BillingBatchStatus.SENT]: {
     label: 'Faturamento Confirmado',
@@ -45,6 +47,7 @@ const STATUS_THEME: Record<BillingBatchStatus, StatusTheme> = {
     headerBorder: 'border-l-blue-400',
     headerText: 'text-blue-800',
     iconWrap: 'bg-blue-100 text-blue-600',
+    chipCls: 'bg-blue-50 text-blue-700 border-blue-200',
   },
   [BillingBatchStatus.PARTIALLY_PAID]: {
     label: 'Parcialmente Pagos',
@@ -54,6 +57,7 @@ const STATUS_THEME: Record<BillingBatchStatus, StatusTheme> = {
     headerBorder: 'border-l-indigo-400',
     headerText: 'text-indigo-800',
     iconWrap: 'bg-indigo-100 text-indigo-600',
+    chipCls: 'bg-indigo-50 text-indigo-700 border-indigo-200',
   },
   [BillingBatchStatus.PAID]: {
     label: 'Pagos pelo Plano',
@@ -63,6 +67,7 @@ const STATUS_THEME: Record<BillingBatchStatus, StatusTheme> = {
     headerBorder: 'border-l-emerald-400',
     headerText: 'text-emerald-800',
     iconWrap: 'bg-emerald-100 text-emerald-600',
+    chipCls: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   },
 };
 
@@ -72,6 +77,22 @@ const STATUS_ORDER: BillingBatchStatus[] = [
   BillingBatchStatus.SENT,
   BillingBatchStatus.PARTIALLY_PAID,
   BillingBatchStatus.PAID,
+];
+
+// Rótulo curto (singular/plural) para os chips de contagem por status (visão "Por operadora").
+const STATUS_SHORT_LABEL: Record<BillingBatchStatus, [string, string]> = {
+  [BillingBatchStatus.DRAFT]: ['previsto', 'previstos'],
+  [BillingBatchStatus.SENT]: ['confirmado', 'confirmados'],
+  [BillingBatchStatus.PARTIALLY_PAID]: ['parcial', 'parciais'],
+  [BillingBatchStatus.PAID]: ['pago', 'pagos'],
+};
+
+const STATUS_FILTER_OPTIONS: { value: 'all' | BillingBatchStatus; label: string }[] = [
+  { value: 'all', label: 'Todos' },
+  { value: BillingBatchStatus.DRAFT, label: 'Previstos' },
+  { value: BillingBatchStatus.SENT, label: 'Confirmados' },
+  { value: BillingBatchStatus.PARTIALLY_PAID, label: 'Parciais' },
+  { value: BillingBatchStatus.PAID, label: 'Pagos' },
 ];
 
 const StatusBadge: React.FC<{ status: BillingBatchStatus }> = ({ status }) => {
@@ -106,6 +127,11 @@ const PAID_PERIOD_OPTIONS: { value: PaidPeriodFilter; label: string }[] = [
   { value: 'all', label: 'Ver tudo' },
 ];
 
+type ViewMode = 'status' | 'operadora';
+
+const normalize = (value: string): string =>
+  value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+
 export const BillingBatchTable: React.FC<Props> = ({
   batches,
   appointments,
@@ -120,12 +146,22 @@ export const BillingBatchTable: React.FC<Props> = ({
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({
     [BillingBatchStatus.PAID]: true,
   });
+  // Estado de expansão de cada operadora na visão "Por operadora" (todas fechadas por padrão).
+  const [openOperadoras, setOpenOperadoras] = useState<Record<string, boolean>>({});
 
   // Filtro de período do histórico de lotes pagos, para não listar tudo de uma vez.
   const [paidPeriod, setPaidPeriod] = useState<PaidPeriodFilter>('1m');
 
+  // ─── Busca / filtro de status / alternância de visão ──────────────────
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | BillingBatchStatus>('all');
+  const [viewMode, setViewMode] = useState<ViewMode>('status');
+
   const toggleSection = (status: BillingBatchStatus) =>
     setCollapsed(prev => ({ ...prev, [status]: !prev[status] }));
+
+  const toggleOperadora = (op: string) =>
+    setOpenOperadoras(prev => ({ ...prev, [op]: !prev[op] }));
 
   const formatMonthLabel = (yyyyMm: string): string | null => {
     if (!/^\d{4}-\d{2}$/.test(yyyyMm)) return null;
@@ -173,8 +209,18 @@ export const BillingBatchTable: React.FC<Props> = ({
     return groupBatches.filter(b => getPaidMonthKey(b) >= cutoffKey);
   };
 
+  // ─── Filtro de busca + status (toolbar), aplicado antes de agrupar ─────
+  const visibleBatches = useMemo(() => {
+    const term = normalize(search);
+    return batches.filter(b => {
+      if (statusFilter !== 'all' && b.status !== statusFilter) return false;
+      if (term && !(normalize(b.batchNumber).includes(term) || normalize(b.healthPlan).includes(term))) return false;
+      return true;
+    });
+  }, [batches, search, statusFilter]);
+
   // ─── Renderiza uma linha de lote ─────────────────────────────────────
-  const renderRow = (batch: BillingBatch) => {
+  const renderRow = (batch: BillingBatch, hideOperadora = false) => {
     const isDraft = batch.status === BillingBatchStatus.DRAFT;
     const batchAppointments = appointments.filter(a => batch.appointmentIds.includes(a.id));
     const deniedCount = batchAppointments.filter(a => a.billingStatus === 'denied').length;
@@ -196,9 +242,11 @@ export const BillingBatchTable: React.FC<Props> = ({
             <p className="text-[10px] text-amber-600 mt-0.5">Lote Previsto</p>
           )}
         </td>
-        <td className="px-6 py-4">
-          <span className="text-sm text-zinc-700">{batch.healthPlan}</span>
-        </td>
+        {!hideOperadora && (
+          <td className="px-6 py-4">
+            <span className="text-sm text-zinc-700">{batch.healthPlan}</span>
+          </td>
+        )}
         <td className="px-6 py-4">
           <span className="text-sm text-zinc-600">{formatCompetencia(batch)}</span>
         </td>
@@ -299,7 +347,7 @@ export const BillingBatchTable: React.FC<Props> = ({
     );
   };
 
-  // ─── Estado vazio ────────────────────────────────────────────────────
+  // ─── Estado vazio (nenhum lote existe no sistema) ─────────────────────
   if (batches.length === 0) {
     return (
       <div className="bg-white rounded-2xl border border-zinc-100 shadow-sm p-12 text-center">
@@ -312,11 +360,13 @@ export const BillingBatchTable: React.FC<Props> = ({
     );
   }
 
-  const TableHead = () => (
+  const TableHead: React.FC<{ hideOperadora?: boolean }> = ({ hideOperadora }) => (
     <thead>
       <tr className="bg-zinc-50/50 border-b border-zinc-100">
         <th className="px-6 py-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Lote</th>
-        <th className="px-6 py-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Operadora</th>
+        {!hideOperadora && (
+          <th className="px-6 py-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Operadora</th>
+        )}
         <th className="px-6 py-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Competência</th>
         <th className="px-6 py-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Atendimentos</th>
         <th className="px-6 py-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider">Total</th>
@@ -326,10 +376,80 @@ export const BillingBatchTable: React.FC<Props> = ({
     </thead>
   );
 
-  return (
-    <div className="space-y-4">
+  // ─── Toolbar: busca, filtro de status e alternância de visão ──────────
+  const Toolbar = (
+    <div className="bg-white rounded-2xl border border-zinc-100 shadow-sm p-2.5 flex flex-wrap items-center gap-2.5">
+      <div className="flex-1 min-w-[200px] flex items-center gap-2 bg-zinc-50 border border-zinc-200 rounded-xl px-3 py-2">
+        <Search size={15} className="text-zinc-400 shrink-0" />
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Buscar por lote ou operadora…"
+          className="bg-transparent outline-none text-sm w-full placeholder:text-zinc-400"
+        />
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {STATUS_FILTER_OPTIONS.map(opt => (
+          <button
+            key={opt.value}
+            onClick={() => setStatusFilter(opt.value)}
+            className={`text-xs font-semibold px-3 py-2 rounded-full border transition-colors whitespace-nowrap ${
+              statusFilter === opt.value
+                ? 'bg-priori-navy border-priori-navy text-white'
+                : 'bg-white border-zinc-200 text-zinc-500 hover:border-priori-navy/40 hover:text-priori-navy'
+            }`}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+      <div className="flex border border-zinc-200 rounded-xl overflow-hidden shrink-0">
+        <button
+          onClick={() => setViewMode('status')}
+          className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-2 transition-colors ${
+            viewMode === 'status' ? 'bg-priori-navy text-white' : 'bg-white text-zinc-500 hover:bg-zinc-50'
+          }`}
+        >
+          <List size={13} />
+          Por status
+        </button>
+        <button
+          onClick={() => setViewMode('operadora')}
+          className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-2 transition-colors ${
+            viewMode === 'operadora' ? 'bg-priori-navy text-white' : 'bg-white text-zinc-500 hover:bg-zinc-50'
+          }`}
+        >
+          <Building2 size={13} />
+          Por operadora
+        </button>
+      </div>
+    </div>
+  );
+
+  // ─── Nenhum resultado para o filtro/busca atual ────────────────────────
+  if (visibleBatches.length === 0) {
+    return (
+      <div className="space-y-4">
+        {Toolbar}
+        <div className="bg-white rounded-2xl border border-zinc-100 shadow-sm p-12 text-center">
+          <p className="text-sm text-zinc-500 font-medium">Nenhum lote encontrado para esse filtro.</p>
+          <button
+            onClick={() => { setSearch(''); setStatusFilter('all'); }}
+            className="text-xs font-medium text-priori-navy hover:underline mt-2"
+          >
+            Limpar filtros
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ─── Visão "Por status" (padrão, agrupada por etapa do fluxo) ─────────
+  const renderByStatus = () => (
+    <>
       {STATUS_ORDER.map((status) => {
-        const allGroupBatches = batches.filter(b => b.status === status);
+        const allGroupBatches = visibleBatches.filter(b => b.status === status);
         if (allGroupBatches.length === 0) return null;
 
         const isPaidGroup = status === BillingBatchStatus.PAID;
@@ -412,7 +532,7 @@ export const BillingBatchTable: React.FC<Props> = ({
                   <table className="w-full text-left border-collapse">
                     <TableHead />
                     <tbody className="divide-y divide-zinc-50">
-                      {groupBatches.map(renderRow)}
+                      {groupBatches.map(b => renderRow(b))}
                     </tbody>
                   </table>
                 </div>
@@ -421,6 +541,101 @@ export const BillingBatchTable: React.FC<Props> = ({
           </div>
         );
       })}
+    </>
+  );
+
+  // ─── Visão "Por operadora" (agrupada por plano de saúde) ──────────────
+  const renderByOperadora = () => {
+    const operadoras = Array.from(new Set(visibleBatches.map(b => b.healthPlan))).sort((a, b) =>
+      a.localeCompare(b, 'pt-BR')
+    );
+
+    return (
+      <>
+        {operadoras.map(op => {
+          const opBatches = visibleBatches
+            .filter(b => b.healthPlan === op)
+            .sort((a, b) => (b.paidAt || b.sentAt).localeCompare(a.paidAt || a.sentAt));
+
+          const pendente = opBatches
+            .filter(b => b.status === BillingBatchStatus.SENT || b.status === BillingBatchStatus.PARTIALLY_PAID)
+            .reduce((sum, b) => sum + appointments.filter(a => b.appointmentIds.includes(a.id)).reduce((s, a) => s + getAppPrice(a), 0), 0);
+          const pago = opBatches
+            .filter(b => b.status === BillingBatchStatus.PAID)
+            .reduce((sum, b) => sum + appointments.filter(a => b.appointmentIds.includes(a.id)).reduce((s, a) => s + getAppPrice(a), 0), 0);
+          const glosas = opBatches.reduce(
+            (sum, b) => sum + appointments.filter(a => b.appointmentIds.includes(a.id) && a.billingStatus === 'denied').length,
+            0
+          );
+          const isOpen = !!openOperadoras[op];
+          const statusCounts = STATUS_ORDER
+            .map(s => ({ status: s, n: opBatches.filter(b => b.status === s).length }))
+            .filter(x => x.n > 0);
+
+          return (
+            <div key={op} className="bg-white rounded-2xl border border-zinc-100 shadow-sm overflow-hidden">
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => toggleOperadora(op)}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleOperadora(op); } }}
+                className="w-full flex items-center justify-between gap-4 px-5 py-4 cursor-pointer hover:bg-zinc-50/60 transition-colors"
+              >
+                <div className="text-left">
+                  <p className="text-sm font-bold text-priori-navy">{op}</p>
+                  <div className="flex flex-wrap gap-1.5 mt-1.5">
+                    {statusCounts.map(({ status, n }) => (
+                      <span
+                        key={status}
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${STATUS_THEME[status].chipCls}`}
+                      >
+                        {n} {STATUS_SHORT_LABEL[status][n > 1 ? 1 : 0]}
+                      </span>
+                    ))}
+                    {glosas > 0 && (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-red-50 text-red-600 border-red-200">
+                        {glosas} glosa{glosas > 1 ? 's' : ''}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-4">
+                  <div className="text-right">
+                    <p className="text-[10px] uppercase tracking-wider text-zinc-400 font-medium">Pendente</p>
+                    <p className="text-sm font-bold text-blue-700">{formatCurrency(pendente)}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[10px] uppercase tracking-wider text-zinc-400 font-medium">Recebido</p>
+                    <p className="text-sm font-bold text-emerald-700">{formatCurrency(pago)}</p>
+                  </div>
+                  <ChevronDown
+                    size={20}
+                    className={`text-zinc-400 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+                  />
+                </div>
+              </div>
+
+              {isOpen && (
+                <div className="overflow-x-auto border-t border-zinc-100">
+                  <table className="w-full text-left border-collapse">
+                    <TableHead hideOperadora />
+                    <tbody className="divide-y divide-zinc-50">
+                      {opBatches.map(b => renderRow(b, true))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </>
+    );
+  };
+
+  return (
+    <div className="space-y-4">
+      {Toolbar}
+      {viewMode === 'status' ? renderByStatus() : renderByOperadora()}
     </div>
   );
 };

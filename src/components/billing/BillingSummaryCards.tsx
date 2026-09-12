@@ -1,6 +1,7 @@
 import React from 'react';
-import { CheckCircle2, Clock, AlertCircle, Edit2 } from 'lucide-react';
+import { CheckCircle2, Clock, AlertCircle, Edit2, ArrowUp, ArrowDown } from 'lucide-react';
 import { formatCurrency } from '../../lib/utils';
+import { Trend } from '../../hooks/billing/billingInsights';
 
 interface Props {
   pendingCount: number;
@@ -10,7 +11,23 @@ interface Props {
   draftCount: number;
   totalDraftAmount: number;
   onOpenDenied?: () => void;
+  confirmadoTrend?: Trend | null;
+  pagoTrend?: Trend | null;
 }
+
+// Badge de tendência mensal (fluxo do mês corrente vs. mês anterior). Some
+// quando não há dado suficiente (ex: menos de 2 meses de histórico).
+const TrendBadge: React.FC<{ trend?: Trend | null }> = ({ trend }) => {
+  if (!trend || trend.direction === 'flat') return null;
+  const isUp = trend.direction === 'up';
+  const Icon = isUp ? ArrowUp : ArrowDown;
+  return (
+    <span className={`inline-flex items-center gap-0.5 font-semibold ${isUp ? 'text-emerald-600' : 'text-red-500'}`}>
+      <Icon size={11} />
+      {trend.pct}%
+    </span>
+  );
+};
 
 export const BillingSummaryCards: React.FC<Props> = ({
   pendingCount,
@@ -20,6 +37,8 @@ export const BillingSummaryCards: React.FC<Props> = ({
   draftCount,
   totalDraftAmount,
   onOpenDenied,
+  confirmadoTrend,
+  pagoTrend,
 }) => (
   <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6">
     {/* Lotes Previstos */}
@@ -50,7 +69,16 @@ export const BillingSummaryCards: React.FC<Props> = ({
         <h3 className="text-2xl font-bold text-priori-navy">
           {formatCurrency(totalPendingAmount)}
         </h3>
-        <p className="text-xs text-blue-600 mt-0.5">Previsão de Receita</p>
+        <p className="text-xs text-blue-600 mt-0.5 flex items-center gap-1.5">
+          Previsão de Receita
+          {confirmadoTrend && confirmadoTrend.direction !== 'flat' && (
+            <>
+              <span className="text-zinc-300">·</span>
+              <TrendBadge trend={confirmadoTrend} />
+              <span className="text-zinc-400">vs. mês anterior</span>
+            </>
+          )}
+        </p>
       </div>
     </div>
 
@@ -64,6 +92,12 @@ export const BillingSummaryCards: React.FC<Props> = ({
         <h3 className="text-2xl font-bold text-priori-navy">
           {formatCurrency(totalPaidAmount)}
         </h3>
+        {pagoTrend && pagoTrend.direction !== 'flat' && (
+          <p className="text-xs mt-0.5 flex items-center gap-1.5">
+            <TrendBadge trend={pagoTrend} />
+            <span className="text-zinc-400">vs. mês anterior</span>
+          </p>
+        )}
       </div>
     </div>
 

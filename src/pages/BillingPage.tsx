@@ -4,6 +4,7 @@ import { api } from '../services/api';
 import { UserRole } from '../services/types';
 import { useBillingData } from '../hooks/useBillingData';
 import { BillingSummaryCards } from '../components/billing/BillingSummaryCards';
+import { BillingInsightsPanel } from '../components/billing/BillingInsightsPanel';
 import { BillingBatchTable } from '../components/billing/BillingBatchTable';
 import { CreateBatchModal } from '../components/billing/CreateBatchModal';
 import { BatchDetailsModal } from '../components/billing/BatchDetailsModal';
@@ -70,6 +71,14 @@ export const BillingPage = () => {
         draftCount={billing.draftBatches.length}
         totalDraftAmount={billing.totalDraftAmount}
         onOpenDenied={() => billing.setIsDeniedModalOpen(true)}
+        confirmadoTrend={billing.confirmadoTrend}
+        pagoTrend={billing.pagoTrend}
+      />
+
+      {/* Insights: recebimentos por mês + desempenho por operadora */}
+      <BillingInsightsPanel
+        monthlyData={billing.monthlyChartData}
+        operadoraPerf={billing.operadoraPerformance}
       />
 
       {/* Tabela de Lotes */}

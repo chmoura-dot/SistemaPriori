@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   AlertTriangle,
   ArrowRightLeft,
@@ -18,7 +18,7 @@ import {
   AlertCircle,
   ShieldAlert,
 } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, subMonths } from 'date-fns';
 
 import {
   AppointmentType,
@@ -33,6 +33,21 @@ import { useRepasseData } from '../hooks/useRepasseData';
 import { getRepassValue, getBatchYearMonth } from './repasse/repasseHelpers';
 
 const fmt = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
+
+// ─── Filtro de período do Histórico de Repasses ────────────────────────
+// O histórico crescia sem limite quando nenhum filtro de mês estava ativo.
+// Por padrão mostra só o último mês (por data de geração do repasse), com
+// opção de expandir — mesmo padrão já usado no histórico de lotes pagos
+// da aba Faturamento.
+type HistoryPeriod = '1m' | '3m' | '6m' | '1y' | 'all';
+
+const HISTORY_PERIOD_OPTIONS: { value: HistoryPeriod; label: string }[] = [
+  { value: '1m', label: 'Último mês' },
+  { value: '3m', label: 'Últimos 3 meses' },
+  { value: '6m', label: 'Últimos 6 meses' },
+  { value: '1y', label: 'Último ano' },
+  { value: 'all', label: 'Ver tudo' },
+];
 
 export const RepassePage = () => {
   const {
@@ -64,6 +79,25 @@ export const RepassePage = () => {
     handleDelete,
     handlePDF,
   } = useRepasseData();
+
+  const [historyPeriod, setHistoryPeriod] = useState<HistoryPeriod>('1m');
+
+  // Mais recentes primeiro (a fonte não garante ordenação).
+  const sortedRepasses = useMemo(
+    () => [...filteredRepasses].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+    [filteredRepasses]
+  );
+
+  // Com um mês específico já selecionado no filtro de topo, o recorte por
+  // período fica redundante — mostra tudo o que bate com aquele mês. Sem
+  // filtro de mês, aplica o período (padrão: último mês) para não listar o
+  // histórico inteiro de uma vez.
+  const visibleRepasses = useMemo(() => {
+    if (filterMonth || historyPeriod === 'all') return sortedRepasses;
+    const monthsBack = historyPeriod === '1m' ? 0 : historyPeriod === '3m' ? 2 : historyPeriod === '6m' ? 5 : 11;
+    const cutoffKey = format(subMonths(new Date(), monthsBack), 'yyyy-MM');
+    return sortedRepasses.filter(r => r.createdAt.substring(0, 7) >= cutoffKey);
+  }, [sortedRepasses, historyPeriod, filterMonth]);
 
   if (isLoading) {
     return (
@@ -404,11 +438,28 @@ export const RepassePage = () => {
       {/* Histórico de Repasses */}
       {(!filterStatus || filterStatus === 'PENDING' || filterStatus === 'PAID') && (
         <section className="space-y-3">
-          <h2 className="text-lg font-bold text-priori-navy flex items-center gap-2">
-            <ArrowRightLeft size={18} className="text-priori-navy" />
-            Histórico de Repasses
-            <span className="text-xs font-normal text-zinc-400">({filteredRepasses.length} repasses listados)</span>
-          </h2>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-lg font-bold text-priori-navy flex items-center gap-2">
+              <ArrowRightLeft size={18} className="text-priori-navy" />
+              Histórico de Repasses
+              <span className="text-xs font-normal text-zinc-400">
+                {!filterMonth && visibleRepasses.length !== filteredRepasses.length
+                  ? `(${visibleRepasses.length} de ${filteredRepasses.length} repasses)`
+                  : `(${filteredRepasses.length} repasses listados)`}
+              </span>
+            </h2>
+            {!filterMonth && filteredRepasses.length > 0 && (
+              <select
+                value={historyPeriod}
+                onChange={(e) => setHistoryPeriod(e.target.value as HistoryPeriod)}
+                className="text-xs font-medium text-zinc-600 bg-white border border-zinc-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-priori-navy/20"
+              >
+                {HISTORY_PERIOD_OPTIONS.map(opt => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+            )}
+          </div>
 
           {filteredRepasses.length === 0 ? (
             <div className="bg-white rounded-2xl border border-zinc-100 shadow-sm p-10 text-center text-zinc-500 text-sm flex flex-col items-center justify-center gap-3">
@@ -439,6 +490,24 @@ export const RepassePage = () => {
                 </Button>
               )}
             </div>
+          ) : visibleRepasses.length === 0 ? (
+            <div className="bg-white rounded-2xl border border-zinc-100 shadow-sm p-10 text-center text-zinc-500 text-sm flex flex-col items-center justify-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-zinc-50 flex items-center justify-center text-zinc-400 border border-zinc-200">
+                <ArrowRightLeft size={24} />
+              </div>
+              <div>
+                <p className="font-semibold text-zinc-700">Nenhum repasse neste período</p>
+                <p className="text-xs text-zinc-400 mt-0.5 max-w-md">Há repasses mais antigos fora do período selecionado.</p>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setHistoryPeriod('all')}
+                className="mt-1 text-xs border-zinc-200 hover:bg-zinc-50 text-priori-navy flex items-center gap-1.5"
+              >
+                Ver todo o histórico
+              </Button>
+            </div>
           ) : (
             <div className="bg-white rounded-2xl border border-zinc-100 shadow-sm overflow-hidden">
               <div className="overflow-x-auto">
@@ -455,7 +524,7 @@ export const RepassePage = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-100">
-                    {filteredRepasses.map(repasse => {
+                    {visibleRepasses.map(repasse => {
                       const psy = psychologists.find(p => p.id === repasse.psychologistId);
                       const batch = batches.find(b => b.id === repasse.billingBatchId);
                       const isExpanded = !!expandedRepasseIds[repasse.id];

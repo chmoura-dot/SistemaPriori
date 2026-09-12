@@ -7,6 +7,7 @@ import {
 } from '../services/types';
 import { createBillingHelpers, AppointmentPaymentStatus } from './billing/billingHelpers';
 import { createBillingActions } from './billing/billingActions';
+import { getMonthlyChartData, getOperadoraPerformance, pctChange } from './billing/billingInsights';
 
 export type { AppointmentPaymentStatus } from './billing/billingHelpers';
 
@@ -257,6 +258,29 @@ export function useBillingData() {
       .sort((x, y) => y.appointment.date.localeCompare(x.appointment.date));
   }, [appointments, batches]);
 
+  // ─── Painel de insights (gráfico mensal + desempenho por operadora) ──────
+  const monthlyChartData = useMemo(
+    () => getMonthlyChartData(batches, appointments, helpers.getAppPrice, 6),
+    [batches, appointments]
+  );
+  const operadoraPerformance = useMemo(
+    () => getOperadoraPerformance(batches, appointments, helpers.getAppPrice),
+    [batches, appointments]
+  );
+  // Tendência mês corrente vs. mês anterior, derivada da mesma série mensal
+  // (o "Confirmado"/"Pago" dos cartões de resumo são totais acumulados; a
+  // tendência aqui reflete o fluxo mensal, não o saldo total).
+  const confirmadoTrend = useMemo(() => {
+    const n = monthlyChartData.length;
+    if (n < 2) return null;
+    return pctChange(monthlyChartData[n - 1].confirmado, monthlyChartData[n - 2].confirmado);
+  }, [monthlyChartData]);
+  const pagoTrend = useMemo(() => {
+    const n = monthlyChartData.length;
+    if (n < 2) return null;
+    return pctChange(monthlyChartData[n - 1].recebido, monthlyChartData[n - 2].recebido);
+  }, [monthlyChartData]);
+
   return {
     batches, appointments, customers, psychologists, plans, isLoading, autoSaveStatus,
     draftBatches, pendingBatches, totalPendingAmount, totalPaidAmount, totalDenied, totalDraftAmount,
@@ -269,6 +293,7 @@ export function useBillingData() {
     isPaymentModalOpen, setIsPaymentModalOpen, batchToPay, appointmentStatuses,
     updateAppointmentPaymentStatus,
     isDeniedModalOpen, setIsDeniedModalOpen, deniedAppointments,
+    monthlyChartData, operadoraPerformance, confirmadoTrend, pagoTrend,
     ...helpers,
     ...actions,
     handlePlanChange, handleMonthFilterChange, toggleAppointmentSelection,
