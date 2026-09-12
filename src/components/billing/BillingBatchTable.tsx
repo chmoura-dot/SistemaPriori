@@ -155,12 +155,22 @@ export const BillingBatchTable: React.FC<Props> = ({
     return formatMonthLabel(monthKey) || format(new Date(batch.sentAt), 'dd/MM/yyyy');
   };
 
-  // Filtra lotes pagos por período (competência) para evitar listar todo o histórico de uma vez.
+  // Mês/ano em que o repasse foi de fato registrado como pago. Sem paidAt
+  // (não deveria ocorrer em lotes PAID, mas o campo é opcional no tipo),
+  // cai para sentAt como aproximação.
+  const getPaidMonthKey = (batch: BillingBatch): string => {
+    const paidAt = batch.paidAt || batch.sentAt;
+    const month = paidAt.substring(0, 7);
+    if (/^\d{4}-\d{2}$/.test(month)) return month;
+    return format(new Date(paidAt), 'yyyy-MM');
+  };
+
+  // Filtra lotes pagos por período (data do pagamento) para evitar listar todo o histórico de uma vez.
   const filterByPaidPeriod = (groupBatches: BillingBatch[]): BillingBatch[] => {
     if (paidPeriod === 'all') return groupBatches;
     const monthsBack = paidPeriod === '1m' ? 0 : paidPeriod === '3m' ? 2 : paidPeriod === '6m' ? 5 : 11;
     const cutoffKey = format(subMonths(new Date(), monthsBack), 'yyyy-MM');
-    return groupBatches.filter(b => getCompetenciaMonthKey(b) >= cutoffKey);
+    return groupBatches.filter(b => getPaidMonthKey(b) >= cutoffKey);
   };
 
   // ─── Renderiza uma linha de lote ─────────────────────────────────────
