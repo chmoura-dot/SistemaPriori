@@ -96,9 +96,10 @@ const MONTH_NAMES = [
 ];
 
 // ─── Filtro de período para o histórico de lotes pagos ─────────────────
-type PaidPeriodFilter = '3m' | '6m' | '1y' | 'all';
+type PaidPeriodFilter = '1m' | '3m' | '6m' | '1y' | 'all';
 
 const PAID_PERIOD_OPTIONS: { value: PaidPeriodFilter; label: string }[] = [
+  { value: '1m', label: 'Último mês' },
   { value: '3m', label: 'Últimos 3 meses' },
   { value: '6m', label: 'Últimos 6 meses' },
   { value: '1y', label: 'Último ano' },
@@ -121,7 +122,7 @@ export const BillingBatchTable: React.FC<Props> = ({
   });
 
   // Filtro de período do histórico de lotes pagos, para não listar tudo de uma vez.
-  const [paidPeriod, setPaidPeriod] = useState<PaidPeriodFilter>('3m');
+  const [paidPeriod, setPaidPeriod] = useState<PaidPeriodFilter>('1m');
 
   const toggleSection = (status: BillingBatchStatus) =>
     setCollapsed(prev => ({ ...prev, [status]: !prev[status] }));
@@ -157,7 +158,7 @@ export const BillingBatchTable: React.FC<Props> = ({
   // Filtra lotes pagos por período (competência) para evitar listar todo o histórico de uma vez.
   const filterByPaidPeriod = (groupBatches: BillingBatch[]): BillingBatch[] => {
     if (paidPeriod === 'all') return groupBatches;
-    const monthsBack = paidPeriod === '3m' ? 2 : paidPeriod === '6m' ? 5 : 11;
+    const monthsBack = paidPeriod === '1m' ? 0 : paidPeriod === '3m' ? 2 : paidPeriod === '6m' ? 5 : 11;
     const cutoffKey = format(subMonths(new Date(), monthsBack), 'yyyy-MM');
     return groupBatches.filter(b => getCompetenciaMonthKey(b) >= cutoffKey);
   };
