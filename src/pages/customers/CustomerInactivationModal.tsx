@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Button } from '../../components/Button';
 import { Modal } from '../../components/Modal';
+import { INACTIVATION_REASONS } from './customerUtils';
 
 interface CustomerInactivationModalProps {
   isOpen: boolean;
@@ -9,19 +10,6 @@ interface CustomerInactivationModalProps {
   onConfirm: (reason: string) => void;
   onClose: () => void;
 }
-
-const INACTIVATION_REASONS = [
-  'Alta terapêutica',
-  'Alta Administrativa',
-  'Pausa no Tratamento',
-  'Abandono',
-  'Solicitação do paciente',
-  'Mudança de convênio',
-  'Mudança de cidade / estado',
-  'Motivos financeiros',
-  'Óbito',
-  'Outro',
-];
 
 export const CustomerInactivationModal: React.FC<CustomerInactivationModalProps> = ({
   isOpen,

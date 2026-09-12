@@ -277,15 +277,7 @@ export const CustomersPage = () => {
       // Transação atômica: inativa paciente, cancela consultas futuras, registra
       // evento de alta e pausa assinaturas em uma única chamada. Se qualquer etapa
       // falhar, o Postgres reverte todas as anteriores (sem dados órfãos).
-      const { error } = await supabase.rpc('inactivate_customer', {
-        p_customer_id: inactivateId,
-        p_reason: reason,
-      });
-      if (error) throw error;
-
-      apiCache.invalidate('customers');
-      apiCache.invalidate('appointments');
-      apiCache.invalidate('subscriptions');
+      await api.inactivateCustomer(inactivateId, reason);
       await loadData();
       setInactivateId(null);
       setIsFormOpen(false);
@@ -297,10 +289,18 @@ export const CustomersPage = () => {
   const handleBulkApply = async (changes: { healthPlan?: HealthPlan; psychologistId?: string }) => {
     setIsSaving(true);
     try {
-      await Promise.all([...selectedIds].map(id => api.updateCustomer(id, changes)));
+      const ids = [...selectedIds];
+      const results = await Promise.allSettled(ids.map(id => api.updateCustomer(id, changes)));
       await loadData();
+      const failed = results
+        .map((r, i) => ({ r, id: ids[i] }))
+        .filter(({ r }) => r.status === 'rejected');
       setIsBulkOpen(false);
       setSelectedIds(new Set());
+      if (failed.length > 0) {
+        const names = failed.map(({ id }) => customers.find(c => c.id === id)?.name || id).join(', ');
+        alert(`${results.length - failed.length} de ${results.length} paciente(s) atualizado(s). Falharam: ${names}`);
+      }
     } catch { alert('Erro ao aplicar alterações em massa'); }
     finally { setIsSaving(false); }
   };
@@ -308,10 +308,18 @@ export const CustomersPage = () => {
   const handleImport = async (rows: { name: string; phone: string; healthPlan: HealthPlan; birthDate: string }[]) => {
     setIsSaving(true);
     try {
-      await Promise.all(rows.map(r => api.createCustomer({ ...r, name: r.name.toUpperCase(), email: '', psychologistId: '', status: CustomerStatus.ACTIVE, gender: inferGenderByName(r.name) || null } as any)));
+      const results = await Promise.allSettled(rows.map(r => api.createCustomer({ ...r, name: r.name.toUpperCase(), email: '', psychologistId: '', status: CustomerStatus.ACTIVE, gender: inferGenderByName(r.name) || null } as any)));
       await loadData();
+      const failed = results
+        .map((r, i) => ({ r, row: rows[i] }))
+        .filter(({ r }) => r.status === 'rejected');
       setIsImportOpen(false);
-      alert(`${rows.length} paciente(s) importado(s) com sucesso!`);
+      if (failed.length === 0) {
+        alert(`${rows.length} paciente(s) importado(s) com sucesso!`);
+      } else {
+        const names = failed.map(({ row }) => row.name).join(', ');
+        alert(`${rows.length - failed.length} de ${rows.length} paciente(s) importado(s). Falharam: ${names}`);
+      }
     } catch { alert('Erro ao importar pacientes'); }
     finally { setIsSaving(false); }
   };
@@ -477,6 +485,7 @@ export const CustomersPage = () => {
         onClose={() => setIsImportOpen(false)}
         isSaving={isSaving}
         onImport={handleImport}
+        existingCustomers={customers}
       />
     </div>
   );

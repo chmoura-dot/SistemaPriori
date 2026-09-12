@@ -58,49 +58,24 @@ export const PlansPage = () => {
     e.preventDefault();
     setIsSaving(true);
     try {
-      const plansToUpdate = plans.filter(p => bulkData.selectedPlanIds.includes(p.id));
-      const planNames = plansToUpdate.map(p => p.name.toUpperCase());
-      await Promise.all(plansToUpdate.map(plan => {
-        const updatedProcedures = (plan.procedures || []).map(proc => ({
-          ...proc,
-          price: bulkData.adjustPrice ? proc.price + bulkData.amount : proc.price,
-          repassAmount: bulkData.adjustRepass ? proc.repassAmount + bulkData.amount : proc.repassAmount
-        }));
-        return api.updatePlan(plan.id, { procedures: updatedProcedures });
-      }));
-      const allApps = await api.getAppointments();
-      const customers = await api.getCustomers();
-      const psychologists = await api.getPsychologists();
-      const appsToUpdate = allApps.filter(app => {
-        if (app.billingBatchId) return false;
-        if (app.date < bulkData.effectiveDate) return false;
-        const customer = customers.find(c => c.id === app.customerId);
-        if (!customer) return false;
-        return planNames.includes((customer.healthPlan || '').toUpperCase());
+      // Transação atômica no banco: planos e agendamentos são reajustados numa
+      // única operação (se qualquer parte falhar, tudo é desfeito) e nenhum
+      // preço/repasse resultante fica abaixo de R$ 0 — ver
+      // 20260912j_bulk_adjust_plan_prices_rpc.sql.
+      const result = await api.bulkAdjustPlanPrices({
+        planIds: bulkData.selectedPlanIds,
+        amount: bulkData.amount,
+        adjustPrice: bulkData.adjustPrice,
+        adjustRepass: bulkData.adjustRepass,
+        effectiveDate: bulkData.effectiveDate,
       });
-      await Promise.all(appsToUpdate.map(app => {
-        const customer = customers.find(c => c.id === app.customerId);
-        const plan = plansToUpdate.find(p => p.name.toUpperCase() === (customer?.healthPlan || '').toUpperCase());
-        const proc = plan?.procedures?.find(pr => pr.type === app.type);
-        if (!proc) return Promise.resolve();
-        const updates: any = {};
-        if (bulkData.adjustPrice) updates.customPrice = (app.customPrice ?? proc.price) + bulkData.amount;
-        // Não sobrescrever o repasse de atendimentos cujo psicólogo tem contrato
-        // pessoal (repassOverridesPlan). Nesse caso o repasse é calculado
-        // dinamicamente pela regra do psicólogo (ex: Michelly = 92%) e gravar um
-        // customRepassAmount fixo baseado no plano "vazaria" por cima do contrato,
-        // sobrescrevendo silenciosamente o valor correto.
-        const psy = psychologists.find(p => p.id === app.psychologistId);
-        if (bulkData.adjustRepass && !psy?.repassOverridesPlan) {
-          updates.customRepassAmount = (app.customRepassAmount ?? proc.repassAmount) + bulkData.amount;
-        }
-        if (Object.keys(updates).length === 0) return Promise.resolve();
-        return api.updateAppointment(app.id, updates);
-      }));
 
       await loadPlans();
       setIsBulkModalOpen(false);
-      toast.success(`${plansToUpdate.length} planos e ${appsToUpdate.length} agendamentos reajustados com sucesso!`);
+      toast.success(`${result.plansUpdated} planos e ${result.appointmentsUpdated} agendamentos reajustados com sucesso!`);
+      if (result.clampedCount > 0) {
+        toast(`${result.clampedCount} valor(es) foram travados em R$ 0 para não ficarem negativos.`, { icon: '⚠️' });
+      }
     } catch (err: any) {
       toast.error(err?.message || 'Erro ao aplicar reajuste');
     } finally {

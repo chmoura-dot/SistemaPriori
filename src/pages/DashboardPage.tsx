@@ -158,7 +158,7 @@ export const DashboardPage = ({ onNavigate }: { onNavigate: (path: string) => vo
               </button>
             )}
             {waitingListPending.length > 0 && (
-              <button onClick={() => onNavigate('/lista-espera')} className="flex items-center gap-3 p-3 bg-purple-50 border border-purple-100 rounded-xl hover:border-purple-300 transition-all text-left">
+              <button onClick={() => onNavigate('/fila-espera')} className="flex items-center gap-3 p-3 bg-purple-50 border border-purple-100 rounded-xl hover:border-purple-300 transition-all text-left">
                 <ListOrdered size={18} className="text-purple-500 shrink-0" />
                 <div>
                   <p className="text-xs font-bold text-purple-700">{waitingListPending.length} pessoa{waitingListPending.length > 1 ? 's' : ''} na fila de espera</p>

@@ -11,9 +11,6 @@ import { PsychologistConfirmationGroup } from './pendingConfirmations/Psychologi
 
 import { CancellationBillingModal } from './pendingConfirmations/CancellationBillingModal';
 
-const SUPABASE_URL     = import.meta.env.VITE_SUPABASE_URL as string;
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
-
 export const PendingConfirmationsPage = () => {
   const [appointments, setAppointments]   = useState<Appointment[]>([]);
   const [psychologists, setPsychologists] = useState<Psychologist[]>([]);
@@ -141,13 +138,10 @@ export const PendingConfirmationsPage = () => {
     setSendingEmail(psy.id);
     setEmailFeedback(null);
     try {
-      const res  = await fetch(`${SUPABASE_URL}/functions/v1/resend-confirmation`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
-        body: JSON.stringify({ psychologist_id: psy.id }),
+      const { data, error } = await supabase.functions.invoke('resend-confirmation', {
+        body: { psychologist_id: psy.id },
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Erro ao enviar e-mail.');
+      if (error) throw new Error(data?.error || error.message || 'Erro ao enviar e-mail.');
       const msg = data.message?.includes('Nenhuma pendência')
         ? 'Nenhuma pendência encontrada para este psicólogo.'
         : `✅ E-mail enviado para ${psy.name}!`;

@@ -43,6 +43,10 @@ export const ExpensesPage = () => {
   const [amountInput, setAmountInput] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [isReadingPdf, setIsReadingPdf] = useState(false);
+  // Fila de despesas extraídas de PDF aguardando revisão manual antes de salvar
+  // (ver handlePdfUpload) — nenhuma delas é persistida sem passar pelo modal.
+  const [importQueue, setImportQueue] = useState<ExpenseFormData[]>([]);
+  const [importTotal, setImportTotal] = useState(0);
 
   // ── Paginação ─────────────────────────────────────────────────────────────
   const ITEMS_PER_PAGE = 40;
@@ -74,9 +78,19 @@ export const ExpensesPage = () => {
         await api.createExpense(formData);
       }
       await loadExpenses();
-      setIsModalOpen(false);
-      setEditingExpense(null);
-      setFormData(DEFAULT_FORM);
+      if (importQueue.length > 0) {
+        // Ainda há despesas extraídas de PDF aguardando revisão — carrega a próxima.
+        const [next, ...rest] = importQueue;
+        setImportQueue(rest);
+        setEditingExpense(null);
+        setFormData(next);
+        setAmountInput(next.amount > 0 ? next.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '');
+      } else {
+        setIsModalOpen(false);
+        setEditingExpense(null);
+        setFormData(DEFAULT_FORM);
+        setImportTotal(0);
+      }
     } catch {
       toastError('Erro ao salvar despesa');
     } finally {
@@ -141,9 +155,9 @@ export const ExpensesPage = () => {
     if (!files || files.length === 0) return;
 
     setIsReadingPdf(true);
-    let successCount = 0;
     let failCount = 0;
     let duplicateCount = 0;
+    const extracted: ExpenseFormData[] = [];
 
     try {
       // Dynamic import do PDF.js (só carrega quando necessário — ~1.5MB)
@@ -176,29 +190,30 @@ export const ExpensesPage = () => {
             continue;
           }
 
-          if (files.length === 1) {
-            // 1 arquivo → abre modal para revisão
-            setFormData(prev => ({ ...prev, ...extractedData }));
-            setAmountInput(extractedData.amount > 0 ? extractedData.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '');
-            setEditingExpense(null);
-            setIsModalOpen(true);
-            successCount++;
-          } else {
-            // Vários arquivos → cria automaticamente
-            await api.createExpense({ ...formData, ...extractedData, category: ExpenseCategory.OTHER });
-            successCount++;
-          }
+          // Nunca persiste direto: toda despesa extraída de PDF (mesmo em lote)
+          // passa pelo modal de revisão antes de ser salva — os dados vêm de
+          // extração por IA e podem vir errados (valor, data, categoria).
+          extracted.push({ ...DEFAULT_FORM, ...extractedData, category: ExpenseCategory.OTHER });
         } catch {
           failCount++;
         }
       }
 
+      if (extracted.length > 0) {
+        const [first, ...rest] = extracted;
+        setImportQueue(rest);
+        setImportTotal(extracted.length);
+        setEditingExpense(null);
+        setFormData(first);
+        setAmountInput(first.amount > 0 ? first.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '');
+        setIsModalOpen(true);
+      }
+
       if (files.length > 1) {
-        await loadExpenses();
-        let msg = `${successCount} despesas importadas!`;
+        let msg = `${extracted.length} despesa(s) extraída(s), aguardando revisão.`;
         if (duplicateCount > 0) msg += `\n${duplicateCount} ignoradas (já cadastradas).`;
-        if (failCount > 0) msg += `\n${failCount} falhas.`;
-        alert(msg + '\nRevise os dados na tabela.');
+        if (failCount > 0) msg += `\n${failCount} falhas ao ler o PDF.`;
+        alert(msg + '\nConfira e confirme cada uma no formulário que vai abrir.');
       }
     } catch {
       alert('Ocorreu um erro ao processar os arquivos.');
@@ -419,7 +434,7 @@ export const ExpensesPage = () => {
       {/* Modal do formulário */}
       <ExpenseFormModal
         isOpen={isModalOpen}
-        onClose={() => { setIsModalOpen(false); setEditingExpense(null); }}
+        onClose={() => { setIsModalOpen(false); setEditingExpense(null); setImportQueue([]); setImportTotal(0); }}
         editingExpense={editingExpense}
         formData={formData}
         setFormData={setFormData}
@@ -427,6 +442,7 @@ export const ExpensesPage = () => {
         handleAmountChange={handleAmountChange}
         handleSubmit={handleSubmit}
         isSaving={isSaving}
+        titleOverride={importTotal > 0 ? `Revisar importação (${importTotal - importQueue.length} de ${importTotal})` : undefined}
       />
     </div>
   );

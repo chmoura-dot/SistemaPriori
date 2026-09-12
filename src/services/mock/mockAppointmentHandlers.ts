@@ -169,6 +169,7 @@ export const mockAppointmentHandlers = {
   },
 
   updatePassword: async (_newPassword: string): Promise<void> => { await delay(500); },
+  verifyCurrentPassword: async (_password: string): Promise<boolean> => { await delay(300); return true; },
 
   // ── Billing Batches ───────────────────────────────────────────────────────
   getBillingBatches: async (): Promise<BillingBatch[]> => {

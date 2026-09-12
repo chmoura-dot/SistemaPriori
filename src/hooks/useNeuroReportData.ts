@@ -50,13 +50,7 @@ export function useNeuroReportData() {
   }, []);
 
   const reportItems = useMemo<NeuroReportItem[]>(() => {
-    console.log('[useNeuroReportData] Iniciando processamento useMemo...');
-    console.log('[useNeuroReportData] Bruto appointments:', appointments);
-    console.log('[useNeuroReportData] Bruto customers:', customers);
-    console.log('[useNeuroReportData] Bruto psychologists:', psychologists);
-
     if (appointments.length === 0 || customers.length === 0 || psychologists.length === 0) {
-      console.log('[useNeuroReportData] Um ou mais arrays estão vazios, retornando []');
       return [];
     }
 
@@ -81,8 +75,6 @@ export function useNeuroReportData() {
       }
       list.push(app);
     }
-
-    console.log('[useNeuroReportData] Grupos formados:', groups.size, Array.from(groups.keys()));
 
     const todayStr = getTodayISO();
     const todayMs = new Date(todayStr + 'T00:00:00').getTime();
@@ -187,8 +179,6 @@ export function useNeuroReportData() {
         status,
       });
     }
-
-    console.log('[useNeuroReportData] Itens finais gerados para o relatório:', items);
 
     // Ordenação padrão decrescente por Tempo de Ciclo
     return items.sort((a, b) => b.cycleTimeDays - a.cycleTimeDays);

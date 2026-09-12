@@ -8,11 +8,34 @@
  */
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.7';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
+
+// Sem esta checagem, qualquer pessoa com a anon key pública poderia usar
+// esta função como proxy gratuito para a API paga do Gemini. Exige que
+// quem chama seja um membro autenticado da equipe (`app_users`).
+async function requireStaffCaller(req: Request): Promise<boolean> {
+  const jwt = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '');
+  if (!jwt) return false;
+  const supabase = createClient(
+    Deno.env.get('SUPABASE_URL') ?? '',
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+  );
+  const { data: userData, error: userError } = await supabase.auth.getUser(jwt);
+  if (userError || !userData?.user?.email) return false;
+  const { data: staffRow } = await supabase
+    .from('app_users')
+    .select('email')
+    .eq('email', userData.user.email)
+    .maybeSingle();
+  return !!staffRow;
+}
+
+const MAX_TEXT_LENGTH = 20000;
 
 serve(async (req: Request) => {
   // Handle CORS preflight
@@ -21,11 +44,25 @@ serve(async (req: Request) => {
   }
 
   try {
+    if (!(await requireStaffCaller(req))) {
+      return new Response(
+        JSON.stringify({ error: 'Não autorizado.' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     const { text } = await req.json();
 
     if (!text || typeof text !== 'string') {
       return new Response(
         JSON.stringify({ error: 'Campo "text" é obrigatório' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (text.length > MAX_TEXT_LENGTH) {
+      return new Response(
+        JSON.stringify({ error: `Texto excede o limite de ${MAX_TEXT_LENGTH} caracteres.` }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }

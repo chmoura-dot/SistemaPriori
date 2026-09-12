@@ -209,7 +209,7 @@ Deno.serve(async (req) => {
       headers["Client-Token"] = ZAPI_TOKEN;
     }
 
-    console.log(`[AgendaChangeNotify] Enviando WhatsApp (${changeType}) para ${psychName} (${psychPhone})`);
+    console.log(`[AgendaChangeNotify] Enviando WhatsApp (${changeType}) para agendamento ${appointmentId}`);
 
     const response = await fetch(`${ZAPI_URL}/send-text`, {
       method: "POST",

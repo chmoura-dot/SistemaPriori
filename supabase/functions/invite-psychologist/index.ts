@@ -6,6 +6,24 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Esta função usa a service_role key para convidar/resetar senha de QUALQUER
+// e-mail — sem essa checagem, qualquer pessoa com a anon key pública
+// (embutida no bundle do frontend) poderia chamá-la diretamente e convidar
+// e-mails arbitrários ou disparar reset de senha de contas existentes.
+// Exige que quem chama seja um membro autenticado da equipe (`app_users`).
+async function requireStaffCaller(req: Request, supabaseClient: ReturnType<typeof createClient>): Promise<boolean> {
+  const jwt = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '');
+  if (!jwt) return false;
+  const { data: userData, error: userError } = await supabaseClient.auth.getUser(jwt);
+  if (userError || !userData?.user?.email) return false;
+  const { data: staffRow } = await supabaseClient
+    .from('app_users')
+    .select('email')
+    .eq('email', userData.user.email)
+    .maybeSingle();
+  return !!staffRow;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -16,6 +34,13 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
+
+    if (!(await requireStaffCaller(req, supabaseClient))) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Não autorizado.' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
+      );
+    }
 
     const { email } = await req.json();
 

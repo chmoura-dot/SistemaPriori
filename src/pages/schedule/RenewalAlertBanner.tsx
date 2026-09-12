@@ -4,11 +4,10 @@ import { api } from '../../services/api';
 import { Appointment, Customer, Psychologist } from '../../services/types';
 import { cn } from '../../lib/utils';
 import { toastError } from '../../lib/toast';
-import { classifyRenewalAppointment, RenewalConflictInfo } from '../../lib/renewalAlerts';
+import { classifyRenewalAppointment, getNextOccurrenceDate, RenewalConflictInfo } from '../../lib/renewalAlerts';
 
 interface RenewalAlertBannerProps {
   psychologists: Psychologist[];
-  allAppointments: Appointment[];
   /** Abre o formulário de edição do agendamento já na data que precisa de ajuste. */
   onResolveConflict: (appointment: Appointment, targetDate: string) => void;
   /** Leva o usuário até o cadastro do paciente para reativá-lo ou encerrar a série. */
@@ -27,7 +26,6 @@ interface RenewalItem {
 
 export const RenewalAlertBanner: React.FC<RenewalAlertBannerProps> = ({
   psychologists,
-  allAppointments,
   onResolveConflict,
   onViewCustomer,
 }) => {
@@ -39,23 +37,32 @@ export const RenewalAlertBanner: React.FC<RenewalAlertBannerProps> = ({
   const loadRenewals = useCallback(async () => {
     try {
       setIsLoading(true);
-      const [renewalApps, allCustomers] = await Promise.all([
-        api.getAppointmentsNeedingRenewal(),
+      const candidates = await api.getAppointmentsNeedingRenewal();
+      if (candidates.length === 0) { setItems([]); return; }
+
+      // Busca a janela de datas que cobre a PRÓXIMA ocorrência de cada
+      // candidato (não a data exibida na Agenda) — mesmo critério usado pelo
+      // badge do Sidebar, para os dois nunca discordarem sobre o que é
+      // "acionável" (ver Sidebar.tsx).
+      const nextDates = candidates.map(c => getNextOccurrenceDate(c.date, c.recurrenceFrequency));
+      const minDate = nextDates.reduce((min, d) => (d < min ? d : min), nextDates[0]);
+      const maxDate = nextDates.reduce((max, d) => (d > max ? d : max), nextDates[0]);
+      const [allCustomers, nearbyAppointments] = await Promise.all([
         api.getCustomers(), // não filtrado — precisamos achar paciente mesmo se inativo
+        api.getAppointmentsByRange(minDate, maxDate),
       ]);
-      if (renewalApps.length === 0) { setItems([]); return; }
 
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
-      const mapped: RenewalItem[] = renewalApps.map(app => {
+      const mapped: RenewalItem[] = candidates.map(app => {
         const customer = allCustomers.find(c => c.id === app.customerId);
         const psych = psychologists.find(p => p.id === app.psychologistId);
         const appDate = new Date(app.date + 'T12:00:00');
         appDate.setHours(0, 0, 0, 0);
         const daysUntil = Math.ceil((appDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 
-        const { reason, conflict, nextDate } = classifyRenewalAppointment(app, allCustomers, allAppointments);
+        const { reason, conflict, nextDate } = classifyRenewalAppointment(app, allCustomers, nearbyAppointments);
 
         return {
           appointment: app,
@@ -80,7 +87,7 @@ export const RenewalAlertBanner: React.FC<RenewalAlertBannerProps> = ({
     } finally {
       setIsLoading(false);
     }
-  }, [psychologists, allAppointments]);
+  }, [psychologists]);
 
   useEffect(() => { loadRenewals(); }, [loadRenewals]);
 

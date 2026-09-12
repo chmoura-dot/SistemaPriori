@@ -22,6 +22,33 @@ export const inferGenderByName = (name: string): 'M' | 'F' | null => {
   return null;
 };
 
+// ─── Inativação de paciente ───────────────────────────────────────────────────
+// Lista única de motivos, usada tanto em CustomerInactivationModal (fluxo
+// principal, tela de Pacientes) quanto em PortfolioPage (inativação rápida
+// pela Carteira) — antes, cada tela tinha sua própria lista divergente.
+//
+// 'Desistência', 'Perda do Plano' e 'Liberação / Alta por psicólogo' têm que
+// usar exatamente este texto: os KPIs de "Churn Segmentado" do Dashboard
+// (useDashboardOperacional/useDashboardClinico) comparam inactivationReason
+// contra o enum InactivationReason por esses valores literais, e a Edge
+// Function confirm-appointment (fluxo do psicólogo liberar um paciente por
+// link mágico) já grava 'Liberação / Alta por psicólogo' diretamente.
+export const INACTIVATION_REASONS = [
+  'Alta terapêutica',
+  'Alta Administrativa',
+  'Pausa no Tratamento',
+  'Liberação / Alta por psicólogo',
+  'Desistência',
+  'Perda do Plano',
+  'Abandono',
+  'Solicitação do paciente',
+  'Mudança de convênio',
+  'Mudança de cidade / estado',
+  'Motivos financeiros',
+  'Óbito',
+  'Outro',
+];
+
 // ─── Validation helpers ───────────────────────────────────────────────────────
 export const isPhoneValid = (phone: string | undefined): boolean => {
   if (!phone) return false;

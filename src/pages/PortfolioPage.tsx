@@ -16,8 +16,9 @@ import {
   UserCheck
 } from 'lucide-react';
 import { api } from '../services/api';
-import { PortfolioItem, Psychologist, CustomerStatus, InactivationReason } from '../services/types';
+import { PortfolioItem, Psychologist } from '../services/types';
 import { cn } from '../lib/utils';
+import { INACTIVATION_REASONS } from './customers/customerUtils';
 
 function formatDate(dateStr?: string | null): string {
   if (!dateStr) return '—';
@@ -38,13 +39,15 @@ export const PortfolioPage: React.FC = () => {
 
   // Edição rápida de status: permite inativar (concluir/paralisar) um paciente
   // diretamente na carteira, sem navegar até a tela de Pacientes.
-  // Persiste via customers.status + customers.inactivation_reason (Supabase)
-  // e atualiza a UI de forma otimista, recalculando KPIs e grupos instantaneamente.
+  // Usa a mesma transação atômica da tela de Pacientes (inactivate_customer):
+  // inativa o cadastro, cancela consultas futuras, registra evento de alta e
+  // pausa assinaturas — nunca deixa um paciente inativo com agenda/assinatura
+  // ainda ativa, ao contrário de um simples updateCustomer.
   const handleStatusChange = async (customerId: string, newReason: string): Promise<void> => {
     if (!newReason) return;
 
     const confirmed = window.confirm(
-      `Tem certeza que deseja inativar este paciente pelo motivo: "${newReason}"?`
+      `Tem certeza que deseja inativar este paciente pelo motivo: "${newReason}"? Isso também cancelará as consultas futuras dele e pausará assinaturas ativas.`
     );
     if (!confirmed) {
       // Força um novo array para resetar o <select> não controlado de volta ao placeholder
@@ -54,10 +57,7 @@ export const PortfolioPage: React.FC = () => {
 
     setUpdatingCustomerId(customerId);
     try {
-      await api.updateCustomer(customerId, {
-        status: CustomerStatus.INACTIVE,
-        inactivationReason: newReason as InactivationReason,
-      });
+      await api.inactivateCustomer(customerId, newReason);
       toast.success('Status do paciente atualizado com sucesso.');
       // Remove o paciente inativado da carteira ativa exibida em tela
       setPortfolio(prev => prev.filter(p => p.customerId !== customerId));
@@ -420,7 +420,7 @@ export const PortfolioPage: React.FC = () => {
                                         title="Alterar status / Inativar paciente"
                                       >
                                         <option value="" disabled hidden>Inativar / Finalizar...</option>
-                                        {Object.values(InactivationReason).map((r: InactivationReason) => (
+                                        {INACTIVATION_REASONS.map((r: string) => (
                                           <option key={r} value={r}>{r}</option>
                                         ))}
                                       </select>
@@ -503,7 +503,7 @@ export const PortfolioPage: React.FC = () => {
                                         title="Alterar status / Inativar paciente"
                                       >
                                         <option value="" disabled hidden>Inativar / Finalizar...</option>
-                                        {Object.values(InactivationReason).map((r: InactivationReason) => (
+                                        {INACTIVATION_REASONS.map((r: string) => (
                                           <option key={r} value={r}>{r}</option>
                                         ))}
                                       </select>

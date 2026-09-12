@@ -63,10 +63,39 @@ Deno.serve(async (req) => {
     });
 
     const results = [];
+    // Data de hoje (Brasília) — usada só para a trava de idempotência diária,
+    // não para filtrar os agendamentos pendentes (isso é feito por thresholdStr acima).
+    const todayBrasilia = new Date();
+    todayBrasilia.setHours(todayBrasilia.getHours() - 3);
+    const todayStr = todayBrasilia.toISOString().split('T')[0];
 
     // 4. Para cada psicólogo with pendências, enviar o lembrete
     for (const [psyId, data] of psychologistMap.entries()) {
       const psy = data.info;
+
+      // Trava de idempotência: tenta marcar "já nagueei este psicólogo hoje"
+      // antes de enviar. Se a linha já existir (execução duplicada do cron,
+      // reexecução manual), pula sem reenviar e-mail nem gerar token novo.
+      const { data: nagInserted, error: nagLogError } = await supabase
+        .from('stale_nag_log')
+        .insert({ psychologist_id: psyId, nag_date: todayStr })
+        .select()
+        .maybeSingle();
+
+      if (nagLogError) {
+        // Código 23505 = violação de unique/PK: já foi nagueado hoje.
+        if ((nagLogError as any).code === '23505') {
+          results.push({ psychologist: psy.name, status: "already_nagged_today" });
+          continue;
+        }
+        results.push({ psychologist: psy.name, status: "nag_log_error", error: nagLogError.message });
+        continue;
+      }
+      if (!nagInserted) {
+        results.push({ psychologist: psy.name, status: "already_nagged_today" });
+        continue;
+      }
+
       const sortedDates = Array.from(data.dates).sort() as string[];
       const firstDate = sortedDates[0].split('-').reverse().join('/');
       const lastDate = sortedDates[sortedDates.length - 1].split('-').reverse().join('/');

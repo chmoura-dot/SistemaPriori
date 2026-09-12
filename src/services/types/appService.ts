@@ -50,6 +50,8 @@ export interface AppService {
   isAuthenticated: () => boolean;
   getCurrentUser: () => User | null;
   updatePassword: (newPassword: string) => Promise<void>;
+  // Confirma a senha atual antes de permitir a troca (reautenticação).
+  verifyCurrentPassword: (password: string) => Promise<boolean>;
 
   // Psychologists
   getPsychologists: () => Promise<Psychologist[]>;
@@ -57,6 +59,9 @@ export interface AppService {
   updatePsychologist: (id: string, psychologist: Partial<Psychologist>) => Promise<Psychologist>;
   deletePsychologist: (id: string) => Promise<void>;
   invitePsychologist: (email: string) => Promise<void>;
+  // Chave PIX: tabela dedicada, leitura restrita a admin via RLS.
+  getAllBankInfo: () => Promise<Record<string, { pixKeyType?: Psychologist['pixKeyType']; pixKey?: string }>>;
+  setBankInfo: (psychologistId: string, pixKeyType: Psychologist['pixKeyType'], pixKey: string) => Promise<void>;
 
   // Rooms
   getRooms: () => Promise<Room[]>;
@@ -89,12 +94,29 @@ export interface AppService {
   createCustomer: (customer: Omit<Customer, 'id' | 'createdAt'>) => Promise<Customer>;
   updateCustomer: (id: string, customer: Partial<Customer>) => Promise<Customer>;
   deleteCustomer: (id: string) => Promise<void>;
+  // Senha AMS/PAE: tabela dedicada, leitura restrita a admin via RLS.
+  getAllAmsPasswords: () => Promise<Record<string, string>>;
+  setAmsPassword: (customerId: string, amsPassword: string) => Promise<void>;
+  // Transação atômica: inativa paciente, cancela consultas futuras, registra
+  // evento de alta e pausa assinaturas em uma única chamada.
+  inactivateCustomer: (customerId: string, reason: string) => Promise<void>;
 
   // Plans
   getPlans: () => Promise<Plan[]>;
   createPlan: (plan: Omit<Plan, 'id' | 'createdAt'>) => Promise<Plan>;
   updatePlan: (id: string, plan: Partial<Plan>) => Promise<Plan>;
   deletePlan: (id: string) => Promise<void>;
+  // Transação atômica: reajusta planos + agendamentos futuros ainda não
+  // faturados numa única operação, travando qualquer valor resultante em
+  // minPrice (nunca negativo).
+  bulkAdjustPlanPrices: (params: {
+    planIds: string[];
+    amount: number;
+    adjustPrice: boolean;
+    adjustRepass: boolean;
+    effectiveDate: string;
+    minPrice?: number;
+  }) => Promise<{ plansUpdated: number; appointmentsUpdated: number; clampedCount: number }>;
 
   // Subscriptions
   getSubscriptions: () => Promise<Subscription[]>;

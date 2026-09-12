@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { Upload, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { Button } from '../../components/Button';
 import { Modal } from '../../components/Modal';
-import { HealthPlan } from '../../services/types';
+import { Customer, HealthPlan } from '../../services/types';
+import { isPhoneValid } from './customerUtils';
 
 interface ImportPreviewRow {
   name: string;
@@ -17,6 +18,8 @@ interface CustomerImportModalProps {
   onClose: () => void;
   isSaving: boolean;
   onImport: (rows: ImportPreviewRow[]) => void;
+  /** Usado para sinalizar possíveis duplicatas na pré-visualização. */
+  existingCustomers: Customer[];
 }
 
 const parseCSVLine = (line: string): string[] => {
@@ -37,6 +40,7 @@ export const CustomerImportModal: React.FC<CustomerImportModalProps> = ({
   onClose,
   isSaving,
   onImport,
+  existingCustomers,
 }) => {
   const [rawText, setRawText] = useState('');
   const [preview, setPreview] = useState<ImportPreviewRow[]>([]);
@@ -59,6 +63,10 @@ export const CustomerImportModal: React.FC<CustomerImportModalProps> = ({
 
   const handlePreview = () => {
     const lines = rawText.trim().split('\n').filter(l => l.trim());
+    // Nomes já cadastrados (para sinalizar duplicata) + nomes já vistos NESTA
+    // importação (evita reimportar a mesma linha duas vezes por engano).
+    const existingNames = new Set(existingCustomers.map(c => c.name.trim().toUpperCase()));
+    const seenInBatch = new Set<string>();
     const rows: ImportPreviewRow[] = lines.map(line => {
       const cols = parseCSVLine(line);
       const name = (cols[0] || '').trim().replace(/\s+/g, ' ').toUpperCase();
@@ -67,7 +75,10 @@ export const CustomerImportModal: React.FC<CustomerImportModalProps> = ({
       const birthDate = cols[3] || '';
       const errors: string[] = [];
       if (!name) errors.push('Nome vazio');
-      if (phone && phone.replace(/\D/g, '').length < 10) errors.push('Telefone inválido');
+      if (phone && !isPhoneValid(phone)) errors.push('Telefone inválido');
+      if (name && existingNames.has(name)) errors.push('Possível duplicata (já cadastrado)');
+      else if (name && seenInBatch.has(name)) errors.push('Duplicado nesta mesma importação');
+      if (name) seenInBatch.add(name);
       return { name, phone, healthPlan, birthDate, error: errors.join('; ') || undefined };
     });
     setPreview(rows);

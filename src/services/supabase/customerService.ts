@@ -53,13 +53,15 @@ export const customerService = {
         custom_repass_amount: c.customRepassAmount ?? null,
         birth_date: c.birthDate || null,
         gender: c.gender ?? null,
-        ams_password: c.amsPassword || null,
         ams_password_expiry: c.amsPasswordExpiry || null,
         card_number: c.cardNumber || null,
         reminder_dismissed_at: c.reminderDismissedAt || null,
         reminder_justification: c.reminderJustification || null,
       }).select().single()
     );
+    if (c.amsPassword) {
+      await customerService.setAmsPassword(row.id, c.amsPassword);
+    }
     return toCustomer(row);
   },
 
@@ -77,16 +79,53 @@ export const customerService = {
     if (c.customRepassAmount !== undefined) updates.custom_repass_amount = c.customRepassAmount;
     if (c.birthDate !== undefined) updates.birth_date = c.birthDate || null;
     if (c.gender !== undefined) updates.gender = c.gender;
-    if (c.amsPassword !== undefined) updates.ams_password = c.amsPassword;
     if (c.amsPasswordExpiry !== undefined) updates.ams_password_expiry = c.amsPasswordExpiry || null;
     if (c.cardNumber !== undefined) updates.card_number = c.cardNumber || null;
     if (c.reminderDismissedAt !== undefined) updates.reminder_dismissed_at = c.reminderDismissedAt;
     if (c.reminderJustification !== undefined) updates.reminder_justification = c.reminderJustification;
 
+    // Senha AMS: "em branco" significa "não alterar" (o campo nunca é
+    // pré-preenchido com o valor real neste formulário genérico — ver a
+    // tela dedicada "Senhas AMS / PAE" para consultar/revelar o valor).
+    if (c.amsPassword) {
+      await customerService.setAmsPassword(id, c.amsPassword);
+    }
+
     const row = await throwOnError(
       supabase.from('customers').update(updates).eq('id', id).select().single()
     );
     return toCustomer(row);
+  },
+
+  // Transação atômica: inativa o paciente, cancela consultas futuras, registra
+  // evento de alta e pausa assinaturas em uma única chamada (RPC
+  // `inactivate_customer`, 20260716_inactivate_customer_rpc.sql). Se qualquer
+  // etapa falhar, o Postgres reverte todas as anteriores — nunca deixa um
+  // paciente inativo com agenda/assinatura ainda ativa.
+  inactivateCustomer: async (customerId: string, reason: string): Promise<void> => {
+    const { error } = await supabase.rpc('inactivate_customer', {
+      p_customer_id: customerId,
+      p_reason: reason,
+    });
+    if (error) throw new Error(error.message);
+  },
+
+  // ── Senha AMS/PAE (tabela dedicada, leitura restrita a staff via RLS) ───────
+  getAllAmsPasswords: async (): Promise<Record<string, string>> => {
+    const { data, error } = await supabase.from('customer_ams_credentials').select('customer_id, ams_password');
+    if (error) throw new Error(error.message);
+    const map: Record<string, string> = {};
+    for (const row of data ?? []) {
+      if (row.ams_password) map[row.customer_id] = row.ams_password;
+    }
+    return map;
+  },
+
+  setAmsPassword: async (customerId: string, amsPassword: string): Promise<void> => {
+    const { error } = await supabase
+      .from('customer_ams_credentials')
+      .upsert({ customer_id: customerId, ams_password: amsPassword, updated_at: new Date().toISOString() });
+    if (error) throw new Error(error.message);
   },
 
   deleteCustomer: async (id: string): Promise<void> => {
@@ -115,6 +154,31 @@ export const customerService = {
     if (p.active !== undefined) updates.active = p.active;
     const row = await throwOnError(supabase.from('plans').update(updates).eq('id', id).select().single());
     return toPlan(row);
+  },
+
+  bulkAdjustPlanPrices: async (params: {
+    planIds: string[];
+    amount: number;
+    adjustPrice: boolean;
+    adjustRepass: boolean;
+    effectiveDate: string;
+    minPrice?: number;
+  }): Promise<{ plansUpdated: number; appointmentsUpdated: number; clampedCount: number }> => {
+    const { data, error } = await supabase.rpc('bulk_adjust_plan_prices', {
+      p_plan_ids: params.planIds,
+      p_amount: params.amount,
+      p_adjust_price: params.adjustPrice,
+      p_adjust_repass: params.adjustRepass,
+      p_effective_date: params.effectiveDate,
+      p_min_price: params.minPrice ?? 0,
+    });
+    if (error) throw new Error(error.message);
+    const row = Array.isArray(data) ? data[0] : data;
+    return {
+      plansUpdated: row?.plans_updated ?? 0,
+      appointmentsUpdated: row?.appointments_updated ?? 0,
+      clampedCount: row?.clamped_count ?? 0,
+    };
   },
 
   deletePlan: async (id: string): Promise<void> => {
@@ -165,16 +229,18 @@ export const customerService = {
     return (data ?? []).map(toPayment);
   },
 
+  // Insere o pagamento E avança `next_renewal`/`status` da assinatura em uma
+  // única transação no banco (RPC `register_subscription_payment`), para
+  // nunca deixar um pagamento registrado sem a assinatura renovada.
   createPayment: async (p: Omit<Payment, 'id' | 'createdAt'>): Promise<Payment> => {
-    const row = await throwOnError(
-      supabase.from('payments').insert({
-        subscription_id: p.subscriptionId,
-        amount: p.amount,
-        repass_amount: p.repassAmount,
-        paid_at: p.paidAt,
-      }).select().single()
-    );
-    return toPayment(row);
+    const { data, error } = await supabase.rpc('register_subscription_payment', {
+      p_subscription_id: p.subscriptionId,
+      p_amount: p.amount,
+      p_repass_amount: p.repassAmount,
+      p_paid_at: p.paidAt,
+    });
+    if (error) throw new Error(error.message);
+    return toPayment(data);
   },
 
   listPaymentsBySubscription: async (subscriptionId: string): Promise<Payment[]> => {

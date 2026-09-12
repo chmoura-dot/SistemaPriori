@@ -5,6 +5,7 @@ import { api } from '../services/api';
 
 export const AccountSecurityPage = () => {
   const [passwordData, setPasswordData] = useState({
+    currentPassword: '',
     newPassword: '',
     confirmPassword: ''
   });
@@ -12,6 +13,10 @@ export const AccountSecurityPage = () => {
   const [error, setError] = useState<string | null>(null);
 
   const handleChangePassword = async () => {
+    if (!passwordData.currentPassword) {
+      setError('Digite sua senha atual para confirmar a troca.');
+      return;
+    }
     if (!passwordData.newPassword) {
       setError('Por favor, digite a nova senha.');
       return;
@@ -28,9 +33,17 @@ export const AccountSecurityPage = () => {
     setIsUpdatingPassword(true);
     setError(null);
     try {
+      // Exige a senha atual antes de trocar — impede que uma sessão
+      // comprometida (dispositivo destravado, token vazado) troque a senha
+      // silenciosamente.
+      const isValid = await api.verifyCurrentPassword(passwordData.currentPassword);
+      if (!isValid) {
+        setError('Senha atual incorreta.');
+        return;
+      }
       await api.updatePassword(passwordData.newPassword);
       alert('Senha alterada com sucesso!');
-      setPasswordData({ newPassword: '', confirmPassword: '' });
+      setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
     } catch (error) {
       setError('Erro ao alterar a senha. Tente novamente.');
     } finally {
@@ -45,6 +58,17 @@ export const AccountSecurityPage = () => {
           {error}
         </div>
       )}
+      <div>
+        <label className="block text-sm font-medium text-priori-navy mb-1" htmlFor="current_password">Senha Atual</label>
+        <Input
+          id="current_password"
+          type="password"
+          placeholder="Digite sua senha atual"
+          value={passwordData.currentPassword}
+          onChange={(e) => setPasswordData({ ...passwordData, currentPassword: e.target.value })}
+        />
+      </div>
+
       <div>
         <label className="block text-sm font-medium text-priori-navy mb-1" htmlFor="new_password">Nova Senha</label>
         <Input

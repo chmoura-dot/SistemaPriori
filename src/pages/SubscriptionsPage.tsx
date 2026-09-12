@@ -12,6 +12,13 @@ import { Modal } from '../components/Modal';
 import { cn } from '../lib/utils';
 import { getTodayISO, toISODateLocal } from '../lib/dateUtils';
 
+// Procedimento usado para precificar a assinatura: o marcado explicitamente
+// no plano (isSubscriptionProcedure) ou, na ausência de marcação (planos
+// antigos, ainda não configurados), o primeiro da lista — mesmo
+// comportamento de antes, agora só como fallback.
+const getSubscriptionProcedure = (plan?: Plan) =>
+  plan?.procedures?.find(p => p.isSubscriptionProcedure) ?? plan?.procedures?.[0];
+
 export const SubscriptionsPage = () => {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -92,8 +99,9 @@ export const SubscriptionsPage = () => {
     const plan = plans.find(p => p.id === sub.planId);
     if (!plan) return;
 
-    const price = plan.procedures?.[0]?.price || 0;
-    const repass = plan.procedures?.[0]?.repassAmount || 0;
+    const procedure = getSubscriptionProcedure(plan);
+    const price = procedure?.price || 0;
+    const repass = procedure?.repassAmount || 0;
 
     if (confirm(`Registrar pagamento de R$ ${price} para esta assinatura? Isso renovará por mais 30 dias.`)) {
       setIsSaving(true);
@@ -255,7 +263,7 @@ export const SubscriptionsPage = () => {
             >
               <option value="">Selecione um plano...</option>
               {plans.map(p => (
-                <option key={p.id} value={p.id}>{p.name} - R$ {p.procedures?.[0]?.price || 0}</option>
+                <option key={p.id} value={p.id}>{p.name} - R$ {getSubscriptionProcedure(p)?.price || 0}</option>
               ))}
             </select>
           </div>

@@ -8,6 +8,7 @@ import { Modal } from '../../components/Modal';
 import { Button } from '../../components/Button';
 import { cn } from '../../lib/utils';
 import { matchPlanByHealthPlan } from '../../services/supabase/helpers';
+import { hasTimeOverlap } from '../../lib/timeUtils';
 import { ScheduleFormData } from './scheduleUtils';
 import { CustomerSearchDropdown } from './CustomerSearchDropdown';
 import { DateTimePicker } from './DateTimePicker';
@@ -92,9 +93,7 @@ export const ScheduleFormModal: React.FC<ScheduleFormModalProps> = ({
     const conflict = appointments.find(a =>
       a.id !== editingId && a.psychologistId === p.id && a.date === formData.date &&
       a.status !== AppointmentStatus.CANCELED &&
-      ((formData.startTime >= a.startTime && formData.startTime < a.endTime) ||
-        (formData.endTime > a.startTime && formData.endTime <= a.endTime) ||
-        (formData.startTime <= a.startTime && formData.endTime >= a.endTime))
+      hasTimeOverlap(formData.startTime, formData.endTime, a.startTime, a.endTime)
     );
     return !conflict;
   });
@@ -109,9 +108,7 @@ export const ScheduleFormModal: React.FC<ScheduleFormModalProps> = ({
       const conflicting = appointments.find(a =>
         a.psychologistId === p.id && a.date === formData.date && a.id !== editingId &&
         a.status !== AppointmentStatus.CANCELED &&
-        ((formData.startTime >= a.startTime && formData.startTime < a.endTime) ||
-          (formData.endTime > a.startTime && formData.endTime <= a.endTime) ||
-          (formData.startTime <= a.startTime && formData.endTime >= a.endTime))
+        hasTimeOverlap(formData.startTime, formData.endTime, a.startTime, a.endTime)
       );
       const conflictCustomer = conflicting ? customers.find(c => c.id === conflicting.customerId) : undefined;
       const conflictName = conflicting?.isInternal
@@ -143,9 +140,7 @@ export const ScheduleFormModal: React.FC<ScheduleFormModalProps> = ({
       const conflicting = appointments.find(a =>
         a.id !== editingId && a.psychologistId === formData.psychologistId && a.date === dateStr &&
         a.status !== AppointmentStatus.CANCELED &&
-        ((formData.startTime >= a.startTime && formData.startTime < a.endTime) ||
-          (formData.endTime > a.startTime && formData.endTime <= a.endTime) ||
-          (formData.startTime <= a.startTime && formData.endTime >= a.endTime))
+        hasTimeOverlap(formData.startTime, formData.endTime, a.startTime, a.endTime)
       );
 
       if (conflicting) {
@@ -171,9 +166,7 @@ export const ScheduleFormModal: React.FC<ScheduleFormModalProps> = ({
     const conflict = appointments.find(a =>
       a.id !== editingId && a.roomId === room.id && a.date === formData.date &&
       a.mode === AttendanceMode.PRESENCIAL && a.status !== AppointmentStatus.CANCELED &&
-      ((formData.startTime >= a.startTime && formData.startTime < a.endTime) ||
-        (formData.endTime > a.startTime && formData.endTime <= a.endTime) ||
-        (formData.startTime <= a.startTime && formData.endTime >= a.endTime))
+      hasTimeOverlap(formData.startTime, formData.endTime, a.startTime, a.endTime)
     );
     return !conflict;
   });

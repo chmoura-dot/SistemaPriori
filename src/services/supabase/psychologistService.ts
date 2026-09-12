@@ -22,13 +22,15 @@ export const psychologistService = {
           availability: p.availability,
           repass_rate: p.repassRate,
           repass_fixed_amount: p.repassFixedAmount,
-          pix_key_type: p.pixKeyType ?? null,
-          pix_key: p.pixKey ?? null,
           accepted_health_plans: p.acceptedHealthPlans ?? [],
         })
         .select()
         .single()
     );
+
+    if (p.pixKey) {
+      await psychologistService.setBankInfo(row.id, p.pixKeyType, p.pixKey);
+    }
 
     if (p.email) {
       try {
@@ -51,9 +53,13 @@ export const psychologistService = {
     if (p.availability !== undefined) updates.availability = p.availability;
     if (p.repassRate !== undefined) updates.repass_rate = p.repassRate;
     if (p.repassFixedAmount !== undefined) updates.repass_fixed_amount = p.repassFixedAmount;
-    if (p.pixKeyType !== undefined) updates.pix_key_type = p.pixKeyType || null;
-    if (p.pixKey !== undefined) updates.pix_key = p.pixKey || null;
     if (p.acceptedHealthPlans !== undefined) updates.accepted_health_plans = p.acceptedHealthPlans;
+
+    // Chave PIX: "em branco" significa "não alterar" — evita apagar um valor
+    // já cadastrado se algum chamador enviar um update parcial sem essa chave.
+    if (p.pixKey) {
+      await psychologistService.setBankInfo(id, p.pixKeyType, p.pixKey);
+    }
 
     const row = await throwOnError(
       supabase.from('psychologists').update(updates).eq('id', id).select().single()
@@ -63,6 +69,29 @@ export const psychologistService = {
 
   deletePsychologist: async (id: string): Promise<void> => {
     const { error } = await supabase.from('psychologists').delete().eq('id', id);
+    if (error) throw new Error(error.message);
+  },
+
+  // ── Chave PIX (tabela dedicada, leitura restrita a staff via RLS) ───────────
+  getAllBankInfo: async (): Promise<Record<string, { pixKeyType?: Psychologist['pixKeyType']; pixKey?: string }>> => {
+    const { data, error } = await supabase.from('psychologist_bank_info').select('psychologist_id, pix_key_type, pix_key');
+    if (error) throw new Error(error.message);
+    const map: Record<string, { pixKeyType?: Psychologist['pixKeyType']; pixKey?: string }> = {};
+    for (const row of data ?? []) {
+      map[row.psychologist_id] = { pixKeyType: row.pix_key_type ?? undefined, pixKey: row.pix_key ?? undefined };
+    }
+    return map;
+  },
+
+  setBankInfo: async (psychologistId: string, pixKeyType: Psychologist['pixKeyType'], pixKey: string): Promise<void> => {
+    const { error } = await supabase
+      .from('psychologist_bank_info')
+      .upsert({
+        psychologist_id: psychologistId,
+        pix_key_type: pixKeyType || null,
+        pix_key: pixKey,
+        updated_at: new Date().toISOString(),
+      });
     if (error) throw new Error(error.message);
   },
 

@@ -43,7 +43,11 @@ Deno.serve(async (req) => {
       const appointmentId = url.searchParams.get('appointmentId');
 
       if (appointmentId) {
-        // Busca agendamento específico para o paciente (sem login)
+        // Busca agendamento específico para o paciente (sem login). Note:
+        // apesar do nome do parâmetro (mantido por compatibilidade com o
+        // frontend), o valor recebido aqui é o `confirmation_token` do
+        // agendamento (aleatório, com expiração) — nunca o ID real — ver
+        // 20260912h_appointment_confirmation_token.sql.
         const { data: appData, error: appError } = await supabase
           .from('appointments')
           .select(`
@@ -59,12 +63,13 @@ Deno.serve(async (req) => {
             psychologist:psychologists (id, name, phone),
             room:rooms (id, name)
           `)
-          .eq('id', appointmentId)
+          .eq('confirmation_token', appointmentId)
           .eq('is_internal', false)
+          .gt('confirmation_token_expires_at', new Date().toISOString())
           .single();
 
         if (appError || !appData) {
-          throw new Error('Agendamento não encontrado.');
+          throw new Error('Link inválido ou expirado.');
         }
 
         return new Response(JSON.stringify({ success: true, appointment: appData }), {
@@ -186,7 +191,8 @@ Deno.serve(async (req) => {
     // ==========================================
     if (req.method === 'POST') {
       const body = await req.json();
-      const { token, appointmentId, action, billing, patientResponse, notes, customerId, subAction, justification } = body; 
+      const { token, action, billing, patientResponse, notes, customerId, subAction, justification } = body;
+      let { appointmentId } = body;
 
       if (action !== 'release_patient' && !appointmentId) {
         throw new Error('Appointment ID é obrigatório.');
@@ -194,6 +200,22 @@ Deno.serve(async (req) => {
 
       // CASO A: Resposta do Paciente (WhatsApp)
       if (patientResponse) {
+        // `appointmentId`, neste fluxo, é na verdade o `confirmation_token`
+        // enviado ao paciente (nunca o ID real) — ver
+        // 20260912h_appointment_confirmation_token.sql. Resolve para o ID
+        // real só depois de validar que o token existe e não expirou.
+        const { data: tokenRow, error: tokenLookupError } = await supabase
+          .from('appointments')
+          .select('id')
+          .eq('confirmation_token', appointmentId)
+          .gt('confirmation_token_expires_at', new Date().toISOString())
+          .single();
+
+        if (tokenLookupError || !tokenRow) {
+          throw new Error('Link inválido ou expirado.');
+        }
+        appointmentId = tokenRow.id;
+
         // Verificar se o agendamento já está cancelado (ex: paciente já recusou antes)
         const { data: currentApp, error: currentAppError } = await supabase
           .from('appointments')
@@ -284,7 +306,7 @@ Deno.serve(async (req) => {
                 body: JSON.stringify({ phone: psychPhone, message })
               });
 
-              console.log(`[ConfirmAppointment] Notificação WhatsApp enviada ao psicólogo ${psychologist.name} (${psychPhone}) — status: ${patientResponse}`);
+              console.log(`[ConfirmAppointment] Notificação WhatsApp enviada ao psicólogo (appointment ${appointmentId}) — status: ${patientResponse}`);
             }
           }
         } catch (notifyErr: any) {
@@ -482,7 +504,7 @@ Deno.serve(async (req) => {
           appointments_canceled: futureIds.length,
         });
 
-        console.log(`[ConfirmAppointment] Alta registrada: Paciente ${customerObj?.name}, Psy ${psychObj?.name}, ${futureIds.length} agendamentos futuros cancelados`);
+        console.log(`[ConfirmAppointment] Alta registrada: customer ${fullApp.customer_id}, psychologist ${fullApp.psychologist_id}, ${futureIds.length} agendamentos futuros cancelados`);
 
         return new Response(JSON.stringify({ success: true, canceledCount: futureIds.length }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }

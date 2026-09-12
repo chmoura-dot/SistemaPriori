@@ -115,6 +115,8 @@ const writes = {
   createCustomer: invalidateAfter(supabaseService.createCustomer, ['customers']),
   updateCustomer: invalidateAfter(supabaseService.updateCustomer, ['customers']),
   deleteCustomer: invalidateAfter(supabaseService.deleteCustomer, ['customers']),
+  // Também cancela consultas futuras e pausa assinaturas na mesma transação.
+  inactivateCustomer: invalidateAfter(supabaseService.inactivateCustomer, ['customers', 'appointments', 'subscriptions']),
 
   createPsychologist: invalidateAfter(supabaseService.createPsychologist, ['psychologists']),
   updatePsychologist: invalidateAfter(supabaseService.updatePsychologist, ['psychologists']),
@@ -123,12 +125,16 @@ const writes = {
   createPlan: invalidateAfter(supabaseService.createPlan, ['plans']),
   updatePlan: invalidateAfter(supabaseService.updatePlan, ['plans']),
   deletePlan: invalidateAfter(supabaseService.deletePlan, ['plans']),
+  bulkAdjustPlanPrices: invalidateAfter(supabaseService.bulkAdjustPlanPrices, ['plans', 'appointments']),
 
   createSubscription: invalidateAfter(supabaseService.createSubscription, ['subscriptions']),
   updateSubscription: invalidateAfter(supabaseService.updateSubscription, ['subscriptions']),
   deleteSubscription: invalidateAfter(supabaseService.deleteSubscription, ['subscriptions']),
 
-  createPayment: invalidateAfter(supabaseService.createPayment, ['payments']),
+  // Também invalida 'subscriptions': o registro de pagamento avança
+  // next_renewal/status da assinatura na mesma transação (RPC
+  // register_subscription_payment).
+  createPayment: invalidateAfter(supabaseService.createPayment, ['payments', 'subscriptions']),
 
   createExpense: invalidateAfter(supabaseService.createExpense, ['expenses']),
   updateExpense: invalidateAfter(supabaseService.updateExpense, ['expenses']),

@@ -14,6 +14,7 @@ export const SettingsPage = () => {
     zapiToken: ''
   });
   const [passwordData, setPasswordData] = useState({
+    currentPassword: '',
     newPassword: '',
     confirmPassword: ''
   });
@@ -62,8 +63,6 @@ export const SettingsPage = () => {
         result = await api.triggerClinicDailySummary();
       }
       
-      console.log('Resultado do disparo:', result);
-      
       const failuresCount = result?.processed?.filter((r: any) => r.status === 'error' || r.status === 'fetch_error' || r.status === 'mail_error')?.length || 0;
       const successCount = result?.processed?.filter((r: any) => r.status === 'sent')?.length || 0;
       
@@ -104,6 +103,10 @@ export const SettingsPage = () => {
   };
 
   const handleChangePassword = async () => {
+    if (!passwordData.currentPassword) {
+      alert('Digite sua senha atual para confirmar a troca.');
+      return;
+    }
     if (!passwordData.newPassword) {
       alert('Por favor, digite a nova senha.');
       return;
@@ -119,9 +122,17 @@ export const SettingsPage = () => {
 
     setIsUpdatingPassword(true);
     try {
+      // Exige a senha atual antes de trocar — impede que uma sessão
+      // comprometida (dispositivo destravado, token vazado) troque a senha
+      // silenciosamente.
+      const isValid = await api.verifyCurrentPassword(passwordData.currentPassword);
+      if (!isValid) {
+        alert('Senha atual incorreta.');
+        return;
+      }
       await api.updatePassword(passwordData.newPassword);
       alert('Senha alterada com sucesso!');
-      setPasswordData({ newPassword: '', confirmPassword: '' });
+      setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
     } catch (error) {
       alert('Erro ao alterar a senha. Tente novamente.');
     } finally {
@@ -345,6 +356,17 @@ export const SettingsPage = () => {
         </div>
 
         <div className="max-w-md space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-priori-navy mb-1" htmlFor="current_password">Senha Atual</label>
+            <Input
+              id="current_password"
+              type="password"
+              placeholder="Digite sua senha atual"
+              value={passwordData.currentPassword}
+              onChange={(e) => setPasswordData({ ...passwordData, currentPassword: e.target.value })}
+            />
+          </div>
+
           <div>
             <label className="block text-sm font-medium text-priori-navy mb-1" htmlFor="new_password">Nova Senha</label>
             <Input

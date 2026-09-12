@@ -68,4 +68,16 @@ export const authService = {
     const { error } = await supabase.auth.updateUser({ password: newPassword });
     if (error) throw new Error(error.message);
   },
+
+  // Reautentica com a senha atual antes de permitir a troca — sem isso,
+  // qualquer sessão comprometida (dispositivo destravado, XSS, token
+  // vazado) conseguiria trocar a senha da conta silenciosamente.
+  // signInWithPassword é o mecanismo do próprio Supabase Auth para validar
+  // a senha atual sem precisar de um endpoint dedicado.
+  verifyCurrentPassword: async (password: string): Promise<boolean> => {
+    const email = authService.getCurrentUser()?.email;
+    if (!email) return false;
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    return !error;
+  },
 };

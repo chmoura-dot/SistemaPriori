@@ -24,8 +24,6 @@ export const APPOINTMENT_COLUMNS = [
   'custom_price', 'custom_repass_amount',
   'billing_batch_id', 'billing_status', 'billing_ignored',
   'billing_ignored_reason', 'billing_ignored_at', 'paid_at',
-  'report_delivered_at', 'report_delivered_by',
-  'repass_phase1_repasse_id', 'repass_phase2_repasse_id',
   'health_plan_at_time',
 
   'denial_reason', 'denial_resolution',
@@ -42,7 +40,7 @@ export const CUSTOMER_COLUMNS = [
   'status', 'inactivation_reason',
   'notes', 'custom_price', 'custom_repass_amount',
   'birth_date', 'gender',
-  'ams_password', 'ams_password_expiry',
+  'ams_password_expiry',
   'card_number',
   'reminder_dismissed_at',
   'reminder_justification',
@@ -53,7 +51,7 @@ export const CUSTOMER_COLUMNS = [
 export const PSYCHOLOGIST_COLUMNS = [
   'id', 'name', 'email', 'phone', 'specialties', 'active',
   'availability', 'repass_rate', 'repass_fixed_amount',
-  'repass_overrides_plan', 'pix_key_type', 'pix_key',
+  'repass_overrides_plan',
   'accepted_health_plans'
 ].join(', ');
 
@@ -110,8 +108,8 @@ export function toPsychologist(row: any): Psychologist {
     repassRate: row.repass_rate,
     repassFixedAmount: row.repass_fixed_amount,
     repassOverridesPlan: row.repass_overrides_plan ?? false,
-    pixKeyType: row.pix_key_type ?? undefined,
-    pixKey: row.pix_key ?? undefined,
+    // pixKeyType/pixKey vivem em psychologist_bank_info (admin-only) — ver
+    // psychologistService.getAllBankInfo / setBankInfo.
     acceptedHealthPlans: row.accepted_health_plans ?? [],
   };
 }
@@ -165,7 +163,8 @@ export function toCustomer(row: any): Customer {
     customRepassAmount: row.custom_repass_amount ?? undefined,
     birthDate: row.birth_date ?? undefined,
     gender: row.gender ?? undefined,
-    amsPassword: row.ams_password ?? undefined,
+    // amsPassword vive em customer_ams_credentials (admin-only) — ver
+    // customerService.getAllAmsPasswords / setAmsPassword.
     amsPasswordExpiry: row.ams_password_expiry ?? undefined,
     cardNumber: row.card_number ?? undefined,
     reminderDismissedAt: row.reminder_dismissed_at ?? undefined,
@@ -208,10 +207,6 @@ export function toAppointment(row: any): Appointment {
     billingIgnoredReason: row.billing_ignored_reason ?? undefined,
     billingIgnoredAt: row.billing_ignored_at ?? undefined,
     paidAt: row.paid_at ?? undefined,
-    reportDeliveredAt: row.report_delivered_at ?? undefined,
-    reportDeliveredBy: row.report_delivered_by ?? undefined,
-    repassPhase1RepasseId: row.repass_phase1_repasse_id ?? undefined,
-    repassPhase2RepasseId: row.repass_phase2_repasse_id ?? undefined,
     healthPlanAtTime: row.health_plan_at_time ?? undefined,
 
     denialReason: row.denial_reason ?? undefined,

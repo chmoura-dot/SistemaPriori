@@ -1,6 +1,5 @@
 import {
   CustomerStatus,
-  InactivationReason,
   HealthPlan,
   AttendanceMode,
   AppointmentType,
@@ -52,7 +51,10 @@ export interface Customer {
   healthPlan: HealthPlan;
   psychologistId: string;
   status: CustomerStatus;
-  inactivationReason?: InactivationReason;
+  // Texto livre — nunca esteve realmente restrito ao enum InactivationReason
+  // (o fluxo principal de inativação, CustomerInactivationModal, sempre usou
+  // sua própria lista de motivos, incompatível com esse enum).
+  inactivationReason?: string;
   notes?: string;
   customPrice?: number;
   customRepassAmount?: number;
@@ -107,12 +109,6 @@ export interface Appointment {
   billingIgnoredAt?: string | null;
   paidAt?: string | null;
 
-  // Split de repasse da Avaliação Neuropsicológica (2 fases de 50%)
-  reportDeliveredAt?: string | null;      // laudo entregue (ISO)
-  reportDeliveredBy?: string | null;      // quem registrou a entrega
-  repassPhase1RepasseId?: string | null;  // repasse que pagou a 1ª parcela (sessão)
-  repassPhase2RepasseId?: string | null;  // repasse que pagou a 2ª parcela (laudo)
-
   healthPlanAtTime?: string | null;
 
   denialReason?: string | null;
@@ -158,6 +154,12 @@ export interface PlanProcedure {
   repassAmount: number;
   isOneTimeCharge: boolean;
   maxSessionsPerMonth?: number; // 0 = ilimitado
+  // Marca qual procedimento do plano representa o valor de assinatura
+  // (SubscriptionsPage). No máximo um por plano. Sem essa marcação
+  // explícita, o código antigo assumia o primeiro procedimento do array
+  // (procedures[0]) — um plano reordenado ou com múltiplos procedimentos
+  // cobrava/repassava o valor errado silenciosamente.
+  isSubscriptionProcedure?: boolean;
 }
 
 export interface Plan {

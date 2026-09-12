@@ -23,8 +23,14 @@ export const PsychologistsPage = () => {
 
   const loadPsychologists = async () => {
     setIsLoading(true);
-    const data = await api.getPsychologists();
-    setPsychologists(data.filter(p => p.active));
+    const [data, bankInfo] = await Promise.all([
+      api.getPsychologists(),
+      api.getAllBankInfo(),
+    ]);
+    const merged = data
+      .filter(p => p.active)
+      .map(p => ({ ...p, ...bankInfo[p.id] }));
+    setPsychologists(merged);
     setIsLoading(false);
   };
 

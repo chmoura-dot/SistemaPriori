@@ -33,6 +33,16 @@ export const PlanFormModal: React.FC<Props> = ({
     setFormData({ ...formData, procedures: newProcs });
   };
 
+  // No máximo um procedimento pode ser o "valor de assinatura" do plano —
+  // marcar um desmarca automaticamente os demais.
+  const handleSetSubscriptionProcedure = (idx: number, checked: boolean) => {
+    const newProcs = formData.procedures.map((p, i) => ({
+      ...p,
+      isSubscriptionProcedure: checked ? i === idx : (i === idx ? false : p.isSubscriptionProcedure),
+    }));
+    setFormData({ ...formData, procedures: newProcs });
+  };
+
   const addProcedure = () => {
     setFormData({
       ...formData,
@@ -150,6 +160,13 @@ export const PlanFormModal: React.FC<Props> = ({
                   onChange={(e) => handleProcedureChange(idx, 'isOneTimeCharge', e.target.checked)}
                   className="w-3 h-3 rounded border-zinc-300 bg-white text-priori-navy focus:ring-priori-navy/20" />
                 <label htmlFor={`onetime-${idx}`} className="text-[10px] text-zinc-500">Cobrar apenas uma vez (independente do nº de sessões)</label>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <input type="checkbox" id={`subscription-${idx}`} checked={!!proc.isSubscriptionProcedure}
+                  onChange={(e) => handleSetSubscriptionProcedure(idx, e.target.checked)}
+                  className="w-3 h-3 rounded border-zinc-300 bg-white text-priori-navy focus:ring-priori-navy/20" />
+                <label htmlFor={`subscription-${idx}`} className="text-[10px] text-zinc-500">Usar como valor de assinatura deste plano</label>
               </div>
             </div>
           ))}

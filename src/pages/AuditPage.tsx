@@ -130,7 +130,6 @@ export const AuditPage = () => {
         </div>
       </div>
 
-    setIsConfirmRevertOpen(true);
       {/* Barra de Filtros e Busca */}
       <div className="bg-white p-4 rounded-2xl border border-zinc-100 shadow-sm space-y-3">
         <div className="flex flex-col md:flex-row gap-3">

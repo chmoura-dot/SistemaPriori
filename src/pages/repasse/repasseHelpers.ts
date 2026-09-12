@@ -254,16 +254,8 @@ export function generateRepassePDF(
         : undefined;
       const procedure = procedureByCode ?? plan?.procedures?.find(proc => proc.type === app.type);
 
-      let repassVal = getRepassValue(app, customers, plans, psy, pricingCtx);
-      let parcelaLabel = '';
-      if (app.repassPhase1RepasseId === repasse.id) {
-        repassVal = Math.round(repassVal * 100 * 0.5) / 100;
-        parcelaLabel = ' (Etapa 1/2 — Sessão)';
-      } else if (app.repassPhase2RepasseId === repasse.id) {
-        repassVal = Math.round(repassVal * 100 * 0.5) / 100;
-        parcelaLabel = ' (Etapa 2/2 — Laudo)';
-      }
-      return { app, customer, procedure, repassVal, parcelaLabel };
+      const repassVal = getRepassValue(app, customers, plans, psy, pricingCtx);
+      return { app, customer, procedure, repassVal };
     })
     .filter((r): r is NonNullable<typeof r> => r !== null)
     .filter(r => r.repassVal > 0);
@@ -280,7 +272,7 @@ export function generateRepassePDF(
     subtotal: number;
   }> = {};
 
-  rows.forEach(({ app, customer, procedure, repassVal, parcelaLabel }) => {
+  rows.forEach(({ app, customer, procedure, repassVal }) => {
     const patientId = customer?.id ?? 'unknown';
     if (!byPatient[patientId]) {
       byPatient[patientId] = {
@@ -292,7 +284,7 @@ export function generateRepassePDF(
     byPatient[patientId].sessions.push({
       date: app.date ? format(new Date(app.date + 'T12:00:00'), 'dd/MM/yyyy') : '—',
       code: procedure?.code ?? '—',
-      description: (procedure?.description ?? app.type ?? '—') + parcelaLabel,
+      description: procedure?.description ?? app.type ?? '—',
       repassVal,
     });
 

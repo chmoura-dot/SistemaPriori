@@ -26,6 +26,7 @@ interface Props {
   handleAmountChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   handleSubmit: (e: React.FormEvent) => Promise<void>;
   isSaving: boolean;
+  titleOverride?: string;
 }
 
 export const ExpenseFormModal = ({
@@ -38,8 +39,9 @@ export const ExpenseFormModal = ({
   handleAmountChange,
   handleSubmit,
   isSaving,
+  titleOverride,
 }: Props) => (
-  <Modal isOpen={isOpen} onClose={onClose} title={editingExpense ? 'Editar Despesa' : 'Nova Despesa'}>
+  <Modal isOpen={isOpen} onClose={onClose} title={titleOverride || (editingExpense ? 'Editar Despesa' : 'Nova Despesa')}>
     <form onSubmit={handleSubmit} className="space-y-4">
       <Input
         label="Descrição / Emissor"

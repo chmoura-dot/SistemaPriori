@@ -6,8 +6,9 @@
 import { useMemo } from 'react';
 import {
   Appointment, Customer,
-  AppointmentStatus, CustomerStatus, InactivationReason,
+  AppointmentStatus, CustomerStatus,
 } from '../../services/types';
+import { INACTIVATION_REASONS } from '../../pages/customers/customerUtils';
 
 interface DashboardClinicoParams {
   appointmentsFiltered: Appointment[];
@@ -93,8 +94,12 @@ export function useDashboardClinico({
     }),
     [customers, isInSelectedPeriod]
   );
+  // Usa a lista completa de motivos reais (INACTIVATION_REASONS) em vez do
+  // enum InactivationReason, que só cobria 6 dos ~11 valores possíveis —
+  // motivos como "Mudança de convênio" ou "Motivos financeiros" nunca
+  // apareciam neste gráfico antes, mesmo sendo os mais usados na prática.
   const churnByReason = useMemo(() =>
-    Object.values(InactivationReason)
+    INACTIVATION_REASONS
       .map(reason => ({ reason, count: inactivatedThisMonth.filter(c => c.inactivationReason === reason).length }))
       .filter(r => r.count > 0),
     [inactivatedThisMonth]

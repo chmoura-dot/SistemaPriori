@@ -23,15 +23,20 @@ export const AmsPasswordsPage = () => {
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const data = await api.getCustomers();
+      const [data, passwords] = await Promise.all([
+        api.getCustomers(),
+        api.getAllAmsPasswords(),
+      ]);
       // Filtrar apenas pacientes ativos dos planos AMS Petrobras e PAE
-      const amsCustomers = data.filter(c => 
-        (c.healthPlan === HealthPlan.AMS_PETROBRAS || 
-         c.healthPlan === HealthPlan.PAE ||
-         c.healthPlan.toString().toUpperCase().includes('PETROBRAS')) &&
-        c.status === CustomerStatus.ACTIVE
-      );
-      
+      const amsCustomers = data
+        .filter(c =>
+          (c.healthPlan === HealthPlan.AMS_PETROBRAS ||
+           c.healthPlan === HealthPlan.PAE ||
+           c.healthPlan.toString().toUpperCase().includes('PETROBRAS')) &&
+          c.status === CustomerStatus.ACTIVE
+        )
+        .map(c => ({ ...c, amsPassword: passwords[c.id] }));
+
       // Ordenar por data de vencimento (mais próximas primeiro)
       const sorted = amsCustomers.sort((a, b) => {
         if (!a.amsPasswordExpiry) return 1;
@@ -66,10 +71,12 @@ export const AmsPasswordsPage = () => {
     
     setIsSaving(true);
     try {
-      await api.updateCustomer(editingCustomer.id, {
-        amsPassword: formData.amsPassword,
-        amsPasswordExpiry: formData.amsPasswordExpiry
-      });
+      await Promise.all([
+        api.setAmsPassword(editingCustomer.id, formData.amsPassword),
+        api.updateCustomer(editingCustomer.id, {
+          amsPasswordExpiry: formData.amsPasswordExpiry
+        }),
+      ]);
       await loadData();
       setIsModalOpen(false);
     } catch (error) {

@@ -14,6 +14,23 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Sem esta checagem, qualquer pessoa com a anon key pública poderia
+// scriptar chamadas repetidas para spammar e-mails a psicólogos reais e
+// esgotar a cota da conta Resend. Exige que quem chama seja um membro
+// autenticado da equipe (`app_users`).
+async function requireStaffCaller(req: Request, supabase: ReturnType<typeof createClient>): Promise<boolean> {
+  const jwt = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '');
+  if (!jwt) return false;
+  const { data: userData, error: userError } = await supabase.auth.getUser(jwt);
+  if (userError || !userData?.user?.email) return false;
+  const { data: staffRow } = await supabase
+    .from('app_users')
+    .select('email')
+    .eq('email', userData.user.email)
+    .maybeSingle();
+  return !!staffRow;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -21,6 +38,12 @@ Deno.serve(async (req) => {
 
   try {
     const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
+
+    if (!(await requireStaffCaller(req, supabase))) {
+      return new Response(JSON.stringify({ error: 'Não autorizado.' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
 
     const body = await req.json();
     const { psychologist_id } = body;

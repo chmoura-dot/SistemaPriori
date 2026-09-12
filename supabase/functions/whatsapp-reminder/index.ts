@@ -89,6 +89,7 @@ Deno.serve(async (req) => {
           id,
           date,
           start_time,
+          confirmation_token,
           customer:customers (name, phone),
           psychologist:psychologists (name)
         `)
@@ -146,8 +147,10 @@ Deno.serve(async (req) => {
 
       const psychName = psychologist?.name || "Psicólogo";
       const formattedDate = `${day.toString().padStart(2, "0")}/${month.toString().padStart(2, "0")}`;
-      // Usar HashRouter para evitar erros 404 no Vercel
-      const confirmationLink = `${APP_URL}/#/confirmacao/${app.id}`;
+      // Usar HashRouter para evitar erros 404 no Vercel. O link usa o token de
+      // confirmação (aleatório, com expiração) em vez do ID real do
+      // agendamento — ver 20260912h_appointment_confirmation_token.sql.
+      const confirmationLink = `${APP_URL}/#/confirmacao/${app.confirmation_token}`;
 
       const message = `Olá *${patientName}*, aqui é da Núcleo Priori. Passando para lembrar da sua consulta com *${psychName}* hoje, dia *${formattedDate}* às *${app.start_time}*.\n\nPor favor, confirme sua presença clicando no link abaixo:\n${confirmationLink}`;
 
@@ -166,7 +169,7 @@ Deno.serve(async (req) => {
       }
 
       try {
-        console.log(`[WhatsAppReminder] Enviando para ${patientPhone} via ${ZAPI_URL}`);
+        console.log(`[WhatsAppReminder] Enviando lembrete (appointment ${app.id})`);
         const response = await fetch(`${ZAPI_URL}/send-text`, {
           method: "POST",
           headers,
@@ -177,11 +180,19 @@ Deno.serve(async (req) => {
         });
 
         if (response.ok) {
+          // Expiração do link enviado ao paciente: alguns dias após a sessão,
+          // margem suficiente para respostas atrasadas sem deixar o link
+          // válido indefinidamente.
+          const tokenExpiresAt = new Date(Date.UTC(year, month - 1, day + 3, 23, 59, 59));
+
           await withRetry(
             `marcar lembrete enviado (${app.id})`,
             () => supabase
               .from("appointments")
-              .update({ reminder_sent_at: new Date().toISOString() })
+              .update({
+                reminder_sent_at: new Date().toISOString(),
+                confirmation_token_expires_at: tokenExpiresAt.toISOString(),
+              })
               .eq("id", app.id),
           );
 

@@ -145,7 +145,19 @@ export const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
             <p className="text-xs font-bold text-blue-800 uppercase tracking-widest">Dados AMS / Petrobras</p>
             <div className="space-y-1">
               <label className={label}>Senha AMS</label>
-              <input className={input} value={formData.amsPassword} onChange={e => setFormData(p => ({ ...p, amsPassword: e.target.value }))} placeholder="Senha atual" />
+              <input
+                type="password"
+                className={input}
+                value={formData.amsPassword}
+                onChange={e => setFormData(p => ({ ...p, amsPassword: e.target.value }))}
+                placeholder={editingId ? 'Deixe em branco para manter a senha atual' : 'Nova senha'}
+                autoComplete="new-password"
+              />
+              {editingId && (
+                <p className="text-[11px] text-zinc-400">
+                  Por segurança, a senha salva não é exibida aqui. Consulte em "Senhas AMS / PAE".
+                </p>
+              )}
             </div>
             <div className="space-y-1">
               <label className={label}>Vencimento da Senha</label>

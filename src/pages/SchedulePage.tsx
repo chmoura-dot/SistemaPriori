@@ -97,7 +97,6 @@ export const SchedulePage: React.FC<SchedulePageProps> = ({ onNavigate }) => {
       {/* Alerta de renovações pendentes */}
       <RenewalAlertBanner
         psychologists={s.psychologists}
-        allAppointments={s.appointments}
         onResolveConflict={(appointment, targetDate) => handleEdit(appointment, targetDate)}
         onViewCustomer={(customerId) => {
           localStorage.setItem('customers_open_id', customerId);

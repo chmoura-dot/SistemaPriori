@@ -1,6 +1,7 @@
 import {
-  Customer, Plan, Subscription, SubscriptionStatus, Payment,
+  Customer, CustomerStatus, Plan, Subscription, SubscriptionStatus, Payment,
   Psychologist, Room, Expense, User, UserRole,
+  Appointment, AppointmentStatus,
 } from '../types';
 import { STORAGE_KEYS, delay, getFromStorage, saveToStorage } from './mockData';
 import { getTodayISO, toISODateLocal } from '../../lib/dateUtils';
@@ -61,6 +62,23 @@ export const mockEntityHandlers = {
     saveToStorage(STORAGE_KEYS.PSYCHOLOGISTS, list.filter(p => p.id !== id));
   },
   invitePsychologist: async (_email: string): Promise<void> => { await delay(300); },
+  getAllBankInfo: async (): Promise<Record<string, { pixKeyType?: Psychologist['pixKeyType']; pixKey?: string }>> => {
+    await delay(100);
+    const list = getFromStorage<Psychologist>(STORAGE_KEYS.PSYCHOLOGISTS);
+    const map: Record<string, { pixKeyType?: Psychologist['pixKeyType']; pixKey?: string }> = {};
+    for (const p of list) {
+      if (p.pixKey) map[p.id] = { pixKeyType: p.pixKeyType, pixKey: p.pixKey };
+    }
+    return map;
+  },
+  setBankInfo: async (psychologistId: string, pixKeyType: Psychologist['pixKeyType'], pixKey: string): Promise<void> => {
+    await delay(300);
+    const list = getFromStorage<Psychologist>(STORAGE_KEYS.PSYCHOLOGISTS);
+    const idx = list.findIndex(p => p.id === psychologistId);
+    if (idx === -1) return;
+    list[idx] = { ...list[idx], pixKeyType, pixKey };
+    saveToStorage(STORAGE_KEYS.PSYCHOLOGISTS, list);
+  },
 
   // ── Rooms ─────────────────────────────────────────────────────────────────
   getRooms: async (): Promise<Room[]> => {
@@ -89,6 +107,52 @@ export const mockEntityHandlers = {
     list[idx] = updated;
     saveToStorage(STORAGE_KEYS.CUSTOMERS, list);
     return updated;
+  },
+  getAllAmsPasswords: async (): Promise<Record<string, string>> => {
+    await delay(100);
+    const list = getFromStorage<Customer>(STORAGE_KEYS.CUSTOMERS);
+    const map: Record<string, string> = {};
+    for (const c of list) {
+      if (c.amsPassword) map[c.id] = c.amsPassword;
+    }
+    return map;
+  },
+  setAmsPassword: async (customerId: string, amsPassword: string): Promise<void> => {
+    await delay(300);
+    const list = getFromStorage<Customer>(STORAGE_KEYS.CUSTOMERS);
+    const idx = list.findIndex(c => c.id === customerId);
+    if (idx === -1) return;
+    list[idx] = { ...list[idx], amsPassword };
+    saveToStorage(STORAGE_KEYS.CUSTOMERS, list);
+  },
+  inactivateCustomer: async (customerId: string, reason: string): Promise<void> => {
+    await delay(500);
+    const customers = getFromStorage<Customer>(STORAGE_KEYS.CUSTOMERS);
+    const idx = customers.findIndex(c => c.id === customerId);
+    if (idx === -1) throw new Error('Paciente não encontrado');
+    customers[idx] = { ...customers[idx], status: CustomerStatus.INACTIVE, inactivationReason: reason };
+    saveToStorage(STORAGE_KEYS.CUSTOMERS, customers);
+
+    const today = getTodayISO();
+    const appointments = getFromStorage<Appointment>(STORAGE_KEYS.APPOINTMENTS);
+    const updatedAppointments = appointments.map(a =>
+      a.customerId === customerId && a.date >= today && (a.status === AppointmentStatus.ACTIVE || a.status === AppointmentStatus.RELEASED)
+        ? { ...a, status: AppointmentStatus.CANCELED, cancellationBilling: 'none' as const }
+        : a
+    );
+    saveToStorage(STORAGE_KEYS.APPOINTMENTS, updatedAppointments);
+
+    // Espelha o RPC real (inactivate_customer), que grava status='inactive'
+    // em subscriptions — valor que hoje não existe em SubscriptionStatus
+    // (só ACTIVE/EXPIRED/CANCELLED). Mantido igual ao banco de propósito;
+    // vale revisitar esse enum numa limpeza futura.
+    const subs = getFromStorage<Subscription>(STORAGE_KEYS.SUBSCRIPTIONS);
+    const updatedSubs = subs.map(s =>
+      s.customerId === customerId && s.status === SubscriptionStatus.ACTIVE
+        ? { ...s, status: 'inactive' as SubscriptionStatus }
+        : s
+    );
+    saveToStorage(STORAGE_KEYS.SUBSCRIPTIONS, updatedSubs);
   },
   deleteCustomer: async (id: string): Promise<void> => {
     await delay(500);
@@ -122,6 +186,75 @@ export const mockEntityHandlers = {
     await delay(500);
     const list = getFromStorage<Plan>(STORAGE_KEYS.PLANS);
     saveToStorage(STORAGE_KEYS.PLANS, list.filter(p => p.id !== id));
+  },
+  bulkAdjustPlanPrices: async (params: {
+    planIds: string[];
+    amount: number;
+    adjustPrice: boolean;
+    adjustRepass: boolean;
+    effectiveDate: string;
+    minPrice?: number;
+  }): Promise<{ plansUpdated: number; appointmentsUpdated: number; clampedCount: number }> => {
+    await delay(500);
+    const minPrice = params.minPrice ?? 0;
+    const plans = getFromStorage<Plan>(STORAGE_KEYS.PLANS);
+    const targetPlans = plans.filter(p => params.planIds.includes(p.id));
+    if (targetPlans.length === 0) return { plansUpdated: 0, appointmentsUpdated: 0, clampedCount: 0 };
+
+    let clampedCount = 0;
+    for (const plan of targetPlans) {
+      for (const proc of plan.procedures || []) {
+        if (params.adjustPrice && proc.price + params.amount < minPrice) clampedCount++;
+        if (params.adjustRepass && proc.repassAmount + params.amount < minPrice) clampedCount++;
+      }
+    }
+
+    // 1) Agendamentos futuros ainda não faturados (calculado a partir dos
+    //    preços originais dos planos, antes de reajustá-los abaixo).
+    const customers = getFromStorage<Customer>(STORAGE_KEYS.CUSTOMERS);
+    const psychologists = getFromStorage<Psychologist>(STORAGE_KEYS.PSYCHOLOGISTS);
+    const appointments = getFromStorage<Appointment>(STORAGE_KEYS.APPOINTMENTS);
+    const planNames = targetPlans.map(p => p.name.toUpperCase());
+    let appointmentsUpdated = 0;
+    const updatedAppointments = appointments.map(app => {
+      if (app.billingBatchId) return app;
+      if (app.date < params.effectiveDate) return app;
+      const customer = customers.find(c => c.id === app.customerId);
+      if (!customer || !planNames.includes((customer.healthPlan || '').toUpperCase())) return app;
+      const plan = targetPlans.find(p => p.name.toUpperCase() === (customer.healthPlan || '').toUpperCase());
+      const proc = plan?.procedures?.find(pr => pr.type === app.type);
+      if (!proc) return app;
+      const psy = psychologists.find(p => p.id === app.psychologistId);
+      const updated = { ...app };
+      let changed = false;
+      if (params.adjustPrice) {
+        updated.customPrice = Math.max(minPrice, (app.customPrice ?? proc.price) + params.amount);
+        changed = true;
+      }
+      if (params.adjustRepass && !psy?.repassOverridesPlan) {
+        updated.customRepassAmount = Math.max(minPrice, (app.customRepassAmount ?? proc.repassAmount) + params.amount);
+        changed = true;
+      }
+      if (changed) appointmentsUpdated++;
+      return updated;
+    });
+    saveToStorage(STORAGE_KEYS.APPOINTMENTS, updatedAppointments);
+
+    // 2) Planos.
+    const updatedPlans = plans.map(plan => {
+      if (!params.planIds.includes(plan.id)) return plan;
+      return {
+        ...plan,
+        procedures: (plan.procedures || []).map(proc => ({
+          ...proc,
+          price: params.adjustPrice ? Math.max(minPrice, proc.price + params.amount) : proc.price,
+          repassAmount: params.adjustRepass ? Math.max(minPrice, proc.repassAmount + params.amount) : proc.repassAmount,
+        })),
+      };
+    });
+    saveToStorage(STORAGE_KEYS.PLANS, updatedPlans);
+
+    return { plansUpdated: targetPlans.length, appointmentsUpdated, clampedCount };
   },
 
   // ── Subscriptions ─────────────────────────────────────────────────────────

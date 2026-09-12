@@ -61,7 +61,7 @@ export const HolidaysPage = () => {
     if (!holidayForm.date || !holidayForm.name) return;
     setIsSavingHoliday(true);
     try {
-      if (!editingHolidayId && !holidayForm.clinicOpen) {
+      if (!holidayForm.clinicOpen) {
         const affected = appointments.filter(a => a.date === holidayForm.date && a.status !== 'canceled');
         if (affected.length > 0) {
           setConflictModalData({ affectedAppointments: affected, onConfirm: async () => { await doSaveHoliday(); setConflictModalData(null); } });
@@ -106,7 +106,7 @@ export const HolidaysPage = () => {
     if (closureForm.endDate < closureForm.startDate) { alert('A data de fim deve ser igual ou posterior à data de início.'); return; }
     setIsSavingClosure(true);
     try {
-      if (!editingClosureId) {
+      {
         const affected = appointments.filter(a => a.date >= closureForm.startDate && a.date <= closureForm.endDate && a.status !== 'canceled');
         if (affected.length > 0) {
           setConflictModalData({ affectedAppointments: affected, onConfirm: async () => { await doSaveClosure(); setConflictModalData(null); } });

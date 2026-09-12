@@ -245,10 +245,6 @@ export const appointmentWriteService = {
     if (a.billingIgnoredReason !== undefined) updates.billing_ignored_reason = a.billingIgnoredReason;
     if (a.billingIgnoredAt !== undefined) updates.billing_ignored_at = a.billingIgnoredAt;
     if (a.paidAt !== undefined) updates.paid_at = a.paidAt;
-    if (a.reportDeliveredAt !== undefined) updates.report_delivered_at = a.reportDeliveredAt;
-    if (a.reportDeliveredBy !== undefined) updates.report_delivered_by = a.reportDeliveredBy;
-    if (a.repassPhase1RepasseId !== undefined) updates.repass_phase1_repasse_id = a.repassPhase1RepasseId;
-    if (a.repassPhase2RepasseId !== undefined) updates.repass_phase2_repasse_id = a.repassPhase2RepasseId;
 
     if (a.healthPlanAtTime !== undefined) updates.health_plan_at_time = a.healthPlanAtTime;
 
