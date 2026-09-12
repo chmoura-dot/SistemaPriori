@@ -218,41 +218,51 @@ export const RepassePage = () => {
         </div>
       )}
 
-      {/* Cards de Resumo */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      {/* Cards de Resumo — mesmo padrão visual dos cartões de Faturamento */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
         {/* Card 1: Total a Liberar */}
-        <div className="bg-white p-5 rounded-2xl border border-zinc-100 shadow-sm hover:shadow-md hover:border-zinc-200/80 transition-all flex items-center justify-between group">
-          <div>
-            <p className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Total a Liberar</p>
-            <h3 className="text-2xl font-bold text-priori-navy mt-1">{fmt.format(summary.pendingGenerationAmount)}</h3>
-            <p className="text-xs text-zinc-500 mt-1 font-medium">{summary.pendingGenerationCount} lote(s) pronto(s)</p>
+        <div className="bg-white rounded-2xl border border-amber-100 p-6 shadow-sm flex items-start gap-4">
+          <div className="p-3 bg-amber-50 text-amber-600 rounded-xl">
+            <Clock size={24} />
           </div>
-          <div className="w-12 h-12 rounded-xl bg-amber-50 text-amber-500 flex items-center justify-center group-hover:scale-105 transition-transform shadow-sm border border-amber-100/50">
-            <Clock size={22} />
+          <div>
+            <p className="text-sm font-medium text-zinc-500 mb-1">
+              Total a Liberar ({summary.pendingGenerationCount} {summary.pendingGenerationCount === 1 ? 'lote' : 'lotes'})
+            </p>
+            <h3 className="text-2xl font-bold text-priori-navy">
+              {fmt.format(summary.pendingGenerationAmount)}
+            </h3>
+            <p className="text-xs text-amber-600 mt-0.5">Aguardando geração</p>
           </div>
         </div>
 
         {/* Card 2: Liberado para Pagamento */}
-        <div className="bg-white p-5 rounded-2xl border border-zinc-100 shadow-sm hover:shadow-md hover:border-zinc-200/80 transition-all flex items-center justify-between group">
-          <div>
-            <p className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Liberado para Pagamento</p>
-            <h3 className="text-2xl font-bold text-priori-navy mt-1">{fmt.format(summary.repassesPendingAmount)}</h3>
-            <p className="text-xs text-zinc-500 mt-1 font-medium">{summary.repassesPendingCount} pendente(s) de pgto</p>
+        <div className="bg-white rounded-2xl border border-zinc-100 p-6 shadow-sm flex items-start gap-4">
+          <div className="p-3 bg-red-50 text-red-600 rounded-xl">
+            <AlertTriangle size={24} />
           </div>
-          <div className="w-12 h-12 rounded-xl bg-red-50 text-red-500 flex items-center justify-center group-hover:scale-105 transition-transform shadow-sm border border-red-100/50">
-            <AlertTriangle size={22} />
+          <div>
+            <p className="text-sm font-medium text-zinc-500 mb-1">
+              Liberado para Pagamento ({summary.repassesPendingCount} {summary.repassesPendingCount === 1 ? 'pendente' : 'pendentes'})
+            </p>
+            <h3 className="text-2xl font-bold text-priori-navy">
+              {fmt.format(summary.repassesPendingAmount)}
+            </h3>
+            <p className="text-xs text-red-600 mt-0.5">Pronto para pagar</p>
           </div>
         </div>
 
         {/* Card 3: Total Pago */}
-        <div className="bg-white p-5 rounded-2xl border border-zinc-100 shadow-sm hover:shadow-md hover:border-zinc-200/80 transition-all flex items-center justify-between group">
-          <div>
-            <p className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Total Pago</p>
-            <h3 className="text-2xl font-bold text-priori-navy mt-1">{fmt.format(summary.repassesPaidAmount)}</h3>
-            <p className="text-xs text-zinc-500 mt-1 font-medium">{summary.repassesPaidCount} pago(s)</p>
+        <div className="bg-white rounded-2xl border border-zinc-100 p-6 shadow-sm flex items-start gap-4">
+          <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl">
+            <CheckCircle2 size={24} />
           </div>
-          <div className="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-500 flex items-center justify-center group-hover:scale-105 transition-transform shadow-sm border border-emerald-100/50">
-            <CheckCircle2 size={22} />
+          <div>
+            <p className="text-sm font-medium text-zinc-500 mb-1">Total Pago</p>
+            <h3 className="text-2xl font-bold text-priori-navy">
+              {fmt.format(summary.repassesPaidAmount)}
+            </h3>
+            <p className="text-xs text-zinc-400 mt-0.5">{summary.repassesPaidCount} {summary.repassesPaidCount === 1 ? 'repasse pago' : 'repasses pagos'}</p>
           </div>
         </div>
       </div>
@@ -562,13 +572,13 @@ export const RepassePage = () => {
                           <td className="px-6 py-4 font-semibold text-priori-navy">{fmt.format(repasse.totalAmount)}</td>
                           <td className="px-6 py-4">
                             {repasse.status === RepasseStatus.PAID ? (
-                              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100/80 shadow-sm">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                              <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full border bg-emerald-50 text-emerald-700 border-emerald-200">
+                                <CheckCircle2 size={10} />
                                 Pago em {repasse.paidAt ? format(new Date(repasse.paidAt), 'dd/MM/yyyy') : '—'}
                               </span>
                             ) : (
-                              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-100/80 shadow-sm">
-                                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                              <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full border bg-amber-50 text-amber-700 border-amber-200">
+                                <Clock size={10} />
                                 Pendente
                               </span>
                             )}
