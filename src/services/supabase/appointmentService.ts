@@ -153,15 +153,31 @@ export const appointmentReadService = {
     return validCandidates;
   },
 
+  // Histórico COMPLETO de Avaliação Neuropsicológica — usado por regras de
+  // negócio que precisam de todas as tentativas de um paciente ao longo do
+  // tempo (ciclo AMS Petrobras, carência de 180 dias) e pelo relatório de
+  // neuropsicologia. Pagina em blocos de 1000 em vez de um único
+  // `.limit(10000)`: acima desse teto, um `limit` simples cortaria
+  // silenciosamente os registros MAIS RECENTES (ordenação ascendente),
+  // quebrando esses cálculos sem qualquer erro visível.
   getNeuroAppointments: async (): Promise<Appointment[]> => {
-    const { data, error } = await supabase
-      .from('appointments')
-      .select(APPOINTMENT_COLUMNS)
-      .eq('type', AppointmentType.NEUROPSICOLOGICA)
-      .order('date', { ascending: true })
-      .limit(10000);
-    if (error) throw new Error(error.message);
-    return (data ?? []).map(toAppointment);
+    const PAGE_SIZE = 1000;
+    const rows: any[] = [];
+    let from = 0;
+    while (true) {
+      const { data, error } = await supabase
+        .from('appointments')
+        .select(APPOINTMENT_COLUMNS)
+        .eq('type', AppointmentType.NEUROPSICOLOGICA)
+        .order('date', { ascending: true })
+        .order('start_time', { ascending: true })
+        .range(from, from + PAGE_SIZE - 1);
+      if (error) throw new Error(error.message);
+      rows.push(...(data ?? []));
+      if (!data || data.length < PAGE_SIZE) break;
+      from += PAGE_SIZE;
+    }
+    return rows.map(toAppointment);
   },
 
   deleteAppointment: async (id: string): Promise<void> => {

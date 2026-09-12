@@ -7,7 +7,7 @@
 import { differenceInDays } from 'date-fns';
 import { matchPlanByHealthPlan } from '../services/supabase/helpers';
 import {
-  Appointment, Customer, Plan,
+  Appointment, Customer, Plan, PlanProcedure,
   AppointmentStatus, AppointmentType, HealthPlan,
 } from '../services/types';
 
@@ -228,6 +228,33 @@ export function getNeuropsicoStatus(
   return { type: 'blocked', diffDays };
 }
 
+export interface ResolvedProcedure {
+  procedure?: PlanProcedure;
+  /** true quando o procedimento veio do override manual salvo em app.procedureCode */
+  isOverride: boolean;
+}
+
+/**
+ * Resolve qual procedimento do plano representa um agendamento, na MESMA ordem
+ * de prioridade usada por getAppPrice para calcular o valor:
+ *   1. Override manual salvo em app.procedureCode (usuário selecionou um código
+ *      específico no faturamento — pode legitimamente apontar para um tipo
+ *      diferente de app.type, ex.: plano sem código de Avaliação
+ *      Neuropsicológica que usa o código de Psicoterapia).
+ *   2. Fallback por app.type.
+ * Usado tanto pelo cálculo de preço quanto pela exibição (Previsão de
+ * Atendimentos) para que o código/descrição mostrados nunca divirjam do que
+ * será de fato faturado.
+ */
+export function resolveProcedure(app: Appointment, plan: Plan | undefined): ResolvedProcedure {
+  const overrideCode = app.procedureCode?.trim();
+  const procedureByCode = overrideCode
+    ? plan?.procedures?.find(proc => proc.code?.trim() === overrideCode)
+    : undefined;
+  const procedure = procedureByCode ?? plan?.procedures?.find(proc => proc.type === app.type);
+  return { procedure, isOverride: !!procedureByCode };
+}
+
 /**
  * Calcula o preço de um agendamento usando EXATAMENTE as mesmas regras do faturamento:
  * - Cancelado sem cobrança = R$0
@@ -289,39 +316,17 @@ export function getAppPrice(app: Appointment, ctx: PricingContext): number {
   // O override é intencional (usuário selecionou código no dropdown de faturamento),
   // e pode legitimamente apontar para um tipo diferente de app.type (ex: plano que
   // não tem código de "Avaliação Neuropsicológica" e usa código de "Psicoterapia").
-  const overrideCode = app.procedureCode?.trim();
-  const procedureByCode = overrideCode
-    ? plan?.procedures?.find(proc => proc.code?.trim() === overrideCode)
-    : undefined;
-  const procedure = procedureByCode ?? plan?.procedures?.find(proc => proc.type === app.type);
+  const { procedure, isOverride } = resolveProcedure(app, plan);
 
   const isParticular = effectiveHealthPlan === HealthPlan.PARTICULAR;
-
-  // ── LOG DE DIAGNÓSTICO (Avaliação Neuropsicológica) ──────────────────────
-  if (app.type === AppointmentType.NEUROPSICOLOGICA) {
-    const finalPrice = !isParticular && procedureByCode
-      ? procedureByCode.price
-      : !isParticular && procedure?.price !== undefined
-        ? (app.customPrice ?? procedure.price)
-        : (app.customPrice ?? customer?.customPrice ?? procedure?.price ?? 0);
-
-    console.group(`[PRICING DIAG] ${app.id} — ${app.date}`);
-    console.log('type:', app.type, '| procedureCode:', app.procedureCode ?? '(vazio)');
-    console.log('customPrice:', app.customPrice ?? '—', '| customer.customPrice:', customer?.customPrice ?? '—');
-    console.log('healthPlan:', customer?.healthPlan, '| plan:', plan?.name ?? '(nenhum)');
-    console.log('procedureByCode:', procedureByCode ? `${procedureByCode.code}→R$${procedureByCode.price}` : '—');
-    console.log('procedure (tipo):', procedure ? `${procedure.code}→R$${procedure.price}` : '—');
-    console.log('→ PREÇO:', `R$${finalPrice}`);
-    console.groupEnd();
-  }
 
   // ── Cadeia de prioridade ────────────────────────────────────────────────
   // Convênio COM código explícito (override manual ou auto-atribuído):
   //   → preço do procedimento tem prioridade ABSOLUTA sobre customPrice.
   //   Isso garante que alterar o código no faturamento atualize o preço
   //   imediatamente, sem que um customPrice antigo "trave" o valor.
-  if (!isParticular && procedureByCode) {
-    return procedureByCode.price;
+  if (!isParticular && isOverride && procedure) {
+    return procedure.price;
   }
 
   // Convênio SEM código explícito (fallback por tipo):

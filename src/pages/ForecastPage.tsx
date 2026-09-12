@@ -3,7 +3,7 @@ import { ChevronLeft, ChevronRight, Printer, Loader2, CalendarSearch, RefreshCw,
 import { api } from '../services/api';
 import { Appointment, Customer, Plan, HealthPlan, AppointmentStatus, AppointmentType } from '../services/types';
 import { cn } from '../lib/utils';
-import { getAppPrice, PricingContext } from '../lib/pricing';
+import { getAppPrice, resolveProcedure, PricingContext } from '../lib/pricing';
 
 
 const MONTH_NAMES = [
@@ -55,9 +55,11 @@ export const ForecastPage = () => {
   const [contextAppointments, setContextAppointments] = useState<Appointment[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [plans, setPlans] = useState<Plan[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const loadData = async () => {
     setIsLoading(true);
+    setLoadError(null);
     try {
       // Início da janela: dia 1 do mês navegado, recuado `lookbackMonths` meses.
       // Aritmética explícita ano/mês evita overflow de dia (ex.: 31 - 1 mês).
@@ -93,8 +95,9 @@ export const ForecastPage = () => {
       setContextAppointments(mergedContext);
       setCustomers(custs);
       setPlans(pls);
-    } catch {
-      // silencioso
+    } catch (err) {
+      console.error('[ForecastPage] Falha ao carregar dados de previsão:', err);
+      setLoadError('Não foi possível carregar os dados de previsão. Verifique sua conexão e tente novamente.');
     } finally {
       setIsLoading(false);
     }
@@ -184,7 +187,8 @@ export const ForecastPage = () => {
     const planMap = new Map(plans.map(p => [p.name.toUpperCase(), p]));
 
     // Agrupar por plano → paciente+tipo
-    const grouped = new Map<string, Map<string, { app: Appointment; dates: ForecastDate[]; customer: Customer }>>();
+    interface GroupEntry { app: Appointment; forecastDate: ForecastDate }
+    const grouped = new Map<string, Map<string, { entries: GroupEntry[]; customer: Customer }>>();
 
     for (const app of monthApps) {
       const cust = customerMap.get(app.customerId);
@@ -203,9 +207,9 @@ export const ForecastPage = () => {
 
       const key = `${cust.id}::${app.type}`;
       if (!planBucket.has(key)) {
-        planBucket.set(key, { app, dates: [forecastDate], customer: cust });
+        planBucket.set(key, { entries: [{ app, forecastDate }], customer: cust });
       } else {
-        planBucket.get(key)!.dates.push(forecastDate);
+        planBucket.get(key)!.entries.push({ app, forecastDate });
       }
     }
 
@@ -218,17 +222,23 @@ export const ForecastPage = () => {
 
       const rows: ForecastRow[] = [];
       for (const [, data] of patientMap) {
-        const sortedDates = [...data.dates].sort((a, b) => a.date.localeCompare(b.date));
-        const proc = plan?.procedures?.find(p => p.type === data.app.type);
+        const sortedEntries = [...data.entries].sort((a, b) => a.forecastDate.date.localeCompare(b.forecastDate.date));
+        const sortedDates = sortedEntries.map(e => e.forecastDate);
+        // Usa o atendimento mais recente da linha como referência de código/
+        // descrição — e resolveProcedure aplica a MESMA prioridade do
+        // faturamento (override manual em procedureCode > match por tipo),
+        // para o código exibido aqui nunca divergir do que será faturado.
+        const representativeApp = sortedEntries[sortedEntries.length - 1].app;
+        const { procedure: proc } = resolveProcedure(representativeApp, plan);
         const overdueCount = sortedDates.filter(d => d.isOverdue).length;
 
 
         rows.push({
           customerName: data.customer.name,
           cardNumber: data.customer.cardNumber || '—',
-          procedureCode: proc?.code || data.app.procedureCode || '—',
-          procedureDescription: proc?.description || data.app.type,
-          count: data.dates.length,
+          procedureCode: proc?.code || representativeApp.procedureCode || '—',
+          procedureDescription: proc?.description || representativeApp.type,
+          count: sortedDates.length,
           overdueCount,
           dates: sortedDates,
         });
@@ -292,8 +302,8 @@ export const ForecastPage = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-priori-navy tracking-tight">Previsão de Atendimentos</h1>
-          <p className="text-zinc-500 mt-1">Relação por plano para solicitação de autorização</p>
+          <h1 className="text-3xl font-bold text-priori-navy tracking-tight">Relação de Atendimentos por Convênio</h1>
+          <p className="text-zinc-500 mt-1">Atendimentos do mês e pendências não faturadas, agrupados por convênio para solicitação de autorização</p>
           <p className="text-xs text-zinc-400 mt-1">
             <span className="font-semibold text-amber-600">*</span> Falta do paciente com cobrança mantida (passível de faturamento)
           </p>
@@ -303,8 +313,22 @@ export const ForecastPage = () => {
         </div>
       </div>
 
+      {/* Banner de erro ao carregar dados */}
+      {loadError && (
+        <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl px-4 py-3 print:hidden">
+          <AlertTriangle size={20} className="text-red-600 mt-0.5 flex-shrink-0" />
+          <p className="text-sm text-red-700 flex-1">{loadError}</p>
+          <button
+            onClick={loadData}
+            className="text-sm font-semibold text-red-700 underline hover:no-underline flex-shrink-0"
+          >
+            Tentar novamente
+          </button>
+        </div>
+      )}
+
       {/* Banner de alerta de pendências atrasadas */}
-      {totalGeralOverdue > 0 && (
+      {!loadError && totalGeralOverdue > 0 && (
         <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl px-4 py-3 print:border-red-300">
           <AlertTriangle size={20} className="text-red-600 mt-0.5 flex-shrink-0" />
           <p className="text-sm text-red-700">
@@ -381,7 +405,7 @@ export const ForecastPage = () => {
 
 
       {/* Conteúdo */}
-      {visibleGroups.length === 0 ? (
+      {loadError ? null : visibleGroups.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-zinc-400">
           <CalendarSearch size={48} className="mb-4 text-zinc-300" />
           <p className="text-lg font-medium">Nenhum atendimento previsto</p>
