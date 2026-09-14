@@ -3,13 +3,14 @@ import { api } from '../services/api';
 import {
   AuditLogEntry,
   EnrichedAuditLogEntry,
+  AuditOperationGroup,
   Customer,
   BillingBatch,
   Psychologist,
 } from '../services/types';
 import { toastSuccess, toastError } from '../lib/toast';
 import { logger } from '../lib/logger';
-import { enrichAuditLogs } from './audit/auditHelpers';
+import { enrichAuditLogs, groupAuditLogs } from './audit/auditHelpers';
 
 export function useAuditData() {
   const [rawLogs, setRawLogs] = useState<AuditLogEntry[]>([]);
@@ -76,11 +77,35 @@ export function useAuditData() {
     });
   }, [enrichedLogs, tableFilter, roleFilter, actionFilter, searchQuery]);
 
+  // Agrupa por operationId para que uma ação do usuário (ex.: pagar um lote
+  // com 8 atendimentos) apareça como 1 evento na tela, não N linhas repetidas.
+  const groupedLogs = useMemo<AuditOperationGroup[]>(() => groupAuditLogs(filteredLogs), [filteredLogs]);
+
+  // groupedLogs é montado em cima de filteredLogs (pós-filtro), mas
+  // revertFinancialAuditOperation reverte TODAS as linhas daquele
+  // operationId no banco, sem saber nada sobre os filtros ativos na tela.
+  // Este mapa (operationId -> quantidade real, sem filtro) permite avisar o
+  // usuário quando o grupo mostrado é só uma fatia da operação completa,
+  // antes de confirmar um "Desfazer tudo" que reverteria mais do que o
+  // modal está exibindo.
+  const operationFullCounts = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const group of groupAuditLogs(enrichedLogs)) {
+      if (group.operationId) map.set(group.operationId, group.affectedCount);
+    }
+    return map;
+  }, [enrichedLogs]);
+
+  // Métricas contam operações (grupos), não linhas cruas — um pagamento de
+  // 8 atendimentos conta como 1 "pagamento", não 8.
   const metrics = useMemo(() => {
-    const totalChanges = enrichedLogs.length;
-    const secretariaChanges = enrichedLogs.filter(l => l.operatorRole === 'secretaria').length;
-    const batchRemovals = enrichedLogs.filter(l => l.actionLabel.includes('Remoção')).length;
-    const paymentChanges = enrichedLogs.filter(l => l.actionLabel.includes('Pago') || l.actionLabel.includes('Pagamento')).length;
+    const allGroups = groupAuditLogs(enrichedLogs);
+    const totalChanges = allGroups.length;
+    const secretariaChanges = allGroups.filter(g => g.operatorRole === 'secretaria').length;
+    const batchRemovals = allGroups.filter(g => g.entries.some(e => e.actionLabel.includes('Remoção'))).length;
+    const paymentChanges = allGroups.filter(g =>
+      g.entries.some(e => e.actionLabel.includes('Pago') || e.actionLabel.includes('Pagamento'))
+    ).length;
 
     return {
       totalChanges,
@@ -108,10 +133,37 @@ export function useAuditData() {
     }
   };
 
+  // Reverte um grupo inteiro (todas as linhas da mesma operação, atomicamente
+  // no banco). Para grupos legados sem operationId (affectedCount === 1),
+  // cai de volta na reversão de linha única de sempre.
+  const handleRevertGroup = async (group: AuditOperationGroup) => {
+    setIsReverting(true);
+    try {
+      const res = group.operationId
+        ? await api.revertFinancialAuditOperation(group.operationId)
+        : await api.revertFinancialAuditLog(group.entries[0].id);
+      if (res?.success) {
+        toastSuccess(res.message || 'Alteração(ões) revertida(s) com sucesso!');
+        await loadData();
+      } else {
+        toastError(res?.message || 'Falha ao reverter a alteração.');
+      }
+    } catch (err: any) {
+      logger.critical('audit.handleRevertGroup', err, {
+        operationId: group.operationId, count: group.entries.length,
+      });
+      toastError(`Erro ao reverter: ${err.message || 'Falha desconhecida'}`);
+    } finally {
+      setIsReverting(false);
+    }
+  };
+
   return {
     rawLogs,
     enrichedLogs,
     filteredLogs,
+    groupedLogs,
+    operationFullCounts,
     metrics,
     isLoading,
     isReverting,
@@ -125,5 +177,6 @@ export function useAuditData() {
     setActionFilter,
     refreshData: loadData,
     handleRevert,
+    handleRevertGroup,
   };
 }

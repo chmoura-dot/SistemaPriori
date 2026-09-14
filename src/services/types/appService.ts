@@ -153,7 +153,18 @@ export interface AppService {
     paidAt?: string | null;
     ignoredIds?: string[];
     ignoredReason?: string;
+    operationId?: string;
   }) => Promise<{ added: string[]; removed: string[] }>;
+  // Marca todos os atendimentos de um lote como pagos/glosados numa única
+  // transação — ver 20260914_audit_operation_grouping.sql.
+  markBillingBatchPaid: (params: {
+    batchId: string;
+    statuses: Array<{ id: string; status: 'paid' | 'denied' | null; reason?: string | null; resolution?: string | null }>;
+    paidAt: string;
+    batchStatus: BillingBatch['status'];
+    batchPaidAt: string | null;
+    operationId?: string;
+  }) => Promise<{ success: boolean; updated: number }>;
 
   // Repasses
   getRepasses: () => Promise<Repasse[]>;
@@ -188,6 +199,7 @@ export interface AppService {
   // Audit Logs
   getFinancialAuditLogs: (limit?: number) => Promise<AuditLogEntry[]>;
   revertFinancialAuditLog: (auditId: string) => Promise<{ success: boolean; message: string }>;
+  revertFinancialAuditOperation: (operationId: string) => Promise<{ success: boolean; message: string; reverted_count: number }>;
 
   getPsychologistPortfolio: (referenceDate?: string) => Promise<PortfolioItem[]>;
 }

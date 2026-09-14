@@ -1,6 +1,7 @@
 import {
   AuditLogEntry,
   EnrichedAuditLogEntry,
+  AuditOperationGroup,
   Customer,
   BillingBatch,
   Psychologist,
@@ -320,4 +321,85 @@ export function enrichAuditLogs(
   }
 
   return result;
+}
+
+/**
+ * Agrupa entradas enriquecidas por operationId, para que uma única ação do
+ * usuário (ex.: pagar um lote com 8 atendimentos) apareça como um único
+ * evento na Auditoria Financeira, expansível para ver cada registro afetado.
+ * Entradas sem operationId (linhas antigas, ou qualquer escrita fora das RPCs
+ * que o definem) viram "grupos de 1", preservando o comportamento anterior.
+ */
+export function groupAuditLogs(logs: EnrichedAuditLogEntry[]): AuditOperationGroup[] {
+  const byOperation = new Map<string, EnrichedAuditLogEntry[]>();
+  const groups: AuditOperationGroup[] = [];
+
+  for (const log of logs) {
+    if (log.operationId) {
+      const existing = byOperation.get(log.operationId);
+      if (existing) {
+        existing.push(log);
+      } else {
+        byOperation.set(log.operationId, [log]);
+      }
+    } else {
+      groups.push(buildOperationGroup(null, [log]));
+    }
+  }
+
+  for (const [operationId, entries] of byOperation) {
+    entries.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    groups.push(buildOperationGroup(operationId, entries));
+  }
+
+  groups.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return groups;
+}
+
+function buildOperationGroup(operationId: string | null, entries: EnrichedAuditLogEntry[]): AuditOperationGroup {
+  const head = entries[0];
+  return {
+    operationId,
+    groupKey: operationId ?? head.id,
+    entries,
+    createdAt: head.createdAt,
+    operatorName: head.operatorName,
+    operatorRole: head.operatorRole,
+    summaryLabel: buildSummaryLabel(entries),
+    affectedCount: entries.length,
+    isReversible: entries.every(e => e.isReversible),
+  };
+}
+
+/** Monta um rótulo legível para o grupo a partir do padrão predominante entre seus membros. */
+function buildSummaryLabel(entries: EnrichedAuditLogEntry[]): string {
+  const head = entries[0];
+  if (entries.length === 1) {
+    return `${head.actionLabel} — ${head.recordDescription}`;
+  }
+
+  const appointmentEntries = entries.filter(e => e.tableName === 'appointments');
+  const batchEntry = entries.find(e => e.tableName === 'billing_batches');
+  const repasseEntry = entries.find(e => e.tableName === 'repasses');
+
+  const allSameLabel = (label: string) => appointmentEntries.length > 0 && appointmentEntries.every(e => e.actionLabel === label);
+
+  let verb: string | null = null;
+  if (allSameLabel('Atendimento Marcado como Pago')) {
+    verb = `Marcou ${appointmentEntries.length} atendimentos como pagos`;
+  } else if (allSameLabel('Pagamento Desfeito')) {
+    verb = `Desfez o pagamento de ${appointmentEntries.length} atendimentos`;
+  } else if (allSameLabel('Inclusão em Lote')) {
+    verb = `Incluiu ${appointmentEntries.length} atendimentos`;
+  } else if (allSameLabel('Remoção do Lote')) {
+    verb = `Removeu ${appointmentEntries.length} atendimentos`;
+  } else if (appointmentEntries.length > 0) {
+    verb = `${appointmentEntries.length} atendimentos alterados`;
+  }
+
+  const target = batchEntry?.recordDescription || repasseEntry?.recordDescription;
+  if (verb && target) return `${verb} — ${target}`;
+  if (verb) return verb;
+  if (batchEntry) return `${batchEntry.actionLabel} — ${batchEntry.recordDescription}`;
+  return `${entries.length} alterações — ${head.actionLabel}`;
 }

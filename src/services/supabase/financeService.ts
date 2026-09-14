@@ -112,6 +112,7 @@ export const financeService = {
     paidAt?: string | null;
     ignoredIds?: string[];
     ignoredReason?: string;
+    operationId?: string;
   }): Promise<{ added: string[]; removed: string[] }> => {
     const { data, error } = await supabase.rpc('sync_billing_batch_appointments', {
       p_batch_id: params.batchId,
@@ -123,9 +124,33 @@ export const financeService = {
       p_paid_at: params.paidAt ?? null,
       p_ignored_ids: params.ignoredIds ?? null,
       p_ignored_reason: params.ignoredReason ?? null,
+      p_operation_id: params.operationId ?? null,
     });
     if (error) throw new Error(error.message);
     return { added: data?.added ?? [], removed: data?.removed ?? [] };
+  },
+
+  // Marca todos os atendimentos de um lote como pagos/glosados numa única
+  // transação (1 UPDATE em lote + 1 UPDATE do lote), em vez do padrão anterior
+  // de N updateAppointment em paralelo (ver 20260914_audit_operation_grouping.sql).
+  markBillingBatchPaid: async (params: {
+    batchId: string;
+    statuses: Array<{ id: string; status: 'paid' | 'denied' | null; reason?: string | null; resolution?: string | null }>;
+    paidAt: string;
+    batchStatus: BillingBatch['status'];
+    batchPaidAt: string | null;
+    operationId?: string;
+  }): Promise<{ success: boolean; updated: number }> => {
+    const { data, error } = await supabase.rpc('mark_billing_batch_paid', {
+      p_batch_id: params.batchId,
+      p_statuses: params.statuses,
+      p_paid_at: params.paidAt,
+      p_batch_status: params.batchStatus,
+      p_batch_paid_at: params.batchPaidAt,
+      p_operation_id: params.operationId ?? null,
+    });
+    if (error) throw new Error(error.message);
+    return data;
   },
 
   // ── Repasses ───────────────────────────────────────────────────────────────

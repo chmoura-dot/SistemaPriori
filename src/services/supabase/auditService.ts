@@ -5,7 +5,7 @@ export const auditService = {
   getFinancialAuditLogs: async (limit: number = 200): Promise<AuditLogEntry[]> => {
     const { data, error } = await supabase
       .from('audit_log')
-      .select('id, user_id, user_email, action, table_name, record_id, old_data, new_data, created_at')
+      .select('id, user_id, user_email, action, table_name, record_id, old_data, new_data, created_at, operation_id')
       .in('table_name', ['billing_batches', 'repasses', 'appointments'])
       .order('created_at', { ascending: false })
       .limit(limit);
@@ -24,6 +24,7 @@ export const auditService = {
       oldData: row.old_data,
       newData: row.new_data,
       createdAt: row.created_at,
+      operationId: row.operation_id ?? null,
     }));
   },
 
@@ -37,5 +38,21 @@ export const auditService = {
     }
 
     return data as { success: boolean; message: string };
+  },
+
+  // Reverte, numa única transação, todas as linhas de audit_log que
+  // compartilham o mesmo operation_id (ver 20260914_audit_operation_grouping.sql).
+  revertFinancialAuditOperation: async (
+    operationId: string
+  ): Promise<{ success: boolean; message: string; reverted_count: number }> => {
+    const { data, error } = await supabase.rpc('revert_financial_audit_operation', {
+      p_operation_id: operationId,
+    });
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    return data as { success: boolean; message: string; reverted_count: number };
   },
 };

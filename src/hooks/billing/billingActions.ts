@@ -68,6 +68,7 @@ export function createBillingActions({
         batchId: draft.id,
         appointmentIds: remainingIds,
         totalAmount: remainingTotal,
+        operationId: crypto.randomUUID(),
       });
     }
   };
@@ -111,6 +112,7 @@ export function createBillingActions({
         batchId: batch.id,
         appointmentIds: selectedAppointmentIds,
         totalAmount,
+        operationId: crypto.randomUUID(),
       });
 
       // Auditoria de paridade
@@ -141,6 +143,7 @@ export function createBillingActions({
           batchId: editingDraftBatch.id,
           appointmentIds: selectedAppointmentIds,
           totalAmount,
+          operationId: crypto.randomUUID(),
         });
         setEditingDraftBatch(prev =>
           prev ? { ...prev, appointmentIds: [...selectedAppointmentIds], totalAmount } : prev
@@ -159,6 +162,7 @@ export function createBillingActions({
             batchId: existingDraft.id,
             appointmentIds: mergedIds,
             totalAmount: mergedTotal,
+            operationId: crypto.randomUUID(),
           });
           toastSuccess('Atendimentos adicionados ao lote previsto existente!');
         } else {
@@ -174,6 +178,7 @@ export function createBillingActions({
             batchId: batch.id,
             appointmentIds: selectedAppointmentIds,
             totalAmount,
+            operationId: crypto.randomUUID(),
           });
           toastSuccess('Lote Previsto salvo!');
         }
@@ -206,6 +211,7 @@ export function createBillingActions({
           batchId: existingDraft.id,
           appointmentIds: newIds,
           totalAmount: existingDraft.totalAmount + appPrice,
+          operationId: crypto.randomUUID(),
         });
         toastSuccess('Adicionado ao lote previsto!');
       } else {
@@ -220,6 +226,7 @@ export function createBillingActions({
           batchId: batch.id,
           appointmentIds: [appId],
           totalAmount: appPrice,
+          operationId: crypto.randomUUID(),
         });
         toastSuccess('Lote Previsto criado!');
       }
@@ -247,6 +254,7 @@ export function createBillingActions({
         status: BillingBatchStatus.SENT,
         batchNumber: finalBatchNumber,
         sentAt: new Date().toISOString(),
+        operationId: crypto.randomUUID(),
       });
 
 
@@ -288,19 +296,19 @@ export function createBillingActions({
   };
 
   /**
-   * Recalcula o status de um lote com base no estado de pagamento dos seus
-   * atendimentos e persiste a mudança:
+   * Calcula (sem persistir) o novo status de um lote com base no estado de
+   * pagamento dos seus atendimentos:
    *   - Nenhum atendimento resolvido (paid/denied)  -> SENT
    *   - Alguns resolvidos, mas não todos            -> PARTIALLY_PAID
    *   - Todos resolvidos                            -> PAID (fecha o lote)
    * `appsOverride` permite passar o estado já atualizado dos atendimentos
    * (antes do fetch), garantindo cálculo correto no mesmo ciclo.
    */
-  const recalcBatchStatus = async (
+  const computeBatchStatus = (
     batchId: string,
     appsOverride?: Appointment[],
     customPaidAt?: string,
-  ): Promise<{ status: BillingBatchStatus; paidAt?: string } | undefined> => {
+  ): { status: BillingBatchStatus; paidAt?: string; changed: boolean } | undefined => {
     const batch = batches.find(b => b.id === batchId);
     if (!batch || batch.status === BillingBatchStatus.DRAFT) return;
     const source = appsOverride ?? appointments;
@@ -313,7 +321,6 @@ export function createBillingActions({
       .filter((a): a is Appointment => !!a && getAppPrice(a) > 0);
     if (batchApps.length === 0) return;
 
-
     const resolvedCount = batchApps.filter(a => a.billingStatus === 'paid' || a.billingStatus === 'denied').length;
 
     let newStatus: BillingBatchStatus;
@@ -325,18 +332,35 @@ export function createBillingActions({
       newStatus = BillingBatchStatus.SENT;
     }
 
-    // Se o status não mudou (e não é PAID, que sempre reescreve paidAt), evita
-    // um UPDATE redundante — mas ainda devolve o status atual para que o
+    // Se o status não mudou (e não é PAID, que sempre reescreve paidAt), não
+    // há nada a persistir — mas ainda devolve o status atual para que o
     // chamador possa sincronizar o estado local (selectedBatch) se precisar.
     if (newStatus === batch.status && newStatus !== BillingBatchStatus.PAID) {
-      return { status: newStatus, paidAt: batch.paidAt };
+      return { status: newStatus, paidAt: batch.paidAt, changed: false };
     }
 
     const paidAt = newStatus === BillingBatchStatus.PAID ? (customPaidAt || batch.paidAt || new Date().toISOString()) : null;
-    const updates: Partial<BillingBatch> = { status: newStatus, paidAt };
+    return { status: newStatus, paidAt: paidAt ?? undefined, changed: true };
+  };
+
+  /**
+   * Mesmo cálculo de computeBatchStatus, mas também persiste a mudança via
+   * updateBillingBatch (1 requisição). Usado pelos fluxos de pagamento
+   * individual (handleMarkAppointmentPaid/handleUnmarkAppointmentPaid), que
+   * não passam por uma RPC de escrita em lote.
+   */
+  const recalcBatchStatus = async (
+    batchId: string,
+    appsOverride?: Appointment[],
+    customPaidAt?: string,
+  ): Promise<{ status: BillingBatchStatus; paidAt?: string } | undefined> => {
+    const result = computeBatchStatus(batchId, appsOverride, customPaidAt);
+    if (!result) return;
+    if (!result.changed) return result;
+    const updates: Partial<BillingBatch> = { status: result.status, paidAt: result.paidAt ?? null };
     await api.updateBillingBatch(batchId, updates);
     setBatches(prev => prev.map(b => b.id === batchId ? { ...b, ...updates } : b));
-    return { status: newStatus, paidAt };
+    return result;
   };
 
   const handleMarkAppointmentPaid = async (appId: string) => {
@@ -495,6 +519,7 @@ export function createBillingActions({
         paidAt: batchUpdates.paidAt,
         ignoredIds: isPermanentIgnore ? [appId] : undefined,
         ignoredReason: isPermanentIgnore ? reason!.trim() : undefined,
+        operationId: crypto.randomUUID(),
       });
 
       setAppointments(prev => prev.map(a => a.id === appId ? {
@@ -600,6 +625,7 @@ export function createBillingActions({
         totalAmount: newTotal,
         status: newStatus,
         paidAt: batchUpdates.paidAt,
+        operationId: crypto.randomUUID(),
       });
 
       setAppointments(prev => prev.map(a => a.id === appId ? { ...a, billingBatchId: batch.id } : a));
@@ -623,19 +649,20 @@ export function createBillingActions({
     if (!batchToPay) return;
     try {
       const isoPaidAt = paymentDate ? paymentDate + 'T12:00:00.000Z' : new Date().toISOString();
-      await Promise.all(batchToPay.appointmentIds.map(id => {
-        const statusData = appointmentStatuses[id] || { status: 'paid' };
-        const isPaid = statusData.status === 'paid';
-        const isDenied = statusData.status === 'denied';
-        return api.updateAppointment(id, {
-          billingStatus: isPaid ? 'paid' : (isDenied ? 'denied' : null),
-          denialReason: isDenied ? statusData.reason : null,
-          denialResolution: isDenied ? statusData.resolution : null,
-          paidAt: isPaid ? isoPaidAt : null
-        });
-      }));
 
-      // Reconstruct updated appointments list to feed to recalcBatchStatus
+      const statuses = batchToPay.appointmentIds.map(id => {
+        const statusData = appointmentStatuses[id] || { status: 'paid' };
+        const isDenied = statusData.status === 'denied';
+        return {
+          id,
+          status: statusData.status === 'paid' ? 'paid' as const : (isDenied ? 'denied' as const : null),
+          reason: isDenied ? statusData.reason ?? null : null,
+          resolution: isDenied ? statusData.resolution ?? null : null,
+        };
+      });
+
+      // Reconstrói a lista de atendimentos já atualizada para alimentar
+      // computeBatchStatus (mesmo ciclo, sem esperar o refetch).
       const updatedApps = appointments.map(a => {
         if (!batchToPay.appointmentIds.includes(a.id)) return a;
         const statusData = appointmentStatuses[a.id] || { status: 'paid' };
@@ -649,9 +676,25 @@ export function createBillingActions({
           paidAt: isPaid ? isoPaidAt : undefined
         };
       });
+      const computed = computeBatchStatus(batchToPay.id, updatedApps, isoPaidAt);
 
-      await recalcBatchStatus(batchToPay.id, updatedApps, isoPaidAt);
+      // Uma única transação no banco (1 UPDATE em lote em appointments + 1 em
+      // billing_batches) em vez do antigo loop de N updateAppointment — ver
+      // 20260914_audit_operation_grouping.sql. operationId amarra todas as
+      // linhas de auditoria geradas para essa ação como um único evento.
+      await api.markBillingBatchPaid({
+        batchId: batchToPay.id,
+        statuses,
+        paidAt: isoPaidAt,
+        batchStatus: computed?.status ?? batchToPay.status,
+        batchPaidAt: computed?.paidAt ?? null,
+        operationId: crypto.randomUUID(),
+      });
 
+      setAppointments(updatedApps);
+      if (computed) {
+        setBatches(prev => prev.map(b => b.id === batchToPay.id ? { ...b, ...computed } : b));
+      }
       setIsPaymentModalOpen(false);
       setBatchToPay(null);
       fetchData();

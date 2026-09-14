@@ -225,6 +225,7 @@ export const mockAppointmentHandlers = {
     paidAt?: string | null;
     ignoredIds?: string[];
     ignoredReason?: string;
+    operationId?: string;
   }): Promise<{ added: string[]; removed: string[] }> => {
     await delay(500);
     const batches = getFromStorage<BillingBatch>(STORAGE_KEYS.BILLING_BATCHES);
@@ -263,5 +264,43 @@ export const mockAppointmentHandlers = {
     }));
 
     return { added, removed };
+  },
+
+  // Equivalente mock da RPC mark_billing_batch_paid (ver
+  // 20260914_audit_operation_grouping.sql).
+  markBillingBatchPaid: async (params: {
+    batchId: string;
+    statuses: Array<{ id: string; status: 'paid' | 'denied' | null; reason?: string | null; resolution?: string | null }>;
+    paidAt: string;
+    batchStatus: BillingBatch['status'];
+    batchPaidAt: string | null;
+    operationId?: string;
+  }): Promise<{ success: boolean; updated: number }> => {
+    await delay(500);
+    const statusesById = new Map(params.statuses.map(s => [s.id, s]));
+
+    const appointments = getFromStorage<Appointment>(STORAGE_KEYS.APPOINTMENTS);
+    saveToStorage(STORAGE_KEYS.APPOINTMENTS, appointments.map(a => {
+      const s = statusesById.get(a.id);
+      if (!s || a.billingBatchId !== params.batchId) return a;
+      const isPaid = s.status === 'paid';
+      const isDenied = s.status === 'denied';
+      return {
+        ...a,
+        billingStatus: isPaid ? 'paid' : (isDenied ? 'denied' : undefined),
+        denialReason: isDenied ? (s.reason ?? undefined) : undefined,
+        denialResolution: isDenied ? (s.resolution ?? undefined) : undefined,
+        paidAt: isPaid ? params.paidAt : undefined,
+      } as Appointment;
+    }));
+
+    const batches = getFromStorage<BillingBatch>(STORAGE_KEYS.BILLING_BATCHES);
+    const idx = batches.findIndex(b => b.id === params.batchId);
+    if (idx !== -1 && batches[idx].status !== params.batchStatus) {
+      batches[idx] = { ...batches[idx], status: params.batchStatus, paidAt: params.batchPaidAt ?? undefined };
+      saveToStorage(STORAGE_KEYS.BILLING_BATCHES, batches);
+    }
+
+    return { success: true, updated: params.statuses.length };
   },
 };

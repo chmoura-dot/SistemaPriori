@@ -144,12 +144,14 @@ const writes = {
   updateBillingBatch: invalidateAfter(supabaseService.updateBillingBatch, ['billingBatches']),
   deleteBillingBatch: invalidateAfter(supabaseService.deleteBillingBatch, ['billingBatches', 'appointments']),
   syncBillingBatchAppointments: invalidateAfter(supabaseService.syncBillingBatchAppointments, ['billingBatches', 'appointments']),
+  markBillingBatchPaid: invalidateAfter(supabaseService.markBillingBatchPaid, ['billingBatches', 'appointments']),
 
   createRepasse: invalidateAfter(supabaseService.createRepasse, ['repasses']),
   updateRepasse: invalidateAfter(supabaseService.updateRepasse, ['repasses']),
   deleteRepasse: invalidateAfter(supabaseService.deleteRepasse, ['repasses']),
 
   revertFinancialAuditLog: invalidateAfter(supabaseService.revertFinancialAuditLog, ['billingBatches', 'repasses', 'appointments']),
+  revertFinancialAuditOperation: invalidateAfter(supabaseService.revertFinancialAuditOperation, ['billingBatches', 'repasses', 'appointments']),
 
   createHoliday: invalidateAfter(supabaseService.createHoliday, ['holidays']),
   updateHoliday: invalidateAfter(supabaseService.updateHoliday, ['holidays']),

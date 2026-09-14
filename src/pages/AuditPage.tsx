@@ -17,9 +17,11 @@ import {
   Info,
   BadgeAlert,
   SlidersHorizontal,
+  ChevronDown,
+  ChevronRight,
 } from 'lucide-react';
 import { useAuditData } from '../hooks/useAuditData';
-import { EnrichedAuditLogEntry } from '../services/types';
+import { EnrichedAuditLogEntry, AuditOperationGroup } from '../services/types';
 import { Modal } from '../components/Modal';
 import { Button } from '../components/Button';
 import { cn } from '../lib/utils';
@@ -27,7 +29,8 @@ import { format } from 'date-fns';
 
 export const AuditPage = () => {
   const {
-    filteredLogs,
+    groupedLogs,
+    operationFullCounts,
     metrics,
     isLoading,
     isReverting,
@@ -41,18 +44,33 @@ export const AuditPage = () => {
     setActionFilter,
     refreshData,
     handleRevert,
+    handleRevertGroup,
   } = useAuditData();
 
   const [selectedEntry, setSelectedEntry] = useState<EnrichedAuditLogEntry | null>(null);
   const [revertingEntry, setRevertingEntry] = useState<EnrichedAuditLogEntry | null>(null);
+  const [revertingGroup, setRevertingGroup] = useState<AuditOperationGroup | null>(null);
   const [isDiffModalOpen, setIsDiffModalOpen] = useState(false);
   const [isConfirmRevertOpen, setIsConfirmRevertOpen] = useState(false);
+  const [isConfirmRevertGroupOpen, setIsConfirmRevertGroupOpen] = useState(false);
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+
+  const toggleGroup = (groupKey: string) => {
+    setExpandedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(groupKey)) next.delete(groupKey); else next.add(groupKey);
+      return next;
+    });
+  };
 
   const openDiffModal = (entry: EnrichedAuditLogEntry) => {
     setSelectedEntry(entry);
     setIsDiffModalOpen(true);
   };
 
+  // "Desfazer este item": reversão de um único registro dentro de um grupo
+  // expandido — sempre usa a reversão de linha única, mesmo que o registro
+  // pertença a uma operação maior (não reverte o grupo inteiro).
   const openRevertModal = (entry: EnrichedAuditLogEntry) => {
     setRevertingEntry(entry);
     setIsConfirmRevertOpen(true);
@@ -63,6 +81,21 @@ export const AuditPage = () => {
     await handleRevert(revertingEntry);
     setIsConfirmRevertOpen(false);
     setRevertingEntry(null);
+  };
+
+  // "Desfazer" / "Desfazer tudo": reversão da operação inteira (todas as
+  // linhas que compartilham o operationId), ou da linha única em grupos
+  // legados sem operationId — handleRevertGroup decide automaticamente.
+  const openRevertGroupModal = (group: AuditOperationGroup) => {
+    setRevertingGroup(group);
+    setIsConfirmRevertGroupOpen(true);
+  };
+
+  const confirmRevertGroup = async () => {
+    if (!revertingGroup) return;
+    await handleRevertGroup(revertingGroup);
+    setIsConfirmRevertGroupOpen(false);
+    setRevertingGroup(null);
   };
 
   return (
@@ -198,7 +231,7 @@ export const AuditPage = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100 text-zinc-600">
-              {filteredLogs.length === 0 ? (
+              {groupedLogs.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="px-6 py-12 text-center text-zinc-400">
                     <Info size={28} className="mx-auto mb-2 opacity-40" />
@@ -206,94 +239,166 @@ export const AuditPage = () => {
                   </td>
                 </tr>
               ) : (
-                filteredLogs.map((log) => {
-                  const isSecretaria = log.operatorRole === 'secretaria';
-                  const isRemoval = log.actionLabel.includes('Remoção');
-                  const isPaid = log.actionLabel.includes('Pago');
+                groupedLogs.map((group) => {
+                  const isSecretaria = group.operatorRole === 'secretaria';
+                  const isRemoval = group.summaryLabel.includes('Remoção') || group.summaryLabel.includes('Removeu');
+                  const isPaid = group.summaryLabel.includes('Pago') || group.summaryLabel.includes('pagos');
+                  const isMultiple = group.affectedCount > 1;
+                  const isExpanded = expandedGroups.has(group.groupKey);
+                  const headEntry = group.entries[0];
 
                   return (
-                    <tr key={log.id} className="hover:bg-zinc-50/50 transition-colors">
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <div className="font-semibold text-zinc-700">
-                          {format(new Date(log.createdAt), 'dd/MM/yyyy')}
-                        </div>
-                        <div className="text-[10px] text-zinc-400 flex items-center gap-1">
-                          <Clock size={10} />
-                          {format(new Date(log.createdAt), 'HH:mm:ss')}
-                        </div>
-                      </td>
+                    <React.Fragment key={group.groupKey}>
+                      <tr className="hover:bg-zinc-50/50 transition-colors">
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <div className="font-semibold text-zinc-700">
+                            {format(new Date(group.createdAt), 'dd/MM/yyyy')}
+                          </div>
+                          <div className="text-[10px] text-zinc-400 flex items-center gap-1">
+                            <Clock size={10} />
+                            {format(new Date(group.createdAt), 'HH:mm:ss')}
+                          </div>
+                        </td>
 
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <span
-                          className={cn(
-                            'inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold',
-                            isSecretaria
-                              ? 'bg-amber-100 text-amber-800 border border-amber-200'
-                              : 'bg-priori-navy/10 text-priori-navy border border-priori-navy/20'
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <span
+                            className={cn(
+                              'inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold',
+                              isSecretaria
+                                ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                                : 'bg-priori-navy/10 text-priori-navy border border-priori-navy/20'
+                            )}
+                          >
+                            <User size={10} />
+                            {isSecretaria ? 'Secretaria' : 'Admin'}
+                          </span>
+                          <div className="text-[10px] text-zinc-400 mt-0.5 max-w-[140px] truncate" title={headEntry.userEmail}>
+                            {headEntry.userEmail || 'Sistema'}
+                          </div>
+                        </td>
+
+                        <td className="px-4 py-3">
+                          <div className="flex items-start gap-1.5">
+                            {isMultiple && (
+                              <button
+                                onClick={() => toggleGroup(group.groupKey)}
+                                className="mt-0.5 p-0.5 rounded text-zinc-400 hover:text-priori-navy hover:bg-zinc-100 flex-shrink-0"
+                                title={isExpanded ? 'Recolher registros' : 'Expandir registros'}
+                              >
+                                {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                              </button>
+                            )}
+                            <div>
+                              <div className="font-semibold text-priori-navy flex items-center gap-1.5 flex-wrap">
+                                {isRemoval && <AlertTriangle size={12} className="text-rose-500 flex-shrink-0" />}
+                                {isPaid && <CheckCircle size={12} className="text-emerald-500 flex-shrink-0" />}
+                                <span>{group.summaryLabel}</span>
+                                {isMultiple && (
+                                  <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-priori-navy/10 text-priori-navy">
+                                    {group.affectedCount}x
+                                  </span>
+                                )}
+                              </div>
+                              {!isMultiple && (
+                                <span className="text-[10px] text-zinc-400 uppercase font-medium">
+                                  {headEntry.entityLabel} ({headEntry.action})
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+
+                        <td className="px-4 py-3 max-w-[220px]">
+                          {isMultiple ? (
+                            <span className="text-[11px] text-zinc-500 italic">Expandir para ver os registros</span>
+                          ) : (
+                            <>
+                              <div className="font-medium text-zinc-800 truncate" title={headEntry.recordDescription}>
+                                {headEntry.recordDescription}
+                              </div>
+                              <div className="text-[9px] font-mono text-zinc-400">ID: {headEntry.recordId.slice(0, 8)}...</div>
+                            </>
                           )}
-                        >
-                          <User size={10} />
-                          {isSecretaria ? 'Secretaria' : 'Admin'}
-                        </span>
-                        <div className="text-[10px] text-zinc-400 mt-0.5 max-w-[140px] truncate" title={log.userEmail}>
-                          {log.userEmail || 'Sistema'}
-                        </div>
-                      </td>
+                        </td>
 
-                      <td className="px-4 py-3">
-                        <div className="font-semibold text-priori-navy flex items-center gap-1.5">
-                          {isRemoval && <AlertTriangle size={12} className="text-rose-500 flex-shrink-0" />}
-                          {isPaid && <CheckCircle size={12} className="text-emerald-500 flex-shrink-0" />}
-                          <span>{log.actionLabel}</span>
-                        </div>
-                        <span className="text-[10px] text-zinc-400 uppercase font-medium">
-                          {log.entityLabel} ({log.action})
-                        </span>
-                      </td>
+                        <td className="px-4 py-3 max-w-[260px]">
+                          {isMultiple ? (
+                            <span className="text-[11px] text-zinc-400 italic">Detalhes por item ao expandir</span>
+                          ) : headEntry.extractedReason ? (
+                            <div className="p-1.5 rounded-lg bg-zinc-50 border border-zinc-200 text-zinc-700 text-[11px] leading-tight">
+                              <span className="font-semibold text-priori-navy">Motivo: </span>
+                              {headEntry.extractedReason}
+                            </div>
+                          ) : headEntry.fieldDiffs.length > 0 ? (
+                            <div className="text-[11px] text-zinc-500">
+                              {headEntry.fieldDiffs.length} campo(s) modificado(s)
+                            </div>
+                          ) : (
+                            <span className="text-[11px] text-zinc-400 italic">Sem justificativa registrada</span>
+                          )}
+                        </td>
 
-                      <td className="px-4 py-3 max-w-[220px]">
-                        <div className="font-medium text-zinc-800 truncate" title={log.recordDescription}>
-                          {log.recordDescription}
-                        </div>
-                        <div className="text-[9px] font-mono text-zinc-400">ID: {log.recordId.slice(0, 8)}...</div>
-                      </td>
+                        <td className="px-4 py-3 text-right whitespace-nowrap">
+                          <div className="flex items-center justify-end gap-1.5">
+                            {!isMultiple && (
+                              <button
+                                onClick={() => openDiffModal(headEntry)}
+                                className="p-1.5 rounded-lg text-zinc-600 hover:bg-zinc-100 hover:text-priori-navy transition-colors"
+                                title="Visualizar Detalhes e Diff"
+                              >
+                                <Eye size={15} />
+                              </button>
+                            )}
 
-                      <td className="px-4 py-3 max-w-[260px]">
-                        {log.extractedReason ? (
-                          <div className="p-1.5 rounded-lg bg-zinc-50 border border-zinc-200 text-zinc-700 text-[11px] leading-tight">
-                            <span className="font-semibold text-priori-navy">Motivo: </span>
-                            {log.extractedReason}
+                            <button
+                              onClick={() => openRevertGroupModal(group)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 transition-colors"
+                              title={isMultiple ? 'Desfazer todas as alterações desta operação' : 'Desfazer esta alteração'}
+                            >
+                              <RotateCcw size={12} />
+                              {isMultiple ? 'Desfazer tudo' : 'Desfazer'}
+                            </button>
                           </div>
-                        ) : log.fieldDiffs.length > 0 ? (
-                          <div className="text-[11px] text-zinc-500">
-                            {log.fieldDiffs.length} campo(s) modificado(s)
-                          </div>
-                        ) : (
-                          <span className="text-[11px] text-zinc-400 italic">Sem justificativa registrada</span>
-                        )}
-                      </td>
+                        </td>
+                      </tr>
 
-                      <td className="px-4 py-3 text-right whitespace-nowrap">
-                        <div className="flex items-center justify-end gap-1.5">
-                          <button
-                            onClick={() => openDiffModal(log)}
-                            className="p-1.5 rounded-lg text-zinc-600 hover:bg-zinc-100 hover:text-priori-navy transition-colors"
-                            title="Visualizar Detalhes e Diff"
-                          >
-                            <Eye size={15} />
-                          </button>
-
-                          <button
-                            onClick={() => openRevertModal(log)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 transition-colors"
-                            title="Desfazer esta alteração"
-                          >
-                            <RotateCcw size={12} />
-                            Desfazer
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
+                      {isMultiple && isExpanded && group.entries.map((entry) => (
+                        <tr key={entry.id} className="bg-zinc-50/40 text-[11px]">
+                          <td className="px-4 py-2 pl-10 whitespace-nowrap text-zinc-400">
+                            {format(new Date(entry.createdAt), 'HH:mm:ss')}
+                          </td>
+                          <td className="px-4 py-2" />
+                          <td className="px-4 py-2">
+                            <span className="font-medium text-zinc-700">{entry.actionLabel}</span>
+                            <span className="text-[9px] text-zinc-400 uppercase ml-1">({entry.entityLabel})</span>
+                          </td>
+                          <td className="px-4 py-2 max-w-[220px]">
+                            <div className="text-zinc-700 truncate" title={entry.recordDescription}>{entry.recordDescription}</div>
+                          </td>
+                          <td className="px-4 py-2 max-w-[260px] text-zinc-500">
+                            {entry.extractedReason || (entry.fieldDiffs.length > 0 ? `${entry.fieldDiffs.length} campo(s) modificado(s)` : '—')}
+                          </td>
+                          <td className="px-4 py-2 text-right whitespace-nowrap">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                onClick={() => openDiffModal(entry)}
+                                className="p-1 rounded text-zinc-500 hover:bg-zinc-100 hover:text-priori-navy transition-colors"
+                                title="Visualizar Detalhes e Diff"
+                              >
+                                <Eye size={13} />
+                              </button>
+                              <button
+                                onClick={() => openRevertModal(entry)}
+                                className="text-[10px] font-semibold text-rose-600 hover:text-rose-800 transition-colors"
+                                title="Desfazer somente este item"
+                              >
+                                Desfazer este item
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </React.Fragment>
                   );
                 })
               )}
@@ -427,6 +532,78 @@ export const AuditPage = () => {
               >
                 <RotateCcw size={14} />
                 Confirmar Reversão
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Modal: Confirmação de Reversão de Grupo (operação inteira) */}
+      <Modal
+        isOpen={isConfirmRevertGroupOpen}
+        onClose={() => setIsConfirmRevertGroupOpen(false)}
+        title="Desfazer Alteração Financeira"
+        className="max-w-md"
+      >
+        {revertingGroup && (
+          <div className="space-y-4">
+            <div className="p-4 bg-rose-50 rounded-2xl border border-rose-100 text-rose-800 text-xs space-y-2">
+              <div className="flex items-center gap-2 font-bold text-rose-900">
+                <AlertTriangle size={16} />
+                Atenção ao Desfazer (Undo)
+              </div>
+              <p>
+                Você está prestes a reverter{' '}
+                {revertingGroup.affectedCount > 1
+                  ? <>as <strong>{revertingGroup.affectedCount} alterações</strong> desta operação</>
+                  : 'a seguinte operação'}
+                {' '}realizada por <strong>{revertingGroup.operatorName}</strong> em{' '}
+                {format(new Date(revertingGroup.createdAt), 'dd/MM/yyyy HH:mm')}:
+              </p>
+              <div className="p-2 bg-white/80 rounded-xl border border-rose-200 font-semibold text-priori-navy">
+                {revertingGroup.summaryLabel}
+              </div>
+              {revertingGroup.affectedCount > 1 && (
+                <div className="max-h-32 overflow-y-auto space-y-1 pt-1">
+                  {revertingGroup.entries.map(entry => (
+                    <div key={entry.id} className="text-[11px] text-rose-700 flex items-center gap-1">
+                      <span className="opacity-60">•</span> {entry.actionLabel} — {entry.recordDescription}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {(() => {
+                const fullCount = revertingGroup.operationId
+                  ? operationFullCounts.get(revertingGroup.operationId) ?? revertingGroup.affectedCount
+                  : revertingGroup.affectedCount;
+                const hiddenCount = fullCount - revertingGroup.affectedCount;
+                if (hiddenCount <= 0) return null;
+                return (
+                  <div className="p-2 rounded-lg bg-amber-100 border border-amber-300 text-amber-900 text-[11px] font-medium">
+                    Os filtros atuais estão escondendo {hiddenCount} outra(s) alteração(ões) desta mesma operação —
+                    elas também serão revertidas, mesmo não aparecendo na lista acima.
+                  </div>
+                );
+              })()}
+              <p className="text-[11px] text-rose-700">
+                O sistema irá restaurar atomicamente os valores anteriores no banco de dados
+                {revertingGroup.affectedCount > 1 ? ' — se qualquer item falhar, nada é revertido' : ''}. Esta ação
+                também será registrada na trilha de auditoria.
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-zinc-100">
+              <Button variant="outline" onClick={() => setIsConfirmRevertGroupOpen(false)} disabled={isReverting}>
+                Cancelar
+              </Button>
+              <Button
+                variant="danger"
+                onClick={confirmRevertGroup}
+                isLoading={isReverting}
+                className="flex items-center gap-1.5"
+              >
+                <RotateCcw size={14} />
+                {revertingGroup.affectedCount > 1 ? 'Confirmar Reversão de Tudo' : 'Confirmar Reversão'}
               </Button>
             </div>
           </div>

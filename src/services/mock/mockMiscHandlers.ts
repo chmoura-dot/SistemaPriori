@@ -59,6 +59,10 @@ export const mockMiscHandlers = {
     await delay(500);
     return { success: true, message: 'Operação revertida (mock)!' };
   },
+  revertFinancialAuditOperation: async (_operationId: string) => {
+    await delay(500);
+    return { success: true, message: 'Operação revertida (mock)!', reverted_count: 1 };
+  },
 
   // ── Waiting List ──────────────────────────────────────────────────────────
   getWaitingList: async (): Promise<WaitingListEntry[]> => {
