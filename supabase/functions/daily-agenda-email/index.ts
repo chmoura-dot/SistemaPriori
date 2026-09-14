@@ -8,6 +8,23 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
 const resend = new Resend(RESEND_API_KEY);
 
+// Envolve qualquer chamada Supabase com retry, para absorver Gateway Timeouts
+// transitórios em QUALQUER consulta da função (não só a primeira).
+async function withRetry<T>(
+  label: string,
+  fn: () => Promise<{ data: T | null; error: any }>,
+  attempts = 3,
+): Promise<{ data: T | null; error: any }> {
+  let result: { data: T | null; error: any } = { data: null, error: null };
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    result = await fn();
+    if (!result.error) return result;
+    console.error(`[DailyAgenda] ${label}: tentativa ${attempt} falhou, tentando novamente...`, result.error);
+    if (attempt < attempts) await new Promise((resolve) => setTimeout(resolve, attempt * 1000));
+  }
+  return result;
+}
+
 Deno.serve(async (req) => {
   try {
     const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
@@ -27,12 +44,15 @@ Deno.serve(async (req) => {
 
     console.log(`[DailyAgenda] Processando agenda para: ${todayStr} (Data local BR)`);
 
-    // 2. Buscar psicólogos ativos que têm e-mail configurado
-    const { data: psychologists, error: psychError } = await supabase
-      .from('psychologists')
-      .select('id, name, email')
-      .eq('active', true)
-      .neq('email', '');
+    // 2. Buscar psicólogos ativos que têm e-mail configurado (com retry para absorver Gateway Timeouts transitórios)
+    const { data: psychologists, error: psychError } = await withRetry(
+      'buscar psicólogos',
+      () => supabase
+        .from('psychologists')
+        .select('id, name, email')
+        .eq('active', true)
+        .neq('email', ''),
+    );
 
     if (psychError) throw psychError;
 
@@ -42,24 +62,27 @@ Deno.serve(async (req) => {
     for (const psy of (psychologists || [])) {
       if (!psy.email || psy.email.trim() === '') continue;
 
-      const { data: appointments, error: appError } = await supabase
-        .from('appointments')
-        .select(`
-          start_time,
-          end_time,
-          mode,
-          type,
-          is_internal,
-          internal_title,
-          internal_type,
-          customer:customers (name, health_plan),
-          room:rooms (name)
-        `)
-        .eq('psychologist_id', psy.id)
-        .eq('date', todayStr)
-        .eq('status', 'active')
-        // Inclui horários internos (supervisão, reunião, etc.) na agenda do psicólogo
-        .order('start_time');
+      const { data: appointments, error: appError } = await withRetry(
+        `buscar agendamentos (${psy.name})`,
+        () => supabase
+          .from('appointments')
+          .select(`
+            start_time,
+            end_time,
+            mode,
+            type,
+            is_internal,
+            internal_title,
+            internal_type,
+            customer:customers (name, health_plan),
+            room:rooms (name)
+          `)
+          .eq('psychologist_id', psy.id)
+          .eq('date', todayStr)
+          .eq('status', 'active')
+          // Inclui horários internos (supervisão, reunião, etc.) na agenda do psicólogo
+          .order('start_time'),
+      );
 
       if (appError) {
         results.push({ psychologist: psy.name, status: "error", error: appError.message });
