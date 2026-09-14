@@ -31,5 +31,8 @@ jobs:
           supabase functions deploy whatsapp-reminder --project-ref ${{ secrets.SUPABASE_PROJECT_ID }}
           supabase functions deploy stale-confirmation-nag --project-ref ${{ secrets.SUPABASE_PROJECT_ID }}
           supabase functions deploy ams-password-alert --project-ref ${{ secrets.SUPABASE_PROJECT_ID }}
+          supabase functions deploy renewal-reminder-email --project-ref ${{ secrets.SUPABASE_PROJECT_ID }}
+          supabase functions deploy auto-renew-appointments --project-ref ${{ secrets.SUPABASE_PROJECT_ID }}
+          supabase functions deploy critical-failure-alert --project-ref ${{ secrets.SUPABASE_PROJECT_ID }}
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
