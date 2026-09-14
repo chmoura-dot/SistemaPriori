@@ -8,6 +8,23 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
 const resend = new Resend(RESEND_API_KEY);
 
+// Envolve qualquer chamada Supabase com retry, para absorver Gateway Timeouts
+// transitórios em QUALQUER consulta da função (não só a primeira).
+async function withRetry<T>(
+  label: string,
+  fn: () => Promise<{ data: T | null; error: any }>,
+  attempts = 3,
+): Promise<{ data: T | null; error: any }> {
+  let result: { data: T | null; error: any } = { data: null, error: null };
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    result = await fn();
+    if (!result.error) return result;
+    console.error(`[ClinicSummary] ${label}: tentativa ${attempt} falhou, tentando novamente...`, result.error);
+    if (attempt < attempts) await new Promise((resolve) => setTimeout(resolve, attempt * 1000));
+  }
+  return result;
+}
+
 Deno.serve(async (req) => {
   try {
     const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
@@ -27,25 +44,28 @@ Deno.serve(async (req) => {
 
     console.log(`[ClinicSummary] Processando resumo para: ${todayStr} (Data local BR)`);
 
-    // 2. Buscar todos os agendamentos ativos de hoje, incluindo dados de clientes, psicólogos e salas
-    const { data: appointments, error: appError } = await supabase
-      .from('appointments')
-      .select(`
-        start_time,
-        end_time,
-        mode,
-        type,
-        customer:customers (name, health_plan),
-        psychologist:psychologists (name),
-        room:rooms (name),
-        is_internal,
-        internal_type,
-        internal_title
-      `)
-      .eq('date', todayStr)
-      .eq('status', 'active')
-      //.eq('is_internal', false) // Removido para incluir internos
-      .order('start_time');
+    // 2. Buscar todos os agendamentos ativos de hoje, incluindo dados de clientes, psicólogos e salas (com retry para absorver Gateway Timeouts transitórios)
+    const { data: appointments, error: appError } = await withRetry(
+      'buscar agendamentos do dia',
+      () => supabase
+        .from('appointments')
+        .select(`
+          start_time,
+          end_time,
+          mode,
+          type,
+          customer:customers (name, health_plan),
+          psychologist:psychologists (name),
+          room:rooms (name),
+          is_internal,
+          internal_type,
+          internal_title
+        `)
+        .eq('date', todayStr)
+        .eq('status', 'active')
+        //.eq('is_internal', false) // Removido para incluir internos
+        .order('start_time'),
+    );
 
     if (appError) throw appError;
 

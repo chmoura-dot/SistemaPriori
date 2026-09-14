@@ -10,6 +10,23 @@ const HORIZON_DAYS = 60; // Base: 60 dias, depois expande até fim do mês
 
 const resend = new Resend(RESEND_API_KEY);
 
+// Envolve qualquer chamada Supabase com retry, para absorver Gateway Timeouts
+// transitórios em QUALQUER consulta da função (não só a primeira).
+async function withRetry<T>(
+  label: string,
+  fn: () => Promise<{ data: T | null; error: any }>,
+  attempts = 3,
+): Promise<{ data: T | null; error: any }> {
+  let result: { data: T | null; error: any } = { data: null, error: null };
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    result = await fn();
+    if (!result.error) return result;
+    console.error(`[AutoRenew] ${label}: tentativa ${attempt} falhou, tentando novamente...`, result.error);
+    if (attempt < attempts) await new Promise((resolve) => setTimeout(resolve, attempt * 1000));
+  }
+  return result;
+}
+
 const DIAS_SEMANA = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 
 interface RenewedEntry {
@@ -102,15 +119,18 @@ Deno.serve(async (_req) => {
   const errors: string[] = [];
 
   try {
-    // 1. Encontrar todos os grupos de recorrência ativos
-    const { data: activeGroups, error: groupErr } = await supabase
-      .from("appointments")
-      .select("recurrence_group_id, psychologist_id, customer_id, room_id, mode, type, procedure_code, recurrence_frequency, start_time, end_time, custom_price, custom_repass_amount, is_internal, internal_type, internal_title, internal_notes, customer:customers(name, status, inactivation_reason), psychologist:psychologists(name)")
-      .eq("status", "active")
-      .eq("is_recurring", true)
-      .not("recurrence_group_id", "is", null)
-      .gte("date", todayStr)
-      .order("date", { ascending: false });
+    // 1. Encontrar todos os grupos de recorrência ativos (com retry para absorver Gateway Timeouts transitórios)
+    const { data: activeGroups, error: groupErr } = await withRetry(
+      'buscar grupos recorrentes ativos',
+      () => supabase
+        .from("appointments")
+        .select("recurrence_group_id, psychologist_id, customer_id, room_id, mode, type, procedure_code, recurrence_frequency, start_time, end_time, custom_price, custom_repass_amount, is_internal, internal_type, internal_title, internal_notes, customer:customers(name, status, inactivation_reason), psychologist:psychologists(name)")
+        .eq("status", "active")
+        .eq("is_recurring", true)
+        .not("recurrence_group_id", "is", null)
+        .gte("date", todayStr)
+        .order("date", { ascending: false }),
+    );
 
     if (groupErr) throw groupErr;
     if (!activeGroups || activeGroups.length === 0) {
@@ -442,6 +462,15 @@ Deno.serve(async (_req) => {
     );
   } catch (err: any) {
     console.error("[AutoRenew] Erro fatal:", err.message);
+    try {
+      await supabase.rpc('log_operation_failure', {
+        p_context: 'auto-renew-appointments',
+        p_message: `Erro não tratado na extensão automática de agenda: ${err.message}`,
+        p_severity: 'critical'
+      });
+    } catch (dbErr) {
+      console.error("Falha ao registrar log no banco:", dbErr);
+    }
     return new Response(JSON.stringify({ error: err.message }), { status: 500 });
   }
 });

@@ -10,6 +10,23 @@ const SITE_URL = "https://sistema-priori.vercel.app";
 
 const resend = new Resend(RESEND_API_KEY);
 
+// Envolve qualquer chamada Supabase com retry, para absorver Gateway Timeouts
+// transitórios em QUALQUER consulta da função (não só a primeira).
+async function withRetry<T>(
+  label: string,
+  fn: () => Promise<{ data: T | null; error: any }>,
+  attempts = 3,
+): Promise<{ data: T | null; error: any }> {
+  let result: { data: T | null; error: any } = { data: null, error: null };
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    result = await fn();
+    if (!result.error) return result;
+    console.error(`[StaleNag] ${label}: tentativa ${attempt} falhou, tentando novamente...`, result.error);
+    if (attempt < attempts) await new Promise((resolve) => setTimeout(resolve, attempt * 1000));
+  }
+  return result;
+}
+
 Deno.serve(async (req) => {
   try {
     const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
@@ -22,19 +39,22 @@ Deno.serve(async (req) => {
 
     console.log(`[StaleNag] Buscando pendências anteriores a: ${thresholdStr}`);
 
-    // 2. Buscar agendamentos pendentes (desde o passado até ontem)
-    const { data: staleAppointments, error: appError } = await supabase
-      .from('appointments')
-      .select(`
-        id,
-        date,
-        psychologist:psychologists (id, name, email)
-      `)
-      .lte('date', thresholdStr)
-      .eq('confirmed_psychologist', false)
-      .neq('status', 'canceled')
-      .eq('is_internal', false)
-      .order('date', { ascending: true });
+    // 2. Buscar agendamentos pendentes (desde o passado até ontem) (com retry para absorver Gateway Timeouts transitórios)
+    const { data: staleAppointments, error: appError } = await withRetry(
+      'buscar agendamentos pendentes de confirmação',
+      () => supabase
+        .from('appointments')
+        .select(`
+          id,
+          date,
+          psychologist:psychologists (id, name, email)
+        `)
+        .lte('date', thresholdStr)
+        .eq('confirmed_psychologist', false)
+        .neq('status', 'canceled')
+        .eq('is_internal', false)
+        .order('date', { ascending: true }),
+    );
 
     if (appError) throw appError;
 

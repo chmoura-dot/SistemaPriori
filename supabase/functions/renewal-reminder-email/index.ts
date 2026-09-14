@@ -9,6 +9,23 @@ const ADMIN_EMAIL = "nucleopriorirj@gmail.com";
 
 const resend = new Resend(RESEND_API_KEY);
 
+// Envolve qualquer chamada Supabase com retry, para absorver Gateway Timeouts
+// transitórios em QUALQUER consulta da função (não só a primeira).
+async function withRetry<T>(
+  label: string,
+  fn: () => Promise<{ data: T | null; error: any }>,
+  attempts = 3,
+): Promise<{ data: T | null; error: any }> {
+  let result: { data: T | null; error: any } = { data: null, error: null };
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    result = await fn();
+    if (!result.error) return result;
+    console.error(`[RenewalReminder] ${label}: tentativa ${attempt} falhou, tentando novamente...`, result.error);
+    if (attempt < attempts) await new Promise((resolve) => setTimeout(resolve, attempt * 1000));
+  }
+  return result;
+}
+
 Deno.serve(async (_req) => {
   try {
     const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
@@ -33,26 +50,29 @@ Deno.serve(async (_req) => {
 
     console.log(`[RenewalReminder] Buscando renovações entre ${minStr} e ${limitStr}`);
 
-    // Buscar agendamentos que precisam de renovação
-    const { data: appointments, error } = await supabase
-      .from('appointments')
-      .select(`
-        id,
-        date,
-        start_time,
-        end_time,
-        customer_id,
-        psychologist_id,
-        recurrence_group_id,
-        recurrence_frequency,
-        customer:customers (name, health_plan, status, inactivation_reason),
-        psychologist:psychologists (name)
-      `)
-      .eq('needs_renewal', true)
-      .eq('status', 'active')
-      .lte('date', limitStr)
-      .gte('date', minStr)
-      .order('date', { ascending: true });
+    // Buscar agendamentos que precisam de renovação (com retry para absorver Gateway Timeouts transitórios)
+    const { data: appointments, error } = await withRetry(
+      'buscar agendamentos com renovação pendente',
+      () => supabase
+        .from('appointments')
+        .select(`
+          id,
+          date,
+          start_time,
+          end_time,
+          customer_id,
+          psychologist_id,
+          recurrence_group_id,
+          recurrence_frequency,
+          customer:customers (name, health_plan, status, inactivation_reason),
+          psychologist:psychologists (name)
+        `)
+        .eq('needs_renewal', true)
+        .eq('status', 'active')
+        .lte('date', limitStr)
+        .gte('date', minStr)
+        .order('date', { ascending: true }),
+    );
 
     if (error) throw error;
 
@@ -64,12 +84,16 @@ Deno.serve(async (_req) => {
 
     // Para cada agendamento, verificar se já há sessões futuras (auto-renew já resolveu)
     const customerIds = [...new Set(appointments.map((a: any) => a.customer_id).filter(Boolean))];
-    const { data: futureApps } = await supabase
-      .from('appointments')
-      .select('customer_id, psychologist_id, start_time, date')
-      .in('customer_id', customerIds as string[])
-      .eq('status', 'active')
-      .gte('date', minStr);
+    const { data: futureApps, error: futureAppsError } = await withRetry(
+      'buscar sessões futuras dos clientes',
+      () => supabase
+        .from('appointments')
+        .select('customer_id, psychologist_id, start_time, date')
+        .in('customer_id', customerIds as string[])
+        .eq('status', 'active')
+        .gte('date', minStr),
+    );
+    if (futureAppsError) throw futureAppsError;
 
     // Filtrar: só incluir os que NÃO têm sessões futuras (genuínos)
     const genuineAlerts: any[] = [];
@@ -93,12 +117,16 @@ Deno.serve(async (_req) => {
 
     // Para detectar conflitos: buscar agendamentos futuros dos psicólogos envolvidos
     const psychIds = [...new Set(genuineAlerts.map((a: any) => a.psychologist_id).filter(Boolean))];
-    const { data: psychApps } = await supabase
-      .from('appointments')
-      .select('date, start_time, end_time, psychologist_id, customer_id, is_internal, internal_title, customer:customers(name)')
-      .in('psychologist_id', psychIds as string[])
-      .neq('status', 'canceled')
-      .gte('date', todayStr);
+    const { data: psychApps, error: psychAppsError } = await withRetry(
+      'buscar agendamentos futuros dos psicólogos',
+      () => supabase
+        .from('appointments')
+        .select('date, start_time, end_time, psychologist_id, customer_id, is_internal, internal_title, customer:customers(name)')
+        .in('psychologist_id', psychIds as string[])
+        .neq('status', 'canceled')
+        .gte('date', todayStr),
+    );
+    if (psychAppsError) throw psychAppsError;
 
     // Diagnosticar motivo de cada pendência
     const diagnosed = genuineAlerts.map((app: any) => {

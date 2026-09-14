@@ -8,6 +8,23 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
 const resend = new Resend(RESEND_API_KEY);
 
+// Envolve qualquer chamada Supabase com retry, para absorver Gateway Timeouts
+// transitórios em QUALQUER consulta da função (não só a primeira).
+async function withRetry<T>(
+  label: string,
+  fn: () => Promise<{ data: T | null; error: any }>,
+  attempts = 3,
+): Promise<{ data: T | null; error: any }> {
+  let result: { data: T | null; error: any } = { data: null, error: null };
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    result = await fn();
+    if (!result.error) return result;
+    console.error(`[AMS-Alert] ${label}: tentativa ${attempt} falhou, tentando novamente...`, result.error);
+    if (attempt < attempts) await new Promise((resolve) => setTimeout(resolve, attempt * 1000));
+  }
+  return result;
+}
+
 Deno.serve(async (req) => {
   try {
     const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
@@ -21,21 +38,24 @@ Deno.serve(async (req) => {
 
     console.log(`[AMS-Alert] Buscando senhas que vencem até: ${thresholdStr}`);
 
-    // 2. Buscar pacientes AMS Petrobras ou PAE com senha vencendo ou já vencida
-    const { data: customers, error } = await supabase
-      .from('customers')
-      .select(`
-        id,
-        name,
-        health_plan,
-        ams_password_expiry,
-        psychologist:psychologists (name)
-      `)
-      .eq('status', 'active')
-      .or(`health_plan.eq."AMS Petrobras",health_plan.eq."PAE"`)
-      .not('ams_password_expiry', 'is', null)
-      .lte('ams_password_expiry', thresholdStr)
-      .order('ams_password_expiry', { ascending: true });
+    // 2. Buscar pacientes AMS Petrobras ou PAE com senha vencendo ou já vencida (com retry para absorver Gateway Timeouts transitórios)
+    const { data: customers, error } = await withRetry(
+      'buscar pacientes AMS/PAE',
+      () => supabase
+        .from('customers')
+        .select(`
+          id,
+          name,
+          health_plan,
+          ams_password_expiry,
+          psychologist:psychologists (name)
+        `)
+        .eq('status', 'active')
+        .or(`health_plan.eq."AMS Petrobras",health_plan.eq."PAE"`)
+        .not('ams_password_expiry', 'is', null)
+        .lte('ams_password_expiry', thresholdStr)
+        .order('ams_password_expiry', { ascending: true }),
+    );
 
     if (error) throw error;
 
@@ -113,7 +133,18 @@ Deno.serve(async (req) => {
       headers: { 'Content-Type': 'application/json' }
     });
 
-  } catch (err) {
+  } catch (err: any) {
+    console.error('[AMS-Alert] Erro:', err.message);
+    try {
+      const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
+      await supabase.rpc('log_operation_failure', {
+        p_context: 'ams-password-alert',
+        p_message: `Erro ao gerar relatório de senhas AMS/PAE: ${err.message}`,
+        p_severity: 'critical'
+      });
+    } catch (dbErr) {
+      console.error("Falha ao registrar log no banco:", dbErr);
+    }
     return new Response(JSON.stringify({ error: err.message }), { status: 500 });
   }
 });
