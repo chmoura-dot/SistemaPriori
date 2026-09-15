@@ -1,7 +1,7 @@
 import {
   Customer, CustomerStatus, Plan, Subscription, SubscriptionStatus, Payment,
   Psychologist, Room, Expense, User, UserRole,
-  Appointment, AppointmentStatus,
+  Appointment, AppointmentStatus, BillingBatch, BillingBatchStatus,
 } from '../types';
 import { STORAGE_KEYS, delay, getFromStorage, saveToStorage } from './mockData';
 import { getTodayISO, toISODateLocal } from '../../lib/dateUtils';
@@ -161,6 +161,59 @@ export const mockEntityHandlers = {
     );
     saveToStorage(STORAGE_KEYS.SUBSCRIPTIONS, updatedSubs);
   },
+
+  applyCustomerHealthPlanRetro: async (params: {
+    customerId: string;
+    healthPlan: string;
+    futureOnly?: boolean;
+    operationId?: string;
+  }): Promise<{ updatedCount: number; blockedCount: number }> => {
+    await delay(400);
+    const batches = getFromStorage<BillingBatch>(STORAGE_KEYS.BILLING_BATCHES);
+    const lockedIds = new Set<string>();
+    batches.forEach(b => {
+      if (b.status === BillingBatchStatus.SENT || b.status === BillingBatchStatus.PAID) {
+        (b.appointmentIds ?? []).forEach(id => lockedIds.add(id));
+      }
+    });
+    const today = getTodayISO();
+    const appointments = getFromStorage<Appointment>(STORAGE_KEYS.APPOINTMENTS);
+    let updatedCount = 0, blockedCount = 0;
+    const updated = appointments.map(a => {
+      if (a.customerId !== params.customerId || a.isInternal || a.billingBatchId) return a;
+      if (params.futureOnly && a.date < today) return a;
+      if (lockedIds.has(a.id)) { blockedCount++; return a; }
+      updatedCount++;
+      return { ...a, healthPlanAtTime: params.healthPlan };
+    });
+    saveToStorage(STORAGE_KEYS.APPOINTMENTS, updated);
+    return { updatedCount, blockedCount };
+  },
+
+  applyCustomerPricePropagation: async (params: {
+    customerId: string;
+    customPrice: number;
+    operationId?: string;
+  }): Promise<{ updatedCount: number }> => {
+    await delay(400);
+    const batches = getFromStorage<BillingBatch>(STORAGE_KEYS.BILLING_BATCHES);
+    const lockedIds = new Set<string>();
+    batches.forEach(b => {
+      if (b.status === BillingBatchStatus.SENT || b.status === BillingBatchStatus.PAID) {
+        (b.appointmentIds ?? []).forEach(id => lockedIds.add(id));
+      }
+    });
+    const appointments = getFromStorage<Appointment>(STORAGE_KEYS.APPOINTMENTS);
+    let updatedCount = 0;
+    const updated = appointments.map(a => {
+      if (a.customerId !== params.customerId || a.billingBatchId || lockedIds.has(a.id)) return a;
+      updatedCount++;
+      return { ...a, customPrice: params.customPrice };
+    });
+    saveToStorage(STORAGE_KEYS.APPOINTMENTS, updated);
+    return { updatedCount };
+  },
+
   deleteCustomer: async (id: string): Promise<void> => {
     await delay(500);
     const list = getFromStorage<Customer>(STORAGE_KEYS.CUSTOMERS);

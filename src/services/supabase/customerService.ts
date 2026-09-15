@@ -110,6 +110,45 @@ export const customerService = {
     if (error) throw new Error(error.message);
   },
 
+  // Correção retroativa do plano de saúde nos atendimentos não faturados do
+  // paciente (RPC `apply_customer_health_plan_retro`,
+  // 20260915_audit_operation_grouping_customers.sql). Substitui o antigo
+  // padrão de 2 consultas + filtro em JS + update direto do navegador —
+  // agora tudo roda numa única transação, já marcada com operation_id para
+  // agrupamento na Auditoria Financeira.
+  applyCustomerHealthPlanRetro: async (params: {
+    customerId: string;
+    healthPlan: string;
+    futureOnly?: boolean;
+    operationId?: string;
+  }): Promise<{ updatedCount: number; blockedCount: number }> => {
+    const { data, error } = await supabase.rpc('apply_customer_health_plan_retro', {
+      p_customer_id: params.customerId,
+      p_health_plan: params.healthPlan,
+      p_future_only: params.futureOnly ?? false,
+      p_today: getTodayISO(),
+      p_operation_id: params.operationId ?? null,
+    });
+    if (error) throw new Error(error.message);
+    return { updatedCount: data?.updated_count ?? 0, blockedCount: data?.blocked_count ?? 0 };
+  },
+
+  // Propaga o preço customizado para os atendimentos não faturados do
+  // paciente (RPC `apply_customer_price_propagation`, mesma migration acima).
+  applyCustomerPricePropagation: async (params: {
+    customerId: string;
+    customPrice: number;
+    operationId?: string;
+  }): Promise<{ updatedCount: number }> => {
+    const { data, error } = await supabase.rpc('apply_customer_price_propagation', {
+      p_customer_id: params.customerId,
+      p_custom_price: params.customPrice,
+      p_operation_id: params.operationId ?? null,
+    });
+    if (error) throw new Error(error.message);
+    return { updatedCount: data?.updated_count ?? 0 };
+  },
+
   // ── Senha AMS/PAE (tabela dedicada, leitura restrita a staff via RLS) ───────
   getAllAmsPasswords: async (): Promise<Record<string, string>> => {
     const { data, error } = await supabase.from('customer_ams_credentials').select('customer_id, ams_password');
@@ -163,6 +202,7 @@ export const customerService = {
     adjustRepass: boolean;
     effectiveDate: string;
     minPrice?: number;
+    operationId?: string;
   }): Promise<{ plansUpdated: number; appointmentsUpdated: number; clampedCount: number }> => {
     const { data, error } = await supabase.rpc('bulk_adjust_plan_prices', {
       p_plan_ids: params.planIds,
@@ -171,6 +211,7 @@ export const customerService = {
       p_adjust_repass: params.adjustRepass,
       p_effective_date: params.effectiveDate,
       p_min_price: params.minPrice ?? 0,
+      p_operation_id: params.operationId ?? null,
     });
     if (error) throw new Error(error.message);
     const row = Array.isArray(data) ? data[0] : data;

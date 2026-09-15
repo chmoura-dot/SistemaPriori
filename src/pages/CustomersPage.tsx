@@ -1,8 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Plus, Search, Upload, Users, AlertCircle, Edit2 } from 'lucide-react';
 import { api } from '../services/api';
-import { supabase } from '../lib/supabase';
-import { apiCache } from '../services/apiCache';
 import { Customer, CustomerStatus, HealthPlan, Psychologist } from '../services/types';
 
 import { Button } from '../components/Button';
@@ -11,8 +9,8 @@ import { CustomerFormData, CustomerFormModal, RetroScope } from './customers/Cus
 import { CustomerInactivationModal } from './customers/CustomerInactivationModal';
 import { CustomerBulkModal } from './customers/CustomerBulkModal';
 import { CustomerImportModal } from './customers/CustomerImportModal';
-import { getIncompleteFields, inferGenderByName, formatDate, calculateAge } from './customers/customerUtils';
-import { getTodayISO, toISODateLocal } from '../lib/dateUtils';
+import { getIncompleteFields, inferGenderByName, formatDate, calculateAge, isPhoneValid } from './customers/customerUtils';
+import { toISODateLocal } from '../lib/dateUtils';
 import { toastError } from '../lib/toast';
 
 const ITEMS_PER_PAGE = 20;
@@ -162,6 +160,10 @@ export const CustomersPage = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isPhoneValid(formData.phone)) {
+      toastError('Telefone inválido ou não informado. Cadastre o WhatsApp do paciente para que ele receba os lembretes de agenda.');
+      return;
+    }
     setIsSaving(true);
     try {
       const gender = (formData.gender || inferGenderByName(formData.name) || null) as 'M' | 'F' | null;
@@ -185,40 +187,12 @@ export const CustomersPage = () => {
         const existing = customers.find(c => c.id === editingId);
         if (existing && existing.healthPlan !== HealthPlan.PARTICULAR && existing.healthPlan !== formData.healthPlan) {
           try {
-            // Busca lotes já enviados/pagos para nunca alterá-los (faturamento fechado)
-            const { data: sentBatches } = await supabase
-              .from('billing_batches')
-              .select('appointment_ids')
-              .in('status', ['SENT', 'PAID']);
-
-            const lockedAppIds = new Set<string>();
-            sentBatches?.forEach(b => (b.appointment_ids as string[])?.forEach(id => lockedAppIds.add(id)));
-
-            // Busca atendimentos do paciente ainda não incluídos em nenhum lote
-            let query = supabase
-              .from('appointments')
-              .select('id, date')
-              .eq('customer_id', editingId)
-              .eq('is_internal', false)
-              .is('billing_batch_id', null);
-
-            if (retroScope === 'future') {
-              const today = getTodayISO();
-              query = query.gte('date', today);
-            }
-
-            const { data: apps } = await query;
-            const idsToUpdate = (apps || []).map(a => a.id).filter(id => !lockedAppIds.has(id));
-            const blockedCount = (apps || []).length - idsToUpdate.length;
-
-            if (idsToUpdate.length > 0) {
-              await supabase
-                .from('appointments')
-                .update({ health_plan_at_time: formData.healthPlan })
-                .in('id', idsToUpdate);
-              apiCache.invalidate('appointments');
-            }
-
+            const { blockedCount } = await api.applyCustomerHealthPlanRetro({
+              customerId: editingId,
+              healthPlan: formData.healthPlan,
+              futureOnly: retroScope === 'future',
+              operationId: crypto.randomUUID(),
+            });
             if (blockedCount > 0) {
               alert(`${blockedCount} atendimento(s) já enviados ao convênio não foram alterados e continuarão faturados com o plano original.`);
             }
@@ -233,31 +207,11 @@ export const CustomersPage = () => {
         const existing = customers.find(c => c.id === editingId);
         if (existing && existing.customPrice !== formData.customPrice) {
           try {
-            // Busca lotes já enviados/pagos para excluí-los
-            const { data: sentBatches } = await supabase
-              .from('billing_batches')
-              .select('appointment_ids')
-              .in('status', ['SENT', 'PAID']);
-
-            const lockedAppIds = new Set<string>();
-            sentBatches?.forEach(b => (b.appointment_ids as string[])?.forEach(id => lockedAppIds.add(id)));
-
-            // Busca atendimentos não faturados desse paciente
-            const { data: apps } = await supabase
-              .from('appointments')
-              .select('id')
-              .eq('customer_id', editingId)
-              .is('billing_batch_id', null);
-
-            const idsToUpdate = (apps || []).map(a => a.id).filter(id => !lockedAppIds.has(id));
-
-            if (idsToUpdate.length > 0) {
-              await supabase
-                .from('appointments')
-                .update({ custom_price: formData.customPrice })
-                .in('id', idsToUpdate);
-              apiCache.invalidate('appointments');
-            }
+            await api.applyCustomerPricePropagation({
+              customerId: editingId,
+              customPrice: formData.customPrice,
+              operationId: crypto.randomUUID(),
+            });
           } catch {
             // Erro silencioso — propagação é best-effort
           }

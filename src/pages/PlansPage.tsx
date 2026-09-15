@@ -68,6 +68,7 @@ export const PlansPage = () => {
         adjustPrice: bulkData.adjustPrice,
         adjustRepass: bulkData.adjustRepass,
         effectiveDate: bulkData.effectiveDate,
+        operationId: crypto.randomUUID(),
       });
 
       await loadPlans();

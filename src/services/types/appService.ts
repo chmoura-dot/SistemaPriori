@@ -101,6 +101,20 @@ export interface AppService {
   // Transação atômica: inativa paciente, cancela consultas futuras, registra
   // evento de alta e pausa assinaturas em uma única chamada.
   inactivateCustomer: (customerId: string, reason: string) => Promise<void>;
+  // Correção retroativa do plano de saúde / propagação de preço customizado
+  // nos atendimentos não faturados do paciente — cada uma roda numa única
+  // transação marcada com operationId para agrupamento na Auditoria Financeira.
+  applyCustomerHealthPlanRetro: (params: {
+    customerId: string;
+    healthPlan: string;
+    futureOnly?: boolean;
+    operationId?: string;
+  }) => Promise<{ updatedCount: number; blockedCount: number }>;
+  applyCustomerPricePropagation: (params: {
+    customerId: string;
+    customPrice: number;
+    operationId?: string;
+  }) => Promise<{ updatedCount: number }>;
 
   // Plans
   getPlans: () => Promise<Plan[]>;
@@ -117,6 +131,7 @@ export interface AppService {
     adjustRepass: boolean;
     effectiveDate: string;
     minPrice?: number;
+    operationId?: string;
   }) => Promise<{ plansUpdated: number; appointmentsUpdated: number; clampedCount: number }>;
 
   // Subscriptions

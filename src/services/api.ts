@@ -120,6 +120,8 @@ const writes = {
   deleteCustomer: invalidateAfter(supabaseService.deleteCustomer, ['customers']),
   // Também cancela consultas futuras e pausa assinaturas na mesma transação.
   inactivateCustomer: invalidateAfter(supabaseService.inactivateCustomer, ['customers', 'appointments', 'subscriptions']),
+  applyCustomerHealthPlanRetro: invalidateAfter(supabaseService.applyCustomerHealthPlanRetro, ['appointments']),
+  applyCustomerPricePropagation: invalidateAfter(supabaseService.applyCustomerPricePropagation, ['appointments']),
 
   createPsychologist: invalidateAfter(supabaseService.createPsychologist, ['psychologists']),
   updatePsychologist: invalidateAfter(supabaseService.updatePsychologist, ['psychologists']),
