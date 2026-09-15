@@ -286,4 +286,5 @@ export interface PortfolioItem {
   cycleStartDate?: string | null;
   cycleDays?: number | null;
   neuroStatus?: 'A iniciar' | 'Em andamento' | 'Finalizado' | 'Cancelado' | null;
+  totalSessions: number;
 }

@@ -356,6 +356,7 @@ export const PortfolioPage: React.FC = () => {
                                 <th className="py-2.5 px-3">Próxima Sessão</th>
                                 <th className="py-2.5 px-3">Ciclo (180 dias)</th>
                                 <th className="py-2.5 px-3">Status do Ciclo</th>
+                                <th className="py-2.5 px-3 text-center">Atendimentos</th>
 <th className="py-2.5 px-3 text-right">Ações</th>
                               </tr>
                             </thead>
@@ -405,6 +406,9 @@ export const PortfolioPage: React.FC = () => {
                                     >
                                       {item.neuroStatus || 'Em andamento'}
                                     </span>
+                                  </td>
+                                  <td className="py-2.5 px-3 text-center font-semibold text-zinc-700">
+                                    {item.totalSessions}
                                   </td>
                                   <td className="py-2.5 px-3 text-right">
                                     {updatingCustomerId === item.customerId ? (
@@ -457,6 +461,7 @@ export const PortfolioPage: React.FC = () => {
                                 <th className="py-2.5 px-3">Última Sessão</th>
                                 <th className="py-2.5 px-3">Próxima Sessão</th>
                                 <th className="py-2.5 px-3">Status</th>
+                                <th className="py-2.5 px-3 text-center">Atendimentos</th>
 <th className="py-2.5 px-3 text-right">Ações</th>
                               </tr>
                             </thead>
@@ -488,6 +493,9 @@ export const PortfolioPage: React.FC = () => {
                                       <CheckCircle2 size={10} />
                                       Ativo
                                     </span>
+                                  </td>
+                                  <td className="py-2.5 px-3 text-center font-semibold text-zinc-700">
+                                    {item.totalSessions}
                                   </td>
                                   <td className="py-2.5 px-3 text-right">
                                     {updatingCustomerId === item.customerId ? (

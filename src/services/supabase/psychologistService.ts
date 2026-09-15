@@ -125,6 +125,7 @@ export const psychologistService = {
       cycleStartDate: row.cycle_start_date,
       cycleDays: row.cycle_days,
       neuroStatus: row.neuro_status,
+      totalSessions: Number(row.total_sessions ?? 0),
     }));
   },
 };
