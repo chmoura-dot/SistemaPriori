@@ -88,7 +88,7 @@ export interface AppService {
     >;
   }) => Promise<{ originalAppointmentId: string; newAppointmentId: string }>;
   deleteAppointment: (id: string) => Promise<void>;
-  deleteFutureAppointments: (groupId: string, fromDate: string) => Promise<void>;
+  deleteFutureAppointments: (groupId: string, fromDate: string, operationId?: string) => Promise<void>;
 
   // Customers
   getCustomers: () => Promise<Customer[]>;

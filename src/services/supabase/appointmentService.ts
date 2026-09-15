@@ -185,12 +185,16 @@ export const appointmentReadService = {
     if (error) throw new Error(error.message);
   },
 
-  deleteFutureAppointments: async (groupId: string, fromDate: string): Promise<void> => {
-    const { error } = await supabase
-      .from('appointments')
-      .delete()
-      .eq('recurrence_group_id', groupId)
-      .gte('date', fromDate);
+  // RPC transacional (delete_future_recurring_appointments,
+  // 20260916_audit_operation_grouping_recurring_delete.sql) — substitui o
+  // DELETE em lote antigo direto do cliente, agora marcado com operationId
+  // para agrupar as linhas resultantes na Auditoria Financeira.
+  deleteFutureAppointments: async (groupId: string, fromDate: string, operationId?: string): Promise<void> => {
+    const { error } = await supabase.rpc('delete_future_recurring_appointments', {
+      p_recurrence_group_id: groupId,
+      p_from_date: fromDate,
+      p_operation_id: operationId ?? null,
+    });
     if (error) throw new Error(error.message);
   },
 };

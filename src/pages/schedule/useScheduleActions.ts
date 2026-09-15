@@ -147,7 +147,7 @@ export const useScheduleActions = (s: ScheduleData) => {
       } else if (editingId) {
         const appt = appointments.find(a => a.id === editingId);
         if (appt?.isRecurring && appt.recurrenceGroupId && s.updateFuture) {
-          await api.deleteFutureAppointments(appt.recurrenceGroupId, appt.date);
+          await api.deleteFutureAppointments(appt.recurrenceGroupId, appt.date, crypto.randomUUID());
           await api.createAppointment({ ...payload as any, date: formData.date, dayOfWeek: new Date(formData.date + 'T12:00:00').getDay(), status: AppointmentStatus.ACTIVE });
         } else {
           await api.updateAppointment(editingId, payload as any);
@@ -260,7 +260,7 @@ export const useScheduleActions = (s: ScheduleData) => {
         });
       } catch { logger.error('Erro ao notificar cancelamento'); }
       if (appointment.isRecurring && appointment.recurrenceGroupId && s.updateFuture) {
-        await api.deleteFutureAppointments(appointment.recurrenceGroupId, appointment.date);
+        await api.deleteFutureAppointments(appointment.recurrenceGroupId, appointment.date, crypto.randomUUID());
         // Exclusão de "todos os futuros" libera a vaga estruturalmente —
         // checa a Fila de Espera.
         notifyIfWaitingListMatch(appointment.psychologistId, appointment.date);

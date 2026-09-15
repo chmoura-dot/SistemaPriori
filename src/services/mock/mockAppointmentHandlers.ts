@@ -160,7 +160,7 @@ export const mockAppointmentHandlers = {
     return list.filter(a => a.needsRenewal);
   },
 
-  deleteFutureAppointments: async (groupId: string, fromDate: string): Promise<void> => {
+  deleteFutureAppointments: async (groupId: string, fromDate: string, operationId?: string): Promise<void> => {
     await delay(500);
     const list = getFromStorage<Appointment>(STORAGE_KEYS.APPOINTMENTS);
     saveToStorage(STORAGE_KEYS.APPOINTMENTS, list.filter(a =>
