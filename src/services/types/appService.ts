@@ -16,6 +16,7 @@ import {
   User,
   PortfolioItem,
 } from './models';
+import { UserRole } from './enums';
 import { AuditLogEntry } from './audit';
 
 export interface AppService {
@@ -200,6 +201,9 @@ export interface AppService {
   getFinancialAuditLogs: (limit?: number) => Promise<AuditLogEntry[]>;
   revertFinancialAuditLog: (auditId: string) => Promise<{ success: boolean; message: string }>;
   revertFinancialAuditOperation: (operationId: string) => Promise<{ success: boolean; message: string; reverted_count: number }>;
+  // Lista de e-mails cadastrados + cargo real (app_users), usada para
+  // atribuir corretamente o operador na Auditoria Financeira.
+  getAppUsers: () => Promise<Array<{ email: string; role: UserRole }>>;
 
   getPsychologistPortfolio: (referenceDate?: string) => Promise<PortfolioItem[]>;
 }

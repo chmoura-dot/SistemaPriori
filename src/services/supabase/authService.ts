@@ -80,4 +80,15 @@ export const authService = {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     return !error;
   },
+
+  // Lista todos os usuários cadastrados (email + role) para atribuir o cargo
+  // real na Auditoria Financeira, em vez de adivinhar pelo padrão do e-mail.
+  // RLS de app_users só libera "ver todo mundo" para quem já é admin — como a
+  // Auditoria Financeira é uma página admin-only, essa chamada sempre parte
+  // de uma sessão admin, então recebe a lista completa.
+  getAppUsers: async (): Promise<Array<{ email: string; role: UserRole }>> => {
+    const { data, error } = await supabase.from('app_users').select('email, role');
+    if (error) throw new Error(error.message);
+    return (data ?? []).map((row: any) => ({ email: (row.email || '').toLowerCase(), role: row.role as UserRole }));
+  },
 };

@@ -5,6 +5,7 @@ import {
   Customer,
   BillingBatch,
   Psychologist,
+  UserRole,
 } from '../../services/types';
 import { formatCurrency } from '../../lib/utils';
 import { format } from 'date-fns';
@@ -122,11 +123,13 @@ export function enrichAuditLogs(
   rawLogs: AuditLogEntry[],
   customers: Customer[],
   batches: BillingBatch[],
-  psychologists: Psychologist[]
+  psychologists: Psychologist[],
+  appUsers: Array<{ email: string; role: UserRole }> = []
 ): EnrichedAuditLogEntry[] {
   const custMap = new Map(customers.map(c => [c.id, c.name]));
   const psyMap = new Map(psychologists.map(p => [p.id, p.name]));
   const batchMap = new Map(batches.map(b => [b.id, `Lote #${b.batchNumber} (${b.healthPlan})`]));
+  const roleByEmail = new Map(appUsers.map(u => [u.email.toLowerCase(), u.role]));
 
   const result: EnrichedAuditLogEntry[] = [];
 
@@ -134,12 +137,22 @@ export function enrichAuditLogs(
     const oldD = log.oldData || {};
     const newD = log.newData || {};
 
-    let operatorRole: 'admin' | 'secretaria' | 'sistema' = 'admin';
+    let operatorRole: 'admin' | 'secretaria' | 'sistema';
     const email = (log.userEmail || '').toLowerCase();
-    if (email.includes('secretaria') || email.includes('sec@')) {
-      operatorRole = 'secretaria';
-    } else if (!email) {
+    if (!email) {
       operatorRole = 'sistema';
+    } else {
+      const registeredRole = roleByEmail.get(email);
+      if (registeredRole === UserRole.SECRETARIA) {
+        operatorRole = 'secretaria';
+      } else if (registeredRole === UserRole.ADMIN) {
+        operatorRole = 'admin';
+      } else {
+        // E-mail não encontrado em app_users (ex.: conta removida da equipe,
+        // mas que aparece em registros históricos de auditoria) — cai de
+        // volta na heurística por padrão de e-mail como aproximação.
+        operatorRole = (email.includes('secretaria') || email.includes('sec@')) ? 'secretaria' : 'admin';
+      }
     }
 
     const operatorName = log.userEmail

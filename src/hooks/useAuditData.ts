@@ -7,6 +7,7 @@ import {
   Customer,
   BillingBatch,
   Psychologist,
+  UserRole,
 } from '../services/types';
 import { toastSuccess, toastError } from '../lib/toast';
 import { logger } from '../lib/logger';
@@ -17,6 +18,7 @@ export function useAuditData() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [batches, setBatches] = useState<BillingBatch[]>([]);
   const [psychologists, setPsychologists] = useState<Psychologist[]>([]);
+  const [appUsers, setAppUsers] = useState<Array<{ email: string; role: UserRole }>>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isReverting, setIsReverting] = useState(false);
 
@@ -29,16 +31,18 @@ export function useAuditData() {
   const loadData = useCallback(async () => {
     setIsLoading(true);
     try {
-      const [logsData, custData, batchData, psyData] = await Promise.all([
+      const [logsData, custData, batchData, psyData, usersData] = await Promise.all([
         api.getFinancialAuditLogs(300),
         api.getCustomers(),
         api.getBillingBatches(),
         api.getPsychologists(),
+        api.getAppUsers(),
       ]);
       setRawLogs(logsData);
       setCustomers(custData);
       setBatches(batchData);
       setPsychologists(psyData);
+      setAppUsers(usersData);
     } catch (err) {
       logger.error('Erro ao carregar logs de auditoria:', err);
       toastError('Erro ao carregar dados de auditoria.');
@@ -52,8 +56,8 @@ export function useAuditData() {
   }, [loadData]);
 
   const enrichedLogs = useMemo<EnrichedAuditLogEntry[]>(() => {
-    return enrichAuditLogs(rawLogs, customers, batches, psychologists);
-  }, [rawLogs, customers, batches, psychologists]);
+    return enrichAuditLogs(rawLogs, customers, batches, psychologists, appUsers);
+  }, [rawLogs, customers, batches, psychologists, appUsers]);
 
   const filteredLogs = useMemo(() => {
     return enrichedLogs.filter(item => {

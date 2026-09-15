@@ -68,6 +68,9 @@ const cachedReads = {
   getHolidays: () =>
     apiCache.get('holidays', CACHE_TTL.LONG, supabaseService.getHolidays),
 
+  getAppUsers: () =>
+    apiCache.get('appUsers', CACHE_TTL.LONG, supabaseService.getAppUsers),
+
   getClinicClosures: () =>
     apiCache.get('clinicClosures', CACHE_TTL.LONG, supabaseService.getClinicClosures),
 

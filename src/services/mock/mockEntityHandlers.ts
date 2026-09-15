@@ -33,6 +33,13 @@ export const mockEntityHandlers = {
     const userData = localStorage.getItem(STORAGE_KEYS.USER);
     return userData ? JSON.parse(userData) : null;
   },
+  getAppUsers: async (): Promise<Array<{ email: string; role: UserRole }>> => {
+    await delay(200);
+    return [
+      { email: 'admin@priori.com', role: UserRole.ADMIN },
+      { email: 'secretaria@priori.com', role: UserRole.SECRETARIA },
+    ];
+  },
 
   // ── Psychologists ─────────────────────────────────────────────────────────
   getPsychologists: async (): Promise<Psychologist[]> => {
