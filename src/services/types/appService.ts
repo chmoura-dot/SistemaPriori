@@ -122,6 +122,10 @@ export interface AppService {
   // Transação atômica: inativa paciente, cancela consultas futuras, registra
   // evento de alta e pausa assinaturas em uma única chamada.
   inactivateCustomer: (customerId: string, reason: string) => Promise<void>;
+  // Contraparte de inactivateCustomer. Com restoreRelated=true, também
+  // restaura consultas/assinaturas/evento de alta gerados pela mesma
+  // inativação (via audit_log); com false, só devolve o cadastro a Ativo.
+  reactivateCustomer: (customerId: string, restoreRelated: boolean) => Promise<void>;
   // Correção retroativa do plano de saúde / propagação de preço customizado
   // nos atendimentos não faturados do paciente — cada uma roda numa única
   // transação marcada com operationId para agrupamento na Auditoria Financeira.

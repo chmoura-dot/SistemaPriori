@@ -127,6 +127,8 @@ const writes = {
   deleteCustomer: invalidateAfter(supabaseService.deleteCustomer, ['customers']),
   // Também cancela consultas futuras e pausa assinaturas na mesma transação.
   inactivateCustomer: invalidateAfter(supabaseService.inactivateCustomer, ['customers', 'appointments', 'subscriptions']),
+  // Contraparte de inactivateCustomer — pode também restaurar consultas/assinaturas.
+  reactivateCustomer: invalidateAfter(supabaseService.reactivateCustomer, ['customers', 'appointments', 'subscriptions']),
   applyCustomerHealthPlanRetro: invalidateAfter(supabaseService.applyCustomerHealthPlanRetro, ['appointments']),
   applyCustomerPricePropagation: invalidateAfter(supabaseService.applyCustomerPricePropagation, ['appointments']),
 

@@ -7,6 +7,7 @@ import { Button } from '../components/Button';
 import { cn } from '../lib/utils';
 import { CustomerFormData, CustomerFormModal, RetroScope } from './customers/CustomerFormModal';
 import { CustomerInactivationModal } from './customers/CustomerInactivationModal';
+import { CustomerReactivationModal } from './customers/CustomerReactivationModal';
 import { CustomerBulkModal } from './customers/CustomerBulkModal';
 import { CustomerImportModal } from './customers/CustomerImportModal';
 import { getIncompleteFields, inferGenderByName, formatDate, calculateAge, isPhoneValid } from './customers/customerUtils';
@@ -50,6 +51,7 @@ export const CustomersPage = () => {
   const [formData, setFormData] = useState<CustomerFormData>(DEFAULT_FORM);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [inactivateId, setInactivateId] = useState<string | null>(null);
+  const [reactivateId, setReactivateId] = useState<string | null>(null);
   const [isBulkOpen, setIsBulkOpen] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -239,6 +241,20 @@ export const CustomersPage = () => {
     finally { setIsSaving(false); }
   };
 
+  const handleReactivate = async (restoreRelated: boolean) => {
+    if (!reactivateId) return;
+    setIsSaving(true);
+    try {
+      // Contraparte de handleInactivate: reativa o cadastro e, se solicitado,
+      // restaura consultas/assinaturas afetadas pela mesma inativação.
+      await api.reactivateCustomer(reactivateId, restoreRelated);
+      await loadData();
+      setReactivateId(null);
+      setIsFormOpen(false);
+    } catch (err: any) { alert(err.message || 'Erro ao reativar paciente'); }
+    finally { setIsSaving(false); }
+  };
+
 
   const handleBulkApply = async (changes: { healthPlan?: HealthPlan; psychologistId?: string }) => {
     setIsSaving(true);
@@ -416,6 +432,7 @@ export const CustomersPage = () => {
         psychologists={psychologists}
         existingCustomers={customers}
         onInactivate={editingId ? () => setInactivateId(editingId) : undefined}
+        onReactivate={editingId ? () => setReactivateId(editingId) : undefined}
         retroScope={retroScope}
         onRetroScopeChange={setRetroScope}
       />
@@ -425,6 +442,13 @@ export const CustomersPage = () => {
         isSaving={isSaving}
         onConfirm={handleInactivate}
         onClose={() => setInactivateId(null)}
+      />
+      <CustomerReactivationModal
+        isOpen={!!reactivateId}
+        customerName={customers.find(c => c.id === reactivateId)?.name || ''}
+        isSaving={isSaving}
+        onConfirm={handleReactivate}
+        onClose={() => setReactivateId(null)}
       />
       <CustomerBulkModal
         isOpen={isBulkOpen}

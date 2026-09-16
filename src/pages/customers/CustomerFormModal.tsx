@@ -2,9 +2,10 @@ import React from 'react';
 import { AlertCircle, AlertTriangle } from 'lucide-react';
 import { Button } from '../../components/Button';
 import { Modal } from '../../components/Modal';
-import { Customer, HealthPlan, Psychologist } from '../../services/types';
+import { Customer, CustomerStatus, HealthPlan, Psychologist } from '../../services/types';
 import { cn } from '../../lib/utils';
 import { calcRepass } from '../../lib/repassRules';
+import { isPhoneValid } from './customerUtils';
 
 export type CustomerFormData = {
   name: string;
@@ -37,6 +38,7 @@ interface CustomerFormModalProps {
   psychologists: Psychologist[];
   existingCustomers: Customer[];
   onInactivate?: () => void;
+  onReactivate?: () => void;
   retroScope: RetroScope;
   onRetroScopeChange: (scope: RetroScope) => void;
 }
@@ -52,6 +54,7 @@ export const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
   psychologists,
   existingCustomers,
   onInactivate,
+  onReactivate,
   retroScope,
   onRetroScopeChange,
 }) => {
@@ -85,9 +88,14 @@ export const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
       className="max-w-xl h-[70vh]"
       footer={
         <div className="flex gap-3 w-full">
-          {editingId && onInactivate && (
+          {editingId && onInactivate && originalCustomer?.status !== CustomerStatus.INACTIVE && (
             <Button type="button" variant="outline" className="border-red-200 text-red-600 hover:bg-red-50" onClick={onInactivate}>
               Inativar
+            </Button>
+          )}
+          {editingId && onReactivate && originalCustomer?.status === CustomerStatus.INACTIVE && (
+            <Button type="button" variant="outline" className="border-emerald-200 text-emerald-600 hover:bg-emerald-50" onClick={onReactivate}>
+              Ativar
             </Button>
           )}
           <Button type="button" variant="outline" className="flex-1" onClick={onClose}>Cancelar</Button>
@@ -119,7 +127,22 @@ export const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
         {/* Telefone */}
         <div className="space-y-1">
           <label className={label}>Telefone (WhatsApp)</label>
-          <input className={input} value={formData.phone} onChange={e => setFormData(p => ({ ...p, phone: e.target.value }))} placeholder="(21) 99999-9999" />
+          <input
+            type="tel"
+            className={cn(input, formData.phone.trim() !== '' && !isPhoneValid(formData.phone) && 'border-red-400')}
+            value={formData.phone}
+            onChange={e => setFormData(p => ({ ...p, phone: e.target.value }))}
+            placeholder="(21) 99999-9999"
+            required
+          />
+          {formData.phone.trim() !== '' && !isPhoneValid(formData.phone) && (
+            <div className="flex items-center gap-2 text-red-500 text-xs">
+              <AlertCircle size={12} /> Telefone inválido. Informe DDD + número.
+            </div>
+          )}
+          <p className="text-[11px] text-zinc-400">
+            Obrigatório: é o número usado para enviar os lembretes de agenda por WhatsApp.
+          </p>
         </div>
 
         {/* Nascimento + Gênero */}

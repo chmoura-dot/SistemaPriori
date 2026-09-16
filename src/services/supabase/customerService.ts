@@ -110,6 +110,19 @@ export const customerService = {
     if (error) throw new Error(error.message);
   },
 
+  // Contraparte de inactivateCustomer (RPC `reactivate_customer`,
+  // 20260916b_reactivate_customer_rpc.sql). Com restoreRelated=true, usa o
+  // audit_log para restaurar exatamente as consultas/assinaturas/evento de
+  // alta gerados pela mesma transação de inativação — nunca mexe em algo que
+  // tenha mudado por outro motivo depois.
+  reactivateCustomer: async (customerId: string, restoreRelated: boolean): Promise<void> => {
+    const { error } = await supabase.rpc('reactivate_customer', {
+      p_customer_id: customerId,
+      p_restore_related: restoreRelated,
+    });
+    if (error) throw new Error(error.message);
+  },
+
   // Correção retroativa do plano de saúde nos atendimentos não faturados do
   // paciente (RPC `apply_customer_health_plan_retro`,
   // 20260915_audit_operation_grouping_customers.sql). Substitui o antigo

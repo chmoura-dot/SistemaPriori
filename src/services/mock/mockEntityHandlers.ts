@@ -161,6 +161,37 @@ export const mockEntityHandlers = {
     );
     saveToStorage(STORAGE_KEYS.SUBSCRIPTIONS, updatedSubs);
   },
+  // Espelho best-effort de reactivateCustomer: o mock não guarda audit_log,
+  // então "restaurar relacionados" localiza as consultas/assinaturas que
+  // estão no estado que a inativação teria deixado (canceladas sem cobrança /
+  // pausadas) e devolve ao normal. Mesmo espírito do mock de inactivateCustomer acima.
+  reactivateCustomer: async (customerId: string, restoreRelated: boolean): Promise<void> => {
+    await delay(500);
+    const customers = getFromStorage<Customer>(STORAGE_KEYS.CUSTOMERS);
+    const idx = customers.findIndex(c => c.id === customerId);
+    if (idx === -1) throw new Error('Paciente não encontrado');
+    if (customers[idx].status !== CustomerStatus.INACTIVE) throw new Error('Paciente já está ativo');
+    customers[idx] = { ...customers[idx], status: CustomerStatus.ACTIVE, inactivationReason: undefined };
+    saveToStorage(STORAGE_KEYS.CUSTOMERS, customers);
+
+    if (!restoreRelated) return;
+
+    const appointments = getFromStorage<Appointment>(STORAGE_KEYS.APPOINTMENTS);
+    const updatedAppointments = appointments.map(a =>
+      a.customerId === customerId && a.status === AppointmentStatus.CANCELED && a.cancellationBilling === 'none'
+        ? { ...a, status: AppointmentStatus.ACTIVE, cancellationBilling: undefined }
+        : a
+    );
+    saveToStorage(STORAGE_KEYS.APPOINTMENTS, updatedAppointments);
+
+    const subs = getFromStorage<Subscription>(STORAGE_KEYS.SUBSCRIPTIONS);
+    const updatedSubs = subs.map(s =>
+      s.customerId === customerId && (s.status as string) === 'inactive'
+        ? { ...s, status: SubscriptionStatus.ACTIVE }
+        : s
+    );
+    saveToStorage(STORAGE_KEYS.SUBSCRIPTIONS, updatedSubs);
+  },
 
   applyCustomerHealthPlanRetro: async (params: {
     customerId: string;
