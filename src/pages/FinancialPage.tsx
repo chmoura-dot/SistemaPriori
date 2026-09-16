@@ -12,7 +12,8 @@ import {
   Layers,
   Check,
   AlertCircle,
-  RotateCcw
+  RotateCcw,
+  DoorOpen
 } from 'lucide-react';
 import { cn, formatCurrency } from '../lib/utils';
 import { Button } from '../components/Button';
@@ -34,6 +35,7 @@ export const FinancialPage = () => {
     filteredTransactions,
     stats,
     handleMarkParticularPaid,
+    handleMarkRentalPaid,
     resetFilters,
   } = useFinancialData();
 
@@ -269,6 +271,9 @@ export const FinancialPage = () => {
                   if (t.type === 'entrada_particular') {
                     icon = <CreditCard size={14} />;
                     iconBg = 'bg-emerald-50 text-emerald-600';
+                  } else if (t.type === 'entrada_sublocacao') {
+                    icon = <DoorOpen size={14} />;
+                    iconBg = 'bg-purple-50 text-purple-600';
                   } else if (t.type === 'saida_repasse') {
                     icon = <Users size={14} />;
                     iconBg = 'bg-amber-50 text-amber-600';
@@ -289,6 +294,7 @@ export const FinancialPage = () => {
                             <p className="text-xs text-zinc-400 uppercase tracking-wide">
                               {t.type === 'entrada_convenio' ? 'Faturamento Convênio' :
                                t.type === 'entrada_particular' ? 'Faturamento Particular' :
+                               t.type === 'entrada_sublocacao' ? 'Sublocação de Sala' :
                                t.type === 'saida_repasse' ? 'Saída de Repasse' : 'Despesa Geral'}
                             </p>
                           </div>
@@ -323,6 +329,16 @@ export const FinancialPage = () => {
                           <Button
                             size="sm"
                             onClick={() => handleMarkParticularPaid(t.originalEntity.id)}
+                            className="bg-emerald-600 hover:bg-emerald-700 text-xs text-white"
+                          >
+                            <Check size={12} className="mr-1" />
+                            Receber
+                          </Button>
+                        )}
+                        {t.type === 'entrada_sublocacao' && t.status === 'pending' && (
+                          <Button
+                            size="sm"
+                            onClick={() => handleMarkRentalPaid(t.originalEntity.id)}
                             className="bg-emerald-600 hover:bg-emerald-700 text-xs text-white"
                           >
                             <Check size={12} className="mr-1" />

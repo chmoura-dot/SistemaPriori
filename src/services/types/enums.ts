@@ -99,3 +99,13 @@ export enum UserRole {
   ADMIN = 'admin',
   SECRETARIA = 'secretaria'
 }
+
+export enum RoomRentalStatus {
+  ACTIVE = 'active',
+  CANCELED = 'canceled'
+}
+
+export enum RoomRentalPaymentStatus {
+  PENDING = 'pending',
+  PAID = 'paid'
+}

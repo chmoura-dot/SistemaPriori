@@ -10,6 +10,8 @@ import {
   SubscriptionStatus,
   RepasseStatus,
   UserRole,
+  RoomRentalStatus,
+  RoomRentalPaymentStatus,
 } from './enums';
 
 export interface PsychologistAvailability {
@@ -41,6 +43,29 @@ export interface Room {
   id: string;
   name: string;
   active: boolean;
+}
+
+// Sublocação de sala: o psicólogo reserva a sala e PAGA a clínica por isso —
+// fluxo financeiro inverso ao repasse. Entidade própria, sem customerId nem
+// billingBatchId, para nunca ser confundida com um Appointment nos cálculos
+// de repasse/faturamento/portfólio.
+export interface RoomRental {
+  id: string;
+  roomId: string;
+  psychologistId: string;
+  date: string; // YYYY-MM-DD
+  startTime: string; // HH:mm
+  endTime: string; // HH:mm
+  status: RoomRentalStatus;
+  amount: number;
+  paymentStatus: RoomRentalPaymentStatus;
+  paidAt?: string | null;
+  notes?: string | null;
+  isRecurring: boolean;
+  recurrenceFrequency?: RecurrenceFrequency | null;
+  recurrenceGroupId?: string | null;
+  cancellationReason?: string | null;
+  createdAt: string;
 }
 
 export interface Customer {

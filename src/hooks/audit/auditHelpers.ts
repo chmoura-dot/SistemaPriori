@@ -5,6 +5,7 @@ import {
   Customer,
   BillingBatch,
   Psychologist,
+  Room,
   UserRole,
 } from '../../services/types';
 import { formatCurrency } from '../../lib/utils';
@@ -28,7 +29,7 @@ export const FINANCIAL_APPOINTMENT_FIELDS = [
 const DATE_FIELDS = new Set(['paid_at', 'sent_at', 'billing_ignored_at']);
 
 // Campos monetários que devem ser exibidos com formatCurrency
-const CURRENCY_FIELDS = new Set(['custom_price', 'custom_repass_amount', 'total_amount']);
+const CURRENCY_FIELDS = new Set(['custom_price', 'custom_repass_amount', 'total_amount', 'amount']);
 
 // Campos booleanos que devem ser exibidos como Sim/Não
 const BOOLEAN_FIELDS = new Set(['billing_ignored']);
@@ -117,6 +118,13 @@ export const FIELD_LABELS: Record<string, string> = {
   psychologist_id: 'Psicólogo(a)',
   notes: 'Observações / Notas',
   sent_at: 'Data de Envio',
+  amount: 'Valor (R$)',
+  payment_status: 'Status do Pagamento',
+  cancellation_reason: 'Motivo do Cancelamento',
+  date: 'Data',
+  start_time: 'Início',
+  end_time: 'Término',
+  room_id: 'Sala',
 };
 
 export function enrichAuditLogs(
@@ -124,11 +132,13 @@ export function enrichAuditLogs(
   customers: Customer[],
   batches: BillingBatch[],
   psychologists: Psychologist[],
-  appUsers: Array<{ email: string; role: UserRole }> = []
+  appUsers: Array<{ email: string; role: UserRole }> = [],
+  rooms: Room[] = []
 ): EnrichedAuditLogEntry[] {
   const custMap = new Map(customers.map(c => [c.id, c.name]));
   const psyMap = new Map(psychologists.map(p => [p.id, p.name]));
   const batchMap = new Map(batches.map(b => [b.id, `Lote #${b.batchNumber} (${b.healthPlan})`]));
+  const roomMap = new Map(rooms.map(r => [r.id, r.name]));
   const roleByEmail = new Map(appUsers.map(u => [u.email.toLowerCase(), u.role]));
 
   const result: EnrichedAuditLogEntry[] = [];
@@ -307,6 +317,47 @@ export function enrichAuditLogs(
           }
           return;
         }
+        if (!valuesAreEquivalent(f, oldD[f], newD[f])) {
+          fieldDiffs.push({
+            field: f,
+            label: FIELD_LABELS[f] || f,
+            oldValue: formatValueForDisplay(f, oldD[f]),
+            newValue: formatValueForDisplay(f, newD[f]),
+          });
+        }
+      });
+    } else if (log.tableName === 'room_rentals') {
+      entityLabel = 'Sublocação de Sala';
+      const psyId = newD.psychologist_id || oldD.psychologist_id;
+      const psyName = psyMap.get(psyId) || 'Psicólogo não identificado';
+      const roomId = newD.room_id || oldD.room_id;
+      const roomName = roomMap.get(roomId) || 'Sala não identificada';
+      const dateStr = newD.date || oldD.date;
+      const amount = newD.amount ?? oldD.amount;
+
+      recordDescription = `${psyName} • ${roomName}${dateStr ? ` • ${dateStr}` : ''}${amount != null ? ` • ${formatCurrency(Number(amount))}` : ''}`;
+
+      const oldStatus = oldD.status;
+      const newStatus = newD.status;
+      const oldPaymentStatus = oldD.payment_status;
+      const newPaymentStatus = newD.payment_status;
+
+      if (log.action === 'INSERT') {
+        actionLabel = 'Criação de Sublocação';
+      } else if (log.action === 'DELETE') {
+        actionLabel = 'Exclusão de Sublocação';
+      } else if (oldStatus !== 'canceled' && newStatus === 'canceled') {
+        actionLabel = 'Sublocação Cancelada';
+        extractedReason = newD.cancellation_reason || undefined;
+      } else if (oldPaymentStatus !== 'paid' && newPaymentStatus === 'paid') {
+        actionLabel = 'Sublocação Marcada como Paga';
+      } else if (oldPaymentStatus === 'paid' && newPaymentStatus !== 'paid') {
+        actionLabel = 'Pagamento de Sublocação Desfeito';
+      } else {
+        actionLabel = 'Atualização de Sublocação';
+      }
+
+      ['amount', 'payment_status', 'paid_at', 'status', 'cancellation_reason', 'notes'].forEach(f => {
         if (!valuesAreEquivalent(f, oldD[f], newD[f])) {
           fieldDiffs.push({
             field: f,

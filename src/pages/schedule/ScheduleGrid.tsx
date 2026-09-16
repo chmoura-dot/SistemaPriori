@@ -1,13 +1,15 @@
 import React, { useMemo } from 'react';
 import { Plus } from 'lucide-react';
-import { Appointment, Room, Psychologist, Customer, AttendanceMode, AppointmentStatus } from '../../services/types';
+import { Appointment, Room, Psychologist, Customer, RoomRental, AttendanceMode, AppointmentStatus } from '../../services/types';
 import { cn } from '../../lib/utils';
 import { addMinutes } from './scheduleUtils';
 import { AppointmentCard } from './AppointmentCard';
+import { RoomRentalCard } from './RoomRentalCard';
 import { toMinutes, hasTimeOverlap } from '../../lib/timeUtils';
 
 interface ScheduleGridProps {
   appointments: Appointment[];
+  roomRentals: RoomRental[];
   rooms: Room[];
   psychologists: Psychologist[];
   customers: Customer[];
@@ -28,6 +30,7 @@ interface ScheduleGridProps {
 
 export const ScheduleGrid: React.FC<ScheduleGridProps> = React.memo(({
   appointments,
+  roomRentals,
   rooms,
   psychologists,
   customers,
@@ -91,10 +94,34 @@ export const ScheduleGrid: React.FC<ScheduleGridProps> = React.memo(({
     return map;
   }, [appointments, viewMode, date, selectedRoom, selectedPsychologistId, timeSlots]);
 
+  // Sublocações não têm psicólogo "atendendo" — só ocupam sala. Indexadas do
+  // mesmo jeito que appointmentByCell, mas apenas para as visões daily/weekly
+  // (a visão por psicólogo mostra a agenda clínica dele, não reservas de sala).
+  const roomRentalByCell = useMemo(() => {
+    const map: Record<string, RoomRental> = {};
+
+    roomRentals.forEach(rr => {
+      timeSlots.forEach(slot => {
+        const slotEnd = addMinutes(slot, 30);
+        const overlaps = rr.startTime < slotEnd && rr.endTime > slot;
+        if (!overlaps) return;
+
+        if (viewMode === 'daily' && rr.date === date) {
+          map[`${slot}-${rr.roomId}`] = rr;
+        } else if (viewMode === 'weekly' && rr.roomId === selectedRoom) {
+          map[`${slot}-${rr.date}`] = rr;
+        }
+      });
+    });
+
+    return map;
+  }, [roomRentals, viewMode, date, selectedRoom, timeSlots]);
+
   // ── OTIMIZAÇÃO: Cache e Indexação rápida de conflitos para hasMinSpaceFast ──
   const conflictsMap = useMemo(() => {
     const activeAppsByRoom: Record<string, Appointment[]> = {};
     const activeAppsByPsy: Record<string, Appointment[]> = {};
+    const activeRentalsByRoom: Record<string, RoomRental[]> = {};
 
     appointments.forEach(a => {
       if (a.status === AppointmentStatus.CANCELED) return;
@@ -108,8 +135,14 @@ export const ScheduleGrid: React.FC<ScheduleGridProps> = React.memo(({
       activeAppsByPsy[pKey].push(a);
     });
 
-    return { activeAppsByRoom, activeAppsByPsy };
-  }, [appointments]);
+    roomRentals.forEach(rr => {
+      const key = `${rr.date}-${rr.roomId}`;
+      if (!activeRentalsByRoom[key]) activeRentalsByRoom[key] = [];
+      activeRentalsByRoom[key].push(rr);
+    });
+
+    return { activeAppsByRoom, activeAppsByPsy, activeRentalsByRoom };
+  }, [appointments, roomRentals]);
 
   // ── OTIMIZAÇÃO: Versão ultraveloz do hasMinSpace em O(1) usando o cache local ──
   const hasMinSpaceFast = (
@@ -134,6 +167,12 @@ export const ScheduleGrid: React.FC<ScheduleGridProps> = React.memo(({
         hasTimeOverlap(slot, minEndTime, a.startTime, a.endTime)
       );
       if (hasConflict) return false;
+
+      const relevantRentals = conflictsMap.activeRentalsByRoom[key] ?? [];
+      const hasRentalConflict = relevantRentals.some(rr =>
+        hasTimeOverlap(slot, minEndTime, rr.startTime, rr.endTime)
+      );
+      if (hasRentalConflict) return false;
     }
 
     if (psyId) {
@@ -219,6 +258,10 @@ export const ScheduleGrid: React.FC<ScheduleGridProps> = React.memo(({
                       const customer = customers.find(c => c.id === appointment?.customerId);
                       const psychologist = psychologists.find(p => p.id === appointment?.psychologistId);
 
+                      const rental = !appointment ? roomRentalByCell[key] : undefined;
+                      const isRentalFirstSlot =
+                        !!rental && rental.startTime >= slot && rental.startTime < addMinutes(slot, 30);
+
                       return (
                         <div
                           key={`${slot}-${room.id}`}
@@ -232,6 +275,16 @@ export const ScheduleGrid: React.FC<ScheduleGridProps> = React.memo(({
                                 subtitle={psychologist?.name || ''}
                                 slot={slot}
                                 {...cardHandlers}
+                              />
+                            ) : (
+                              <div className="h-full w-full" />
+                            )
+                          ) : rental ? (
+                            isRentalFirstSlot ? (
+                              <RoomRentalCard
+                                rental={rental}
+                                psychologistName={psychologists.find(p => p.id === rental.psychologistId)?.name || ''}
+                                slot={slot}
                               />
                             ) : (
                               <div className="h-full w-full" />
@@ -265,6 +318,10 @@ export const ScheduleGrid: React.FC<ScheduleGridProps> = React.memo(({
                           ? rooms.find(r => r.id === appointment?.roomId)?.name || 'Online'
                           : psychologist?.name || '';
 
+                      const rental = (!appointment && viewMode === 'weekly') ? roomRentalByCell[key] : undefined;
+                      const isRentalFirstSlot =
+                        !!rental && rental.startTime >= slot && rental.startTime < addMinutes(slot, 30);
+
                       return (
                         <div
                           key={`${slot}-${day}`}
@@ -278,6 +335,16 @@ export const ScheduleGrid: React.FC<ScheduleGridProps> = React.memo(({
                                 subtitle={subtitle}
                                 slot={slot}
                                 {...cardHandlers}
+                              />
+                            ) : (
+                              <div className="h-full w-full" />
+                            )
+                          ) : rental ? (
+                            isRentalFirstSlot ? (
+                              <RoomRentalCard
+                                rental={rental}
+                                psychologistName={psychologists.find(p => p.id === rental.psychologistId)?.name || ''}
+                                slot={slot}
                               />
                             ) : (
                               <div className="h-full w-full" />

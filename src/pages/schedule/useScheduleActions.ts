@@ -101,6 +101,15 @@ export const useScheduleActions = (s: ScheduleData) => {
         throw new Error('Já existe um agendamento para esta sala neste horário.');
       if (conflicts.some(a => a.psychologistId === formData.psychologistId))
         throw new Error('O psicólogo selecionado já possui um agendamento neste horário.');
+      // Sala pode estar ocupada por uma sublocação (psicólogo pagando pelo uso
+      // da sala), não só por outro atendimento — checagem separada porque
+      // room_rentals é uma tabela própria (ver s.roomRentals em useScheduleData).
+      if (
+        formData.mode === AttendanceMode.PRESENCIAL &&
+        s.roomRentals.some(rr => rr.roomId === formData.roomId && rr.date === formData.date &&
+          hasTimeOverlap(formData.startTime, formData.endTime, rr.startTime, rr.endTime))
+      )
+        throw new Error('Sala já reservada para sublocação neste horário.');
 
       if (formData.isRecurring && !editingId) {
         const intervalDays = formData.recurrenceFrequency === RecurrenceFrequency.QUINZENAL ? 14 : 7;

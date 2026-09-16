@@ -23,6 +23,7 @@ const MagicConfirmationPage = lazy(() => import('./pages/MagicConfirmationPage')
 const BillingPage           = lazy(() => import('./pages/BillingPage').then(m => ({ default: m.BillingPage })));
 const NfsePage              = lazy(() => import('./pages/NfsePage'));
 const RepassePage           = lazy(() => import('./pages/RepassePage').then(m => ({ default: m.RepassePage })));
+const RoomRentalPage        = lazy(() => import('./pages/RoomRentalPage').then(m => ({ default: m.RoomRentalPage })));
 const CapacityPage          = lazy(() => import('./pages/CapacityPage').then(m => ({ default: m.CapacityPage })));
 const SettingsPage          = lazy(() => import('./pages/SettingsPage').then(m => ({ default: m.SettingsPage })));
 const AccountSecurityPage   = lazy(() => import('./pages/AccountSecurityPage').then(m => ({ default: m.AccountSecurityPage })));
@@ -186,6 +187,8 @@ export default function App() {
         return <NfsePage />;
       case '/repasse':
         return <RepassePage />;
+      case '/sublocacao':
+        return <RoomRentalPage />;
       case '/despesas':
         return <ExpensesPage />;
       case '/psicologos':

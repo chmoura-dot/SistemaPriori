@@ -15,8 +15,9 @@ import {
   WaitingListEntry,
   User,
   PortfolioItem,
+  RoomRental,
 } from './models';
-import { UserRole } from './enums';
+import { UserRole, RecurrenceFrequency } from './enums';
 import { AuditLogEntry } from './audit';
 
 export interface AppService {
@@ -66,6 +67,26 @@ export interface AppService {
 
   // Rooms
   getRooms: () => Promise<Room[]>;
+
+  // Room Rentals (sublocação de sala) — psicólogo reserva a sala e paga a
+  // clínica; fluxo financeiro inverso ao repasse. Ver room_rentals.
+  getRoomRentals: () => Promise<RoomRental[]>;
+  getRoomRentalsByRange: (startDate: string, endDate: string) => Promise<RoomRental[]>;
+  createRoomRental: (params: {
+    roomId: string;
+    psychologistId: string;
+    date: string;
+    startTime: string;
+    endTime: string;
+    amount: number;
+    isRecurring: boolean;
+    recurrenceFrequency?: RecurrenceFrequency;
+    notes?: string;
+    operationId?: string;
+  }) => Promise<{ createdIds: string[]; recurrenceGroupId?: string }>;
+  cancelRoomRental: (id: string, reason: string) => Promise<void>;
+  cancelFutureRoomRentals: (groupId: string, fromDate: string, reason: string, operationId?: string) => Promise<void>;
+  markRoomRentalsPaid: (ids: string[], paidAt: string, operationId?: string) => Promise<void>;
 
   // Appointments
   getAppointments: (date?: string) => Promise<Appointment[]>;

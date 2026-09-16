@@ -35,6 +35,54 @@ export const mockMiscHandlers = {
     localStorage.setItem('priori_repasses', JSON.stringify(repasses.filter((r: any) => r.id !== id)));
   },
 
+  // ── Room Rentals (sublocação de sala — mock, sem checagem de conflito) ──────
+  getRoomRentals: async () => {
+    await delay(300);
+    return JSON.parse(localStorage.getItem('priori_room_rentals') || '[]');
+  },
+  getRoomRentalsByRange: async (startDate: string, endDate: string) => {
+    await delay(300);
+    const all = JSON.parse(localStorage.getItem('priori_room_rentals') || '[]');
+    return all.filter((r: any) => r.date >= startDate && r.date <= endDate);
+  },
+  createRoomRental: async (params: any) => {
+    await delay(500);
+    const all = JSON.parse(localStorage.getItem('priori_room_rentals') || '[]');
+    const id = Math.random().toString(36).substr(2, 9);
+    const item = {
+      id, roomId: params.roomId, psychologistId: params.psychologistId,
+      date: params.date, startTime: params.startTime, endTime: params.endTime,
+      status: 'active', amount: params.amount, paymentStatus: 'pending',
+      isRecurring: params.isRecurring, recurrenceFrequency: params.recurrenceFrequency,
+      recurrenceGroupId: params.isRecurring ? Math.random().toString(36).substr(2, 9) : undefined,
+      notes: params.notes, createdAt: new Date().toISOString(),
+    };
+    localStorage.setItem('priori_room_rentals', JSON.stringify([...all, item]));
+    return { createdIds: [id], recurrenceGroupId: item.recurrenceGroupId };
+  },
+  cancelRoomRental: async (id: string, reason: string) => {
+    await delay(400);
+    const all = JSON.parse(localStorage.getItem('priori_room_rentals') || '[]');
+    const updated = all.map((r: any) => r.id === id ? { ...r, status: 'canceled', cancellationReason: reason } : r);
+    localStorage.setItem('priori_room_rentals', JSON.stringify(updated));
+  },
+  cancelFutureRoomRentals: async (groupId: string, fromDate: string, reason: string) => {
+    await delay(400);
+    const all = JSON.parse(localStorage.getItem('priori_room_rentals') || '[]');
+    const updated = all.map((r: any) =>
+      r.recurrenceGroupId === groupId && r.date >= fromDate
+        ? { ...r, status: 'canceled', cancellationReason: reason }
+        : r
+    );
+    localStorage.setItem('priori_room_rentals', JSON.stringify(updated));
+  },
+  markRoomRentalsPaid: async (ids: string[], paidAt: string) => {
+    await delay(400);
+    const all = JSON.parse(localStorage.getItem('priori_room_rentals') || '[]');
+    const updated = all.map((r: any) => ids.includes(r.id) ? { ...r, paymentStatus: 'paid', paidAt } : r);
+    localStorage.setItem('priori_room_rentals', JSON.stringify(updated));
+  },
+
   // ── Settings ──────────────────────────────────────────────────────────────
   getSettings: async () => {
     await delay(200);

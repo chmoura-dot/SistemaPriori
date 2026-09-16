@@ -22,6 +22,7 @@ import {
   User as UserIcon,
   UserCheck,
   ShieldAlert,
+  DoorOpen,
 
 } from 'lucide-react';
 import { cn } from '../lib/utils';
@@ -61,6 +62,7 @@ const menuGroups: MenuGroup[] = [
       { icon: UserCheck, label: 'Gestão de Carteira', path: '/carteira', adminOnly: true },
       { icon: FileText, label: 'Faturamento', path: '/faturamento' },
       { icon: ArrowRightLeft, label: 'Repasse', path: '/repasse' },
+      { icon: DoorOpen, label: 'Sublocação de Sala', path: '/sublocacao' },
       { icon: CalendarSearch, label: 'Relação por Convênio', path: '/previsao' },
       { icon: FileText, label: 'Gestão Neuropsicológica', path: '/relatorio-neuro', adminOnly: true },
       { icon: BarChart3, label: 'Capacidade', path: '/capacidade' },

@@ -34,6 +34,13 @@ const cachedReads = {
   getRooms: () =>
     apiCache.get('rooms', CACHE_TTL.LONG, supabaseService.getRooms),
 
+  getRoomRentals: () =>
+    apiCache.get('roomRentals', CACHE_TTL.SHORT, supabaseService.getRoomRentals),
+
+  getRoomRentalsByRange: (startDate: string, endDate: string) =>
+    apiCache.get(`roomRentals:range:${startDate}:${endDate}`, CACHE_TTL.SHORT, () =>
+      supabaseService.getRoomRentalsByRange(startDate, endDate)),
+
   getCustomers: () =>
     apiCache.get('customers', CACHE_TTL.MEDIUM, supabaseService.getCustomers),
 
@@ -155,8 +162,13 @@ const writes = {
   updateRepasse: invalidateAfter(supabaseService.updateRepasse, ['repasses']),
   deleteRepasse: invalidateAfter(supabaseService.deleteRepasse, ['repasses']),
 
-  revertFinancialAuditLog: invalidateAfter(supabaseService.revertFinancialAuditLog, ['billingBatches', 'repasses', 'appointments']),
-  revertFinancialAuditOperation: invalidateAfter(supabaseService.revertFinancialAuditOperation, ['billingBatches', 'repasses', 'appointments']),
+  createRoomRental: invalidateAfter(supabaseService.createRoomRental, ['roomRentals']),
+  cancelRoomRental: invalidateAfter(supabaseService.cancelRoomRental, ['roomRentals']),
+  cancelFutureRoomRentals: invalidateAfter(supabaseService.cancelFutureRoomRentals, ['roomRentals']),
+  markRoomRentalsPaid: invalidateAfter(supabaseService.markRoomRentalsPaid, ['roomRentals']),
+
+  revertFinancialAuditLog: invalidateAfter(supabaseService.revertFinancialAuditLog, ['billingBatches', 'repasses', 'appointments', 'roomRentals']),
+  revertFinancialAuditOperation: invalidateAfter(supabaseService.revertFinancialAuditOperation, ['billingBatches', 'repasses', 'appointments', 'roomRentals']),
 
   createHoliday: invalidateAfter(supabaseService.createHoliday, ['holidays']),
   updateHoliday: invalidateAfter(supabaseService.updateHoliday, ['holidays']),

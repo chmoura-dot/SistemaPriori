@@ -6,7 +6,7 @@ export const auditService = {
     const { data, error } = await supabase
       .from('audit_log')
       .select('id, user_id, user_email, action, table_name, record_id, old_data, new_data, created_at, operation_id')
-      .in('table_name', ['billing_batches', 'repasses', 'appointments'])
+      .in('table_name', ['billing_batches', 'repasses', 'appointments', 'room_rentals'])
       .order('created_at', { ascending: false })
       .limit(limit);
 

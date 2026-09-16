@@ -110,7 +110,7 @@ export const AuditPage = () => {
             </span>
           </div>
           <p className="text-zinc-500 mt-1">
-            Histórico completo de alterações em faturamento, lotes e repasses com auditoria de motivos e reversão (Undo).
+            Histórico completo de alterações em faturamento, lotes, repasses e sublocação de sala com auditoria de motivos e reversão (Undo).
           </p>
         </div>
         <Button
@@ -199,6 +199,7 @@ export const AuditPage = () => {
               <option value="billing_batches">📦 Lotes de Faturamento</option>
               <option value="appointments">🩺 Atendimentos (Remoções/Pagamentos)</option>
               <option value="repasses">💸 Repasses</option>
+              <option value="room_rentals">🚪 Sublocação de Sala</option>
             </select>
 
             {/* Filtro de Ação */}

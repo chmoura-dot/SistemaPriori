@@ -4,6 +4,7 @@ import { logger } from '../../lib/logger';
 import {
   Psychologist, Room, Customer, Appointment, BillingBatch,
   Plan, Subscription, Payment, Expense, Settings, HealthPlan,
+  RoomRental, RoomRentalStatus, RoomRentalPaymentStatus,
 } from '../types';
 
 export { supabase };
@@ -57,6 +58,13 @@ export const PSYCHOLOGIST_COLUMNS = [
 
 export const ROOM_COLUMNS = [
   'id', 'name', 'active'
+].join(', ');
+
+export const ROOM_RENTAL_COLUMNS = [
+  'id', 'room_id', 'psychologist_id', 'date', 'start_time', 'end_time',
+  'status', 'amount', 'payment_status', 'paid_at', 'notes',
+  'is_recurring', 'recurrence_frequency', 'recurrence_group_id',
+  'cancellation_reason', 'created_at',
 ].join(', ');
 
 export const WAITING_LIST_COLUMNS = [
@@ -116,6 +124,27 @@ export function toPsychologist(row: any): Psychologist {
 
 export function toRoom(row: any): Room {
   return { id: row.id, name: row.name, active: row.active };
+}
+
+export function toRoomRental(row: any): RoomRental {
+  return {
+    id: row.id,
+    roomId: row.room_id,
+    psychologistId: row.psychologist_id,
+    date: row.date,
+    startTime: row.start_time,
+    endTime: row.end_time,
+    status: row.status as RoomRentalStatus,
+    amount: row.amount,
+    paymentStatus: row.payment_status as RoomRentalPaymentStatus,
+    paidAt: row.paid_at ?? undefined,
+    notes: row.notes ?? undefined,
+    isRecurring: row.is_recurring,
+    recurrenceFrequency: row.recurrence_frequency ?? undefined,
+    recurrenceGroupId: row.recurrence_group_id ?? undefined,
+    cancellationReason: row.cancellation_reason ?? undefined,
+    createdAt: row.created_at,
+  };
 }
 
 const HEALTH_PLAN_MAP: Record<string, string> = {

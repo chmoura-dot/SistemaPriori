@@ -7,6 +7,7 @@
 //   src/services/supabase/appointmentWriteService.ts — criação/edição de agendamentos
 //   src/services/supabase/customerService.ts      — pacientes, planos, assinaturas, pagamentos
 //   src/services/supabase/financeService.ts       — despesas, faturamento, repasses, configurações
+//   src/services/supabase/roomRentalService.ts    — sublocação de sala
 //   src/services/supabase/configService.ts        — lista de espera, feriados, fechamentos, NFS-e
 import { AppService } from './types';
 import { authService } from './supabase/authService';
@@ -17,6 +18,7 @@ import { customerService } from './supabase/customerService';
 import { financeService } from './supabase/financeService';
 import { configService } from './supabase/configService';
 import { auditService } from './supabase/auditService';
+import { roomRentalService } from './supabase/roomRentalService';
 
 
 export const supabaseService: AppService = {
@@ -27,6 +29,7 @@ export const supabaseService: AppService = {
   ...customerService,
   ...financeService,
   ...auditService,
+  ...roomRentalService,
 
   ...configService,
 };

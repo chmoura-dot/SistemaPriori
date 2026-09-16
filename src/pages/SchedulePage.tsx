@@ -189,6 +189,7 @@ export const SchedulePage: React.FC<SchedulePageProps> = ({ onNavigate }) => {
       {/* Main Grid */}
       <ScheduleGrid
         appointments={s.appointments}
+        roomRentals={s.roomRentals}
         rooms={s.rooms}
         psychologists={s.psychologists}
         customers={s.customers}
@@ -223,6 +224,7 @@ export const SchedulePage: React.FC<SchedulePageProps> = ({ onNavigate }) => {
         psychologists={s.psychologists}
         rooms={s.rooms}
         appointments={s.appointments}
+        roomRentals={s.roomRentals}
         plans={s.plans}
         onDeleteFromModal={async () => {
           const appt = s.appointments.find(a => a.id === s.editingId);

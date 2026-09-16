@@ -5,7 +5,7 @@ import { getTodayISO } from '../../lib/dateUtils';
 import {
   Appointment, Room, Psychologist, Customer, Plan,
   AttendanceMode, AppointmentType, RecurrenceFrequency,
-  Holiday, ClinicClosure,
+  Holiday, ClinicClosure, RoomRental, RoomRentalStatus,
 } from '../../services/types';
 import { ScheduleFormData } from './scheduleUtils';
 
@@ -38,6 +38,10 @@ export const useScheduleData = () => {
     return getTodayISO();
   });
   const [appointments, setAppointments] = useState<Appointment[]>([]);
+  // Sublocações ativas na sala/data/horário — precisam entrar na mesma
+  // checagem de disponibilidade de sala que Appointment, senão a secretária
+  // pode marcar um atendimento numa sala já sublocada sem perceber.
+  const [roomRentals, setRoomRentals] = useState<RoomRental[]>([]);
   const [rooms, setRooms] = useState<Room[]>([]);
   const [psychologists, setPsychologists] = useState<Psychologist[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -86,8 +90,9 @@ export const useScheduleData = () => {
 
     setIsLoading(true);
     try {
-      const [a, r, p, c, plansData, h, cl] = await Promise.all([
+      const [a, rr, r, p, c, plansData, h, cl] = await Promise.all([
         api.getAppointmentsByRange(startDate, endDate),
+        api.getRoomRentalsByRange(startDate, endDate),
         api.getRooms(),
         api.getPsychologists(),
         api.getCustomers(),
@@ -96,6 +101,7 @@ export const useScheduleData = () => {
         api.getClinicClosures(),
       ]);
       setAppointments(a);
+      setRoomRentals(rr.filter(rental => rental.status === RoomRentalStatus.ACTIVE));
       setLoadedRange({ start: startDate, end: endDate });
       setRooms(r);
       if (r.length > 0 && !selectedRoom) setSelectedRoom(r[0].id);
@@ -128,6 +134,7 @@ export const useScheduleData = () => {
   return {
     date, setDate,
     appointments, setAppointments,
+    roomRentals,
     rooms, psychologists, customers, plans, holidays, closures,
     isLoading,
     viewMode, setViewMode,

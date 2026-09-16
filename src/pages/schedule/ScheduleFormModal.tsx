@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useMemo } from 'react';
 import { Trash2, Wifi, Building2, Lock, User, AlertTriangle, ArrowLeftRight } from 'lucide-react';
 import {
-  Appointment, Psychologist, Customer, Plan, Room,
+  Appointment, Psychologist, Customer, Plan, Room, RoomRental,
   AttendanceMode, AppointmentStatus, RecurrenceFrequency,
 } from '../../services/types';
 import { Modal } from '../../components/Modal';
@@ -32,13 +32,14 @@ interface ScheduleFormModalProps {
   psychologists: Psychologist[];
   rooms: Room[];
   appointments: Appointment[];
+  roomRentals: RoomRental[];
   plans: Plan[];
   onDeleteFromModal: () => Promise<void>;
 }
 
 export const ScheduleFormModal: React.FC<ScheduleFormModalProps> = ({
   isOpen, onClose, editingId, isReschedule, formData, setFormData, handleSubmit, isSaving,
-  updateFuture, setUpdateFuture, customers, psychologists, rooms, appointments, plans,
+  updateFuture, setUpdateFuture, customers, psychologists, rooms, appointments, roomRentals, plans,
   onDeleteFromModal,
 }) => {
   const prevCustomerIdRef = useRef('');
@@ -160,7 +161,8 @@ export const ScheduleFormModal: React.FC<ScheduleFormModalProps> = ({
     return conflicts;
   }, [formData.isRecurring, formData.psychologistId, formData.date, formData.startTime, formData.endTime, formData.recurrenceFrequency, appointments]);
 
-  // Available rooms (no conflict)
+  // Available rooms (sem conflito com outro atendimento OU com sublocação —
+  // room_rentals é uma tabela própria, ver useScheduleData.ts).
   const availableRooms = rooms.filter(room => {
     if (!formData.date || !formData.startTime || !formData.endTime) return true;
     const conflict = appointments.find(a =>
@@ -168,8 +170,26 @@ export const ScheduleFormModal: React.FC<ScheduleFormModalProps> = ({
       a.mode === AttendanceMode.PRESENCIAL && a.status !== AppointmentStatus.CANCELED &&
       hasTimeOverlap(formData.startTime, formData.endTime, a.startTime, a.endTime)
     );
-    return !conflict;
+    if (conflict) return false;
+    const rentalConflict = roomRentals.find(rr =>
+      rr.roomId === room.id && rr.date === formData.date &&
+      hasTimeOverlap(formData.startTime, formData.endTime, rr.startTime, rr.endTime)
+    );
+    return !rentalConflict;
   });
+
+  // Salas ocultas por sublocação (para explicar o motivo na lista, já que
+  // "ocupada" sem contexto levaria a secretária a pensar em bug do sistema).
+  const roomsHiddenBySublocacao = useMemo(() => {
+    if (!formData.date || !formData.startTime || !formData.endTime) return [];
+    return rooms.filter(room => !availableRooms.some(ar => ar.id === room.id)).map(room => {
+      const rental = roomRentals.find(rr =>
+        rr.roomId === room.id && rr.date === formData.date &&
+        hasTimeOverlap(formData.startTime, formData.endTime, rr.startTime, rr.endTime)
+      );
+      return rental ? room.name : null;
+    }).filter((name): name is string => !!name);
+  }, [rooms, availableRooms, roomRentals, formData.date, formData.startTime, formData.endTime]);
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={isReschedule ? 'Remanejar Horário' : editingId ? 'Editar Agendamento' : 'Novo Agendamento'}>
@@ -298,6 +318,16 @@ export const ScheduleFormModal: React.FC<ScheduleFormModalProps> = ({
               ))}
               {availableRooms.length === 0 && <p className="text-xs text-red-500 col-span-4 py-2">Todas as salas estão ocupadas neste horário.</p>}
             </div>
+            {roomsHiddenBySublocacao.length > 0 && (
+              <div className="mt-2 p-2.5 bg-amber-50 border border-amber-200 rounded-lg">
+                <div className="flex items-center gap-1.5 text-amber-700">
+                  <AlertTriangle size={13} />
+                  <span className="text-[11px] font-bold">
+                    {roomsHiddenBySublocacao.join(', ')} indisponível(is) — reservada(s) para sublocação neste horário.
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

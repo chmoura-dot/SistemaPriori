@@ -1,23 +1,26 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { api } from '../services/api';
-import { 
-  Appointment, 
-  BillingBatch, 
-  Repasse, 
-  Customer, 
-  Psychologist, 
-  Expense, 
-  BillingBatchStatus, 
-  RepasseStatus, 
-  AppointmentStatus, 
-  HealthPlan, 
-  Plan 
+import {
+  Appointment,
+  BillingBatch,
+  Repasse,
+  Customer,
+  Psychologist,
+  Expense,
+  BillingBatchStatus,
+  RepasseStatus,
+  AppointmentStatus,
+  HealthPlan,
+  Plan,
+  RoomRental,
+  RoomRentalStatus,
+  RoomRentalPaymentStatus,
 } from '../services/types';
 import { getAppPrice } from '../lib/pricing';
 
 export interface FinancialTransaction {
   id: string;
-  type: 'entrada_convenio' | 'entrada_particular' | 'saida_repasse' | 'saida_despesa';
+  type: 'entrada_convenio' | 'entrada_particular' | 'entrada_sublocacao' | 'saida_repasse' | 'saida_despesa';
   description: string;
   origin: string;
   date: string;
@@ -46,6 +49,7 @@ export function useFinancialData() {
   const [plans, setPlans] = useState<Plan[]>([]);
   const [psychologists, setPsychologists] = useState<Psychologist[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [roomRentals, setRoomRentals] = useState<RoomRental[]>([]);
 
   // Filtros
   const [isFiltersOpen, setIsFiltersOpen] = useState(true);
@@ -58,7 +62,7 @@ export function useFinancialData() {
 
   const loadData = useCallback(async () => {
     try {
-      const [apps, bts, rps, cust, pl, psy, exp] = await Promise.all([
+      const [apps, bts, rps, cust, pl, psy, exp, rentals] = await Promise.all([
         api.getAppointments(),
         api.getBillingBatches(),
         api.getRepasses(),
@@ -66,6 +70,7 @@ export function useFinancialData() {
         api.getPlans(),
         api.getPsychologists(),
         api.getExpenses(),
+        api.getRoomRentals(),
       ]);
 
       const billed = apps.filter(a => 
@@ -84,6 +89,7 @@ export function useFinancialData() {
       setPlans(pl);
       setPsychologists(psy);
       setExpenses(exp);
+      setRoomRentals(rentals);
     } catch (err) {
       console.error('[Financeiro] Erro ao carregar dados:', err);
     } finally {
@@ -220,13 +226,36 @@ export function useFinancialData() {
       });
     });
 
+    // 5. Entradas: Sublocação de Sala (psicólogo paga a clínica — sem repasse)
+    roomRentals.forEach(rental => {
+      if (rental.status !== RoomRentalStatus.ACTIVE) return;
+
+      const competence = rental.date.substring(0, 7);
+      if (filterMonth && competence !== filterMonth) return;
+
+      const psy = psychologists.find(p => p.id === rental.psychologistId);
+      const status: 'pending' | 'partial' | 'paid' = rental.paymentStatus === RoomRentalPaymentStatus.PAID ? 'paid' : 'pending';
+
+      transactions.push({
+        id: `rental-${rental.id}`,
+        type: 'entrada_sublocacao',
+        description: `Sublocação de Sala - ${psy?.name || 'Psicólogo(a)'}`,
+        origin: 'Sublocação',
+        date: rental.date,
+        competence,
+        amount: rental.amount,
+        status,
+        originalEntity: rental,
+      });
+    });
+
     return transactions;
-  }, [batches, appointments, repasses, customers, psychologists, expenses, pricingCtx, filterMonth]);
+  }, [batches, appointments, repasses, customers, psychologists, expenses, roomRentals, pricingCtx, filterMonth]);
 
   // Lista única das operadoras/origens para o filtro
   const uniqueOrigins = useMemo(() => {
     const plansList = batches.map(b => b.healthPlan);
-    return Array.from(new Set(['Particular', ...plansList]));
+    return Array.from(new Set(['Particular', 'Sublocação', ...plansList]));
   }, [batches]);
 
   // Transações filtradas
@@ -239,6 +268,8 @@ export function useFinancialData() {
       if (filterOrigin !== 'all') {
         if (filterOrigin === 'Particular') {
           matchesOrigin = t.type === 'entrada_particular';
+        } else if (filterOrigin === 'Sublocação') {
+          matchesOrigin = t.type === 'entrada_sublocacao';
         } else {
           if (t.type === 'entrada_convenio') {
             matchesOrigin = t.origin === filterOrigin;
@@ -267,7 +298,7 @@ export function useFinancialData() {
     let despesasTotais = 0;
 
     filteredTransactions.forEach(t => {
-      if (t.type === 'entrada_convenio' || t.type === 'entrada_particular') {
+      if (t.type === 'entrada_convenio' || t.type === 'entrada_particular' || t.type === 'entrada_sublocacao') {
         entradasPrevisto += t.amount;
         if (t.status === 'paid') {
           entradasRealizado += t.amount;
@@ -319,6 +350,21 @@ export function useFinancialData() {
     }
   }, [appointments]);
 
+  const handleMarkRentalPaid = useCallback(async (rentalId: string) => {
+    const originalRentals = [...roomRentals];
+    const paidAt = new Date().toISOString();
+
+    setRoomRentals(prev => prev.map(r => r.id === rentalId ? { ...r, paymentStatus: RoomRentalPaymentStatus.PAID, paidAt } : r));
+
+    try {
+      await api.markRoomRentalsPaid([rentalId], paidAt, crypto.randomUUID());
+    } catch (err) {
+      console.error('[Financeiro] Erro ao registrar pagamento de sublocação:', err);
+      setRoomRentals(originalRentals);
+      alert('Erro ao registrar o pagamento da sublocação.');
+    }
+  }, [roomRentals]);
+
   const resetFilters = useCallback(() => {
     setFilterMonth('');
     setFilterStatus('all');
@@ -339,6 +385,7 @@ export function useFinancialData() {
     filteredTransactions,
     stats,
     handleMarkParticularPaid,
+    handleMarkRentalPaid,
     resetFilters,
     reload: loadData,
   };
