@@ -344,6 +344,7 @@ export const RoomRentalPage = () => {
         onClose={() => setIsModalOpen(false)}
         rooms={rooms}
         psychologists={psychologists}
+        roomRentals={rentals}
         formData={formData}
         setFormData={setFormData}
         amountInput={amountInput}

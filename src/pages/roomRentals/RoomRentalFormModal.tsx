@@ -1,9 +1,15 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Modal } from '../../components/Modal';
 import { Input } from '../../components/Input';
 import { Button } from '../../components/Button';
-import { Room, Psychologist, RecurrenceFrequency } from '../../services/types';
+import {
+  Room, Psychologist, RoomRental, RoomRentalStatus,
+  Appointment, AttendanceMode, AppointmentStatus, RecurrenceFrequency,
+} from '../../services/types';
 import { getTodayISO } from '../../lib/dateUtils';
+import { hasTimeOverlap } from '../../lib/timeUtils';
+import { api } from '../../services/api';
+import { logger } from '../../lib/logger';
 
 export interface RoomRentalFormData {
   roomId: string;
@@ -34,6 +40,7 @@ interface Props {
   onClose: () => void;
   rooms: Room[];
   psychologists: Psychologist[];
+  roomRentals: RoomRental[];
   formData: RoomRentalFormData;
   setFormData: React.Dispatch<React.SetStateAction<RoomRentalFormData>>;
   amountInput: string;
@@ -47,130 +54,203 @@ export const RoomRentalFormModal = ({
   onClose,
   rooms,
   psychologists,
+  roomRentals,
   formData,
   setFormData,
   amountInput,
   handleAmountChange,
   handleSubmit,
   isSaving,
-}: Props) => (
-  <Modal isOpen={isOpen} onClose={onClose} title="Nova Sublocação de Sala">
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-1.5">
-          <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Sala</label>
-          <select
-            className="w-full bg-white border border-zinc-200 rounded-lg px-4 py-2.5 text-sm text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/10 focus:border-priori-navy"
-            value={formData.roomId}
-            onChange={(e) => setFormData({ ...formData, roomId: e.target.value })}
+}: Props) => {
+  const hasDateTime = !!(formData.date && formData.startTime && formData.endTime);
+
+  // Atendimentos do dia escolhido — sem isso não dá pra saber se uma sala já
+  // está ocupada por um atendimento comum (só sublocações vêm via prop).
+  const [appointmentsForDate, setAppointmentsForDate] = useState<Appointment[]>([]);
+  const [isLoadingAvailability, setIsLoadingAvailability] = useState(false);
+
+  useEffect(() => {
+    if (!formData.date) { setAppointmentsForDate([]); return; }
+    let cancelled = false;
+    setIsLoadingAvailability(true);
+    api.getAppointmentsByRange(formData.date, formData.date)
+      .then(data => { if (!cancelled) setAppointmentsForDate(data); })
+      .catch(err => {
+        logger.error('Erro ao carregar atendimentos do dia para checagem de disponibilidade:', err);
+        if (!cancelled) setAppointmentsForDate([]);
+      })
+      .finally(() => { if (!cancelled) setIsLoadingAvailability(false); });
+    return () => { cancelled = true; };
+  }, [formData.date]);
+
+  // Sala é o recurso principal sendo reservado — por isso só some quando
+  // muda o horário (diferente do psicólogo, que não tem disponibilidade
+  // checada aqui: ele não está sendo agendado, só alugando a sala).
+  useEffect(() => {
+    setFormData(prev => ({ ...prev, roomId: '' }));
+  }, [formData.date, formData.startTime, formData.endTime]);
+
+  const availableRooms = useMemo(() => {
+    if (!hasDateTime) return [];
+    return rooms.filter(room => {
+      if (!room.active) return false;
+      const apptConflict = appointmentsForDate.some(a =>
+        a.roomId === room.id && a.mode === AttendanceMode.PRESENCIAL &&
+        a.status !== AppointmentStatus.CANCELED &&
+        hasTimeOverlap(formData.startTime, formData.endTime, a.startTime, a.endTime)
+      );
+      if (apptConflict) return false;
+      const rentalConflict = roomRentals.some(rr =>
+        rr.roomId === room.id && rr.date === formData.date && rr.status === RoomRentalStatus.ACTIVE &&
+        hasTimeOverlap(formData.startTime, formData.endTime, rr.startTime, rr.endTime)
+      );
+      return !rentalConflict;
+    });
+  }, [rooms, appointmentsForDate, roomRentals, hasDateTime, formData.date, formData.startTime, formData.endTime]);
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Nova Sublocação de Sala">
+      <form onSubmit={handleSubmit} className="space-y-4">
+        {/* Data / Horário primeiro — só a partir daqui dá pra saber quais salas estão livres */}
+        <div className="grid grid-cols-3 gap-4">
+          <Input
+            label="Data"
+            type="date"
+            value={formData.date}
+            onChange={(e) => setFormData({ ...formData, date: e.target.value })}
             required
-          >
-            <option value="">Selecione...</option>
-            {rooms.filter(r => r.active).map(r => (
-              <option key={r.id} value={r.id}>{r.name}</option>
-            ))}
-          </select>
-        </div>
-        <div className="space-y-1.5">
-          <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Psicólogo(a)</label>
-          <select
-            className="w-full bg-white border border-zinc-200 rounded-lg px-4 py-2.5 text-sm text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/10 focus:border-priori-navy"
-            value={formData.psychologistId}
-            onChange={(e) => setFormData({ ...formData, psychologistId: e.target.value })}
+          />
+          <Input
+            label="Início"
+            type="time"
+            value={formData.startTime}
+            onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
             required
-          >
-            <option value="">Selecione...</option>
-            {psychologists.filter(p => p.active).map(p => (
-              <option key={p.id} value={p.id}>{p.name}</option>
-            ))}
-          </select>
+          />
+          <Input
+            label="Término"
+            type="time"
+            value={formData.endTime}
+            onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
+            required
+          />
         </div>
-      </div>
 
-      <div className="grid grid-cols-3 gap-4">
-        <Input
-          label="Data"
-          type="date"
-          value={formData.date}
-          onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-          required
-        />
-        <Input
-          label="Início"
-          type="time"
-          value={formData.startTime}
-          onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
-          required
-        />
-        <Input
-          label="Término"
-          type="time"
-          value={formData.endTime}
-          onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
-          required
-        />
-      </div>
+        {!hasDateTime && (
+          <p className="text-xs text-zinc-400">Preencha data e horário para ver as salas disponíveis.</p>
+        )}
 
-      <Input
-        label="Valor Cobrado (R$)"
-        type="text"
-        inputMode="decimal"
-        placeholder="Ex: 80,00"
-        value={amountInput}
-        onChange={handleAmountChange}
-        required
-      />
+        {/* Sala — só as disponíveis no horário escolhido */}
+        {hasDateTime && (
+          <div className="space-y-1.5 animate-in fade-in slide-in-from-top-2 duration-300">
+            <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Sala</label>
+            {isLoadingAvailability ? (
+              <p className="text-xs text-zinc-400">Verificando disponibilidade...</p>
+            ) : (
+              <>
+                <select
+                  className="w-full bg-white border border-zinc-200 rounded-lg px-4 py-2.5 text-sm text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/10 focus:border-priori-navy"
+                  value={formData.roomId}
+                  onChange={(e) => setFormData({ ...formData, roomId: e.target.value })}
+                  required
+                >
+                  <option value="">Selecione...</option>
+                  {availableRooms.map(r => (
+                    <option key={r.id} value={r.id}>{r.name}</option>
+                  ))}
+                </select>
+                {availableRooms.length === 0 && (
+                  <p className="text-xs text-red-500">Nenhuma sala disponível neste horário.</p>
+                )}
+              </>
+            )}
+          </div>
+        )}
 
-      <div className="flex items-center gap-3">
-        <input
-          type="checkbox"
-          id="isRecurringRental"
-          className="w-4 h-4 rounded border-zinc-300 bg-white text-priori-navy focus:ring-priori-navy/20"
-          checked={formData.isRecurring}
-          onChange={(e) => setFormData({ ...formData, isRecurring: e.target.checked })}
-        />
-        <label htmlFor="isRecurringRental" className="text-sm text-zinc-600 cursor-pointer">
-          Reserva recorrente
-        </label>
-      </div>
+        {/* Psicólogo — só depois de encontrar a sala; sem checagem de
+            disponibilidade aqui, ele não está sendo agendado, só alugando. */}
+        {formData.roomId && (
+          <div className="space-y-1.5 animate-in fade-in slide-in-from-top-2 duration-300">
+            <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Psicólogo(a)</label>
+            <select
+              className="w-full bg-white border border-zinc-200 rounded-lg px-4 py-2.5 text-sm text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/10 focus:border-priori-navy"
+              value={formData.psychologistId}
+              onChange={(e) => setFormData({ ...formData, psychologistId: e.target.value })}
+              required
+            >
+              <option value="">Selecione...</option>
+              {psychologists.filter(p => p.active).map(p => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+          </div>
+        )}
 
-      {formData.isRecurring && (
-        <div className="space-y-1.5">
-          <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Frequência</label>
-          <select
-            className="w-full bg-white border border-zinc-200 rounded-lg px-4 py-2.5 text-sm text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/10 focus:border-priori-navy"
-            value={formData.recurrenceFrequency}
-            onChange={(e) => setFormData({ ...formData, recurrenceFrequency: e.target.value as RecurrenceFrequency })}
+        {formData.roomId && (
+          <>
+            <Input
+              label="Valor Cobrado (R$)"
+              type="text"
+              inputMode="decimal"
+              placeholder="Ex: 80,00"
+              value={amountInput}
+              onChange={handleAmountChange}
+              required
+            />
+
+            <div className="flex items-center gap-3">
+              <input
+                type="checkbox"
+                id="isRecurringRental"
+                className="w-4 h-4 rounded border-zinc-300 bg-white text-priori-navy focus:ring-priori-navy/20"
+                checked={formData.isRecurring}
+                onChange={(e) => setFormData({ ...formData, isRecurring: e.target.checked })}
+              />
+              <label htmlFor="isRecurringRental" className="text-sm text-zinc-600 cursor-pointer">
+                Reserva recorrente
+              </label>
+            </div>
+
+            {formData.isRecurring && (
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Frequência</label>
+                <select
+                  className="w-full bg-white border border-zinc-200 rounded-lg px-4 py-2.5 text-sm text-priori-navy focus:outline-none focus:ring-2 focus:ring-priori-navy/10 focus:border-priori-navy"
+                  value={formData.recurrenceFrequency}
+                  onChange={(e) => setFormData({ ...formData, recurrenceFrequency: e.target.value as RecurrenceFrequency })}
+                >
+                  <option value={RecurrenceFrequency.SEMANAL}>Semanal</option>
+                  <option value={RecurrenceFrequency.QUINZENAL}>Quinzenal</option>
+                </select>
+                <p className="text-[11px] text-zinc-400">
+                  Cria automaticamente as ocorrências até o fim do mês seguinte.
+                </p>
+              </div>
+            )}
+
+            <Input
+              label="Observações"
+              placeholder="Opcional"
+              value={formData.notes}
+              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+            />
+          </>
+        )}
+
+        <div className="pt-4 flex gap-3">
+          <Button
+            type="button"
+            variant="outline"
+            className="flex-1 border-priori-navy text-priori-navy hover:bg-priori-navy/5"
+            onClick={onClose}
           >
-            <option value={RecurrenceFrequency.SEMANAL}>Semanal</option>
-            <option value={RecurrenceFrequency.QUINZENAL}>Quinzenal</option>
-          </select>
-          <p className="text-[11px] text-zinc-400">
-            Cria automaticamente as ocorrências até o fim do mês seguinte.
-          </p>
+            Cancelar
+          </Button>
+          <Button type="submit" className="flex-1 bg-priori-navy hover:bg-priori-navy/90" isLoading={isSaving}>
+            Reservar Sala
+          </Button>
         </div>
-      )}
-
-      <Input
-        label="Observações"
-        placeholder="Opcional"
-        value={formData.notes}
-        onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-      />
-
-      <div className="pt-4 flex gap-3">
-        <Button
-          type="button"
-          variant="outline"
-          className="flex-1 border-priori-navy text-priori-navy hover:bg-priori-navy/5"
-          onClick={onClose}
-        >
-          Cancelar
-        </Button>
-        <Button type="submit" className="flex-1 bg-priori-navy hover:bg-priori-navy/90" isLoading={isSaving}>
-          Reservar Sala
-        </Button>
-      </div>
-    </form>
-  </Modal>
-);
+      </form>
+    </Modal>
+  );
+};
